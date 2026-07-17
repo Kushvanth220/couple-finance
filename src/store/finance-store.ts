@@ -910,4 +910,21 @@ export function applyRemoteFinanceState(state: FinanceState) {
   useFinanceStore.setState(state);
 }
 
+let hydrationPromise: Promise<void> | null = null;
+
+/** Wait until localStorage data has loaded into the store. */
+export function waitForStoreHydration(): Promise<void> {
+  if (useFinanceStore.persist.hasHydrated()) {
+    return Promise.resolve();
+  }
+
+  if (!hydrationPromise) {
+    hydrationPromise = new Promise((resolve) => {
+      useFinanceStore.persist.onFinishHydration(() => resolve());
+    });
+  }
+
+  return hydrationPromise;
+}
+
 export type { IncomeSource, IncomeEntry, MonthlyExpense, Account, Debt, Transaction };

@@ -20,11 +20,20 @@ All data persists in your browser via localStorage. Optional **Supabase cloud sy
 1. Create a [Supabase](https://supabase.com) project (free tier is fine).
 2. In **Project Settings → API**, copy the project URL and anon key.
 3. Copy `.env.local.example` to `.env.local` and paste those values.
-4. In the Supabase **SQL Editor**, run `supabase/migrations/001_household_finance.sql`.
+4. In the Supabase **SQL Editor**, run both migration files:
+   - `supabase/migrations/001_household_finance.sql`
+   - `supabase/migrations/002_realtime_replica_identity.sql`
 5. Restart the dev server (`npm run dev`).
-6. Open **Sync** in the app header, create one shared account, and sign in on every device with the same email and password.
+6. Open **Sync** in the app header, create one shared account, and sign in on **every phone** with the same email and password.
 
-Changes sync automatically within a second or two. Without sign-in, the app still works locally only.
+Changes sync automatically (every 10 seconds, plus when you reopen the app). Without sign-in, data stays on that device only.
+
+### Sync not working?
+
+- Header should say **Synced** (not "Sign in to sync" or "Setup sync")
+- Both phones must use the **same Sync login**
+- On the second phone, open **Sync → Download latest**
+- If you see an error on the Sync page, run migration `002_realtime_replica_identity.sql` in Supabase
 
 ## Getting Started
 

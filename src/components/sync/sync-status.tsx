@@ -4,15 +4,21 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, Loader2 } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
-import { onSyncStatusChange, type SyncStatus } from "@/lib/supabase/sync";
+import {
+  getLastSyncError,
+  onSyncStatusChange,
+  type SyncStatus,
+} from "@/lib/supabase/sync";
 import { cn } from "@/lib/utils";
 
 export function SyncStatusBadge() {
   const [status, setStatus] = useState<SyncStatus>("offline");
   const [signedIn, setSignedIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const configured = isSupabaseConfigured();
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    if (!configured) return;
 
     const supabase = createClient();
     if (!supabase) return;
@@ -29,20 +35,32 @@ export function SyncStatusBadge() {
       if (!session) setStatus("offline");
     });
 
-    const unsubscribe = onSyncStatusChange((next) => {
+    const unsubscribe = onSyncStatusChange((next, nextError) => {
       setStatus(next);
+      setError(nextError ?? getLastSyncError());
     });
 
     return () => {
       subscription.unsubscribe();
       unsubscribe();
     };
-  }, []);
+  }, [configured]);
 
-  if (!isSupabaseConfigured()) return null;
+  if (!configured) {
+    return (
+      <Link
+        href="/sync"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#ff9500] hover:bg-black/5 dark:hover:bg-white/5"
+        title="Cloud sync not configured"
+      >
+        <CloudOff className="w-3.5 h-3.5" />
+        Setup sync
+      </Link>
+    );
+  }
 
   const label = !signedIn
-    ? "Sync off"
+    ? "Sign in to sync"
     : status === "syncing"
       ? "Syncing"
       : status === "error"
@@ -62,9 +80,10 @@ export function SyncStatusBadge() {
       className={cn(
         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all",
         "text-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+        !signedIn && "text-[#ff9500]",
         status === "error" && signedIn && "text-[#ff3b30]"
       )}
-      title={label}
+      title={error ?? label}
     >
       <Icon className={cn("w-3.5 h-3.5", status === "syncing" && "animate-spin")} />
       {label}

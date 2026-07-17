@@ -8,12 +8,14 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { GlassInput } from "@/components/ui/glass-input";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
+  forcePullNow,
   forcePushNow,
   getCurrentSyncUserId,
+  getLastSyncError,
   onSyncStatusChange,
   type SyncStatus,
 } from "@/lib/supabase/sync";
-import { getFinanceState } from "@/store/finance-store";
+import { applyRemoteFinanceState, getFinanceState } from "@/store/finance-store";
 
 export default function SyncPage() {
   const [email, setEmail] = useState("");
@@ -23,6 +25,7 @@ export default function SyncPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const configured = isSupabaseConfigured();
 
   useEffect(() => {
@@ -41,7 +44,10 @@ export default function SyncPage() {
       setUser(session?.user ?? null);
     });
 
-    const unsubscribe = onSyncStatusChange(setSyncStatus);
+    const unsubscribe = onSyncStatusChange((next, error) => {
+      setSyncStatus(next);
+      setSyncError(error ?? getLastSyncError());
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -115,6 +121,27 @@ export default function SyncPage() {
     setMessage("Signed out. This device will keep using local data only.");
   }
 
+  async function handleForcePull() {
+    const userId = user?.id ?? getCurrentSyncUserId();
+    if (!userId) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const pulled = await forcePullNow(userId, applyRemoteFinanceState);
+      setMessage(
+        pulled
+          ? "Latest data downloaded from the cloud."
+          : "Already up to date."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pull failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleForceSync() {
     const userId = user?.id ?? getCurrentSyncUserId();
     if (!userId) return;
@@ -186,12 +213,21 @@ export default function SyncPage() {
 
           <div className="flex flex-wrap gap-2">
             <GlassButton onClick={handleForceSync} disabled={loading}>
-              Sync now
+              Upload now
+            </GlassButton>
+            <GlassButton variant="secondary" onClick={handleForcePull} disabled={loading}>
+              Download latest
             </GlassButton>
             <GlassButton variant="secondary" onClick={handleSignOut}>
               Sign out
             </GlassButton>
           </div>
+
+          {syncError ? (
+            <p className="text-sm text-[#ff3b30] bg-[#ff3b30]/10 rounded-2xl px-4 py-3">
+              {syncError}
+            </p>
+          ) : null}
         </GlassCard>
       ) : (
         <GlassCard className="p-6">
@@ -247,7 +283,8 @@ export default function SyncPage() {
         <ul className="text-sm text-muted space-y-1 list-disc list-inside">
           <li>Create one shared login for your household.</li>
           <li>Sign in on phone, laptop, and any other browser.</li>
-          <li>Changes sync automatically within a second or two.</li>
+          <li>Changes upload automatically and refresh every 10 seconds.</li>
+          <li>On the second phone, open Sync and tap Download latest if needed.</li>
           <li>Without sign-in, data stays on this device only.</li>
         </ul>
       </GlassCard>

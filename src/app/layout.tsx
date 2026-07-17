@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ExpenseReminderProvider } from "@/components/notifications/expense-reminder-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { SyncProvider } from "@/components/sync/sync-provider";
+import { SyncBanner } from "@/components/sync/sync-banner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,6 +50,7 @@ export default function RootLayout({
         <SyncProvider />
         <AppShell>
           <ExpenseReminderProvider />
+          <SyncBanner />
           {children}
         </AppShell>
       </body>

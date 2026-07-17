@@ -5,20 +5,22 @@ import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   isApplyingRemoteSync,
   onSyncStatusChange,
-  resolveInitialSync,
+  pullRemoteIfNewer,
+  runInitialSyncSession,
   scheduleFinancePush,
-  subscribeToFinanceChanges,
-  unsubscribeFromFinanceChanges,
+  stopSyncSession,
 } from "@/lib/supabase/sync";
 import {
   applyRemoteFinanceState,
   getFinanceState,
   useFinanceStore,
+  waitForStoreHydration,
 } from "@/store/finance-store";
 
 export function SyncProvider() {
   const userIdRef = useRef<string | null>(null);
   const readyRef = useRef(false);
+  const startingRef = useRef(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -29,24 +31,37 @@ export function SyncProvider() {
     let cancelled = false;
 
     async function startSync(userId: string) {
-      if (cancelled || userIdRef.current === userId) return;
+      if (cancelled) return;
+      if (startingRef.current) return;
+      if (userIdRef.current === userId && readyRef.current) return;
+
+      startingRef.current = true;
       userIdRef.current = userId;
       readyRef.current = false;
 
       try {
-        await resolveInitialSync(
+        await waitForStoreHydration();
+        if (cancelled) return;
+
+        await runInitialSyncSession(
           userId,
           getFinanceState,
           applyRemoteFinanceState
         );
       } catch {
-        // Initial sync can fail offline; local data still works.
+        // Errors are surfaced via sync status.
       }
 
       if (cancelled) return;
-
       readyRef.current = true;
-      subscribeToFinanceChanges(userId, applyRemoteFinanceState);
+      startingRef.current = false;
+    }
+
+    function stopSync() {
+      userIdRef.current = null;
+      readyRef.current = false;
+      startingRef.current = false;
+      stopSyncSession();
     }
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
@@ -61,9 +76,7 @@ export function SyncProvider() {
       if (session?.user) {
         void startSync(session.user.id);
       } else {
-        userIdRef.current = null;
-        readyRef.current = false;
-        unsubscribeFromFinanceChanges();
+        stopSync();
       }
     });
 
@@ -74,8 +87,19 @@ export function SyncProvider() {
       scheduleFinancePush(userId, getFinanceState);
     });
 
+    function handleVisibilityChange() {
+      const userId = userIdRef.current;
+      if (!userId || !readyRef.current || document.visibilityState !== "visible") {
+        return;
+      }
+
+      void pullRemoteIfNewer(userId, applyRemoteFinanceState);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     const unsubscribeStatus = onSyncStatusChange(() => {
-      // Status is consumed by SyncStatusBadge
+      // Status is consumed by SyncStatusBadge and /sync page.
     });
 
     return () => {
@@ -83,9 +107,8 @@ export function SyncProvider() {
       subscription.unsubscribe();
       unsubscribeStore();
       unsubscribeStatus();
-      unsubscribeFromFinanceChanges();
-      userIdRef.current = null;
-      readyRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopSync();
     };
   }, []);
 
