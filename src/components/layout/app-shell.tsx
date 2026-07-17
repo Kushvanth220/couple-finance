@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GrikLogo } from "@/components/layout/grik-logo";
+import { SyncStatusBadge } from "@/components/sync/sync-status";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -34,9 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="mesh-bg" />
 
       <header className="sticky top-0 z-40 glass-strong border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-3 md:py-4 flex items-center justify-between gap-3">
           <GrikLogo size="header" />
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1 flex-1 justify-end">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
@@ -57,6 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </div>
+          <SyncStatusBadge />
         </div>
       </header>
 

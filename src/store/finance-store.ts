@@ -23,6 +23,7 @@ import { PERSON_LABELS } from "@/types";
 import type {
   Account,
   Debt,
+  FinanceState,
   IncomeEntry,
   IncomeSource,
   InterCoupleEntry,
@@ -889,6 +890,24 @@ export function useHydratedStore<T>(selector: (state: FinanceStore) => T): T | n
   }, []);
 
   return hydrated ? result : null;
+}
+
+export function getFinanceState(): FinanceState {
+  const state = useFinanceStore.getState();
+  return {
+    incomeSources: state.incomeSources,
+    incomeEntries: state.incomeEntries,
+    monthlyExpenses: state.monthlyExpenses,
+    accounts: state.accounts,
+    debts: state.debts,
+    transactions: state.transactions,
+    interCoupleHistory: state.interCoupleHistory,
+    interCoupleBalance: state.interCoupleBalance,
+  };
+}
+
+export function applyRemoteFinanceState(state: FinanceState) {
+  useFinanceStore.setState(state);
 }
 
 export type { IncomeSource, IncomeEntry, MonthlyExpense, Account, Debt, Transaction };

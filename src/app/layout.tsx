@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ExpenseReminderProvider } from "@/components/notifications/expense-reminder-provider";
 import { AppShell } from "@/components/layout/app-shell";
+import { SyncProvider } from "@/components/sync/sync-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,6 +46,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
+        <SyncProvider />
         <AppShell>
           <ExpenseReminderProvider />
           {children}
