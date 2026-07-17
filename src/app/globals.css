@@ -1,0 +1,288 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f2f2f7;
+  --foreground: #1c1c1e;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --accent: #007aff;
+  --accent-secondary: #5856d6;
+  --success: #34c759;
+  --warning: #ff9500;
+  --danger: #ff3b30;
+  --muted: rgba(60, 60, 67, 0.6);
+  --card-radius: 20px;
+  --blur: 24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #f5f5f7;
+    --glass-bg: rgba(44, 44, 46, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --muted: rgba(235, 235, 245, 0.6);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", system-ui, sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+.mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 122, 255, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 10%, rgba(88, 86, 214, 0.12), transparent),
+    radial-gradient(ellipse 50% 50% at 50% 80%, rgba(52, 199, 89, 0.08), transparent),
+    var(--background);
+}
+
+@media (prefers-color-scheme: dark) {
+  .mesh-bg {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 122, 255, 0.2), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 10%, rgba(88, 86, 214, 0.15), transparent),
+      radial-gradient(ellipse 50% 50% at 50% 80%, rgba(52, 199, 89, 0.06), transparent),
+      var(--background);
+  }
+}
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-strong {
+  background: var(--glass-bg);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Grik Finance brand animations */
+@keyframes grik-gradient-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes grik-letter-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes grik-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes grik-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+@keyframes grik-subtitle-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.grik-glow {
+  background: linear-gradient(
+    120deg,
+    rgba(0, 122, 255, 0.45),
+    rgba(175, 82, 222, 0.4),
+    rgba(255, 45, 85, 0.25)
+  );
+  animation: grik-glow-pulse 4s ease-in-out infinite;
+}
+
+.grik-gradient-text {
+  background: linear-gradient(
+    90deg,
+    #007aff,
+    #5856d6,
+    #af52de,
+    #ff2d55,
+    #007aff
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: grik-gradient-flow 5s ease infinite;
+}
+
+.grik-letter {
+  animation: grik-letter-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.grik-finance-text {
+  position: relative;
+  background: linear-gradient(135deg, #5856d6 0%, #af52de 50%, #007aff 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: grik-gradient-flow 6s ease infinite reverse;
+}
+
+.grik-finance-text::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 60%
+  );
+  animation: grik-shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+.grik-subtitle {
+  animation: grik-subtitle-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.35s backwards;
+}
+
+.grik-name-kush {
+  color: #007aff;
+  font-weight: 600;
+}
+
+.grik-name-grish {
+  color: #af52de;
+  font-weight: 600;
+}
+
+.grik-amp {
+  animation: grik-glow-pulse 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grik-gradient-text,
+  .grik-finance-text,
+  .grik-glow,
+  .grik-letter,
+  .grik-subtitle,
+  .grik-amp {
+    animation: none;
+  }
+
+  .grik-letter {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
