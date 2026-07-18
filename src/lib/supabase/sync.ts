@@ -9,7 +9,7 @@ import {
 import type { FinanceState } from "@/types";
 
 /** Bumped to reset stale per-device sync timestamps from older builds. */
-export const SYNC_META_KEY = "couple-finance-sync-meta-v4";
+export const SYNC_META_KEY = "couple-finance-sync-meta-v5";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 
@@ -134,10 +134,6 @@ function helpfulErrorMessage(error: unknown) {
   return message;
 }
 
-function stateSignature(state: FinanceState) {
-  return JSON.stringify(state);
-}
-
 export async function fetchRemoteFinance(
   householdId: string
 ): Promise<RemoteFinanceRow | null> {
@@ -255,9 +251,11 @@ function applyRemoteRow(
 
 function shouldPullRemote(
   remote: RemoteFinanceRow,
-  localState: FinanceState,
+  _localState: FinanceState,
   meta = readSyncMeta()
 ) {
+  if (pendingLocalChanges) return false;
+
   const remoteTime = new Date(remote.updated_at).getTime();
   const syncedTime = lastSyncedTime(meta);
 
@@ -265,7 +263,7 @@ function shouldPullRemote(
 
   if (!meta.lastSyncedAt) return true;
 
-  return stateSignature(remote.data) !== stateSignature(localState);
+  return false;
 }
 
 export function pullRemoteIfNewer(
@@ -300,15 +298,15 @@ export async function resolveInitialSync(
     return "local";
   }
 
-  if (shouldPullRemote(remote, localState, meta)) {
-    applyRemoteRow(remote, applyRemoteState);
-    return "remote";
-  }
-
   if (pendingLocalChanges) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
+  }
+
+  if (shouldPullRemote(remote, localState, meta)) {
+    applyRemoteRow(remote, applyRemoteState);
+    return "remote";
   }
 
   notifyStatus("synced");
@@ -366,10 +364,10 @@ export function startPollingSync(
     if (document.visibilityState !== "visible") return;
 
     void (async () => {
-      await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
       if (pendingLocalChanges) {
         await flushPendingPush();
       }
+      await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
     })().catch((err) => {
       notifyStatus("error", helpfulErrorMessage(err));
     });
@@ -381,10 +379,10 @@ export async function runAutoSyncCycle(
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
-  await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
   if (pendingLocalChanges) {
     await flushPendingPush();
   }
+  await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
 }
 
 export function stopPollingSync() {

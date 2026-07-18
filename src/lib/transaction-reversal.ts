@@ -86,33 +86,119 @@ export function recalculateInterCoupleState(entries: InterCoupleEntry[]) {
   };
 }
 
-function removeInterCoupleForTransaction(
+/** Undo one Between Us history entry from the current balance (inverse of spend). */
+export function reverseInterCoupleEntryEffect(
+  balance: number,
+  entry: InterCoupleEntry
+): number {
+  if (entry.paidBy === "kushvanth" && entry.benefited === "grishma") {
+    return balance - entry.amount;
+  }
+  if (entry.paidBy === "grishma" && entry.benefited === "kushvanth") {
+    return balance + entry.amount;
+  }
+  return balance;
+}
+
+function shouldRemoveInterCoupleEntry(
+  target: Transaction,
+  entry: InterCoupleEntry
+): boolean {
+  if (entry.autoMessage === "Starting balance") return false;
+  if (entry.autoMessage === "Manual balance adjustment") return false;
+
+  if (entry.sourceTransactionId === target.id) return true;
+  if (entry.sourceTransactionId) return false;
+
+  const paidBy = target.paidByPerson ?? target.person;
+  if (entry.date !== target.date || entry.time !== target.time) return false;
+  if (entry.paidBy !== paidBy) return false;
+
+  if (target.expenseShares) {
+    const share = target.expenseShares[entry.benefited];
+    return share != null && Math.abs(share - entry.amount) < 0.01;
+  }
+
+  if (target.beneficiaryPerson) {
+    return (
+      entry.benefited === target.beneficiaryPerson &&
+      Math.abs(entry.amount - target.amount) < 0.01
+    );
+  }
+
+  return false;
+}
+
+export function partitionInterCoupleEntriesForTransaction(
   target: Transaction,
   history: InterCoupleEntry[]
-): InterCoupleEntry[] {
-  const paidBy = target.paidByPerson ?? target.person;
+): { kept: InterCoupleEntry[]; removed: InterCoupleEntry[] } {
+  const kept: InterCoupleEntry[] = [];
+  const removed: InterCoupleEntry[] = [];
 
-  return history.filter((entry) => {
-    if (entry.sourceTransactionId === target.id) return false;
-    if (entry.sourceTransactionId) return true;
-
-    if (entry.date !== target.date || entry.time !== target.time) return true;
-    if (entry.paidBy !== paidBy) return true;
-
-    if (target.expenseShares) {
-      const share = target.expenseShares[entry.benefited];
-      return !(share != null && Math.abs(share - entry.amount) < 0.01);
+  for (const entry of history) {
+    if (shouldRemoveInterCoupleEntry(target, entry)) {
+      removed.push(entry);
+    } else {
+      kept.push(entry);
     }
+  }
 
-    if (target.beneficiaryPerson) {
-      return !(
-        entry.benefited === target.beneficiaryPerson &&
-        Math.abs(entry.amount - target.amount) < 0.01
-      );
-    }
+  return { kept, removed };
+}
 
-    return true;
-  });
+/** Keep stored balance when history alone does not include the opening amount. */
+export function ensureInterCoupleBaseline(
+  history: InterCoupleEntry[],
+  balance: number
+): { interCoupleHistory: InterCoupleEntry[]; interCoupleBalance: number } {
+  const recalculated = recalculateInterCoupleState(history);
+  const gap = balance - recalculated.interCoupleBalance;
+
+  if (Math.abs(gap) < 0.01) {
+    return {
+      interCoupleHistory: recalculated.interCoupleHistory,
+      interCoupleBalance: recalculated.interCoupleBalance,
+    };
+  }
+
+  const hasOpening = history.some((entry) => entry.autoMessage === "Starting balance");
+  if (hasOpening) {
+    return { interCoupleHistory: recalculated.interCoupleHistory, interCoupleBalance: balance };
+  }
+
+  const paidBy: Person = gap > 0 ? "kushvanth" : "grishma";
+  const benefited: Person = gap > 0 ? "grishma" : "kushvanth";
+  const openingEntry: InterCoupleEntry = {
+    id: "opening-balance",
+    date: "2020-01-01",
+    time: "00:00",
+    amount: Math.abs(gap),
+    paidBy,
+    benefited,
+    autoMessage: "Starting balance",
+    runningBalance: Math.abs(gap),
+  };
+
+  const merged = recalculateInterCoupleState([openingEntry, ...history]);
+  return {
+    interCoupleHistory: merged.interCoupleHistory,
+    interCoupleBalance: merged.interCoupleBalance,
+  };
+}
+
+function applyInterCoupleRemoval(
+  currentBalance: number,
+  history: InterCoupleEntry[],
+  removed: InterCoupleEntry[]
+): { interCoupleBalance: number; interCoupleHistory: InterCoupleEntry[] } {
+  let interCoupleBalance = currentBalance;
+  for (const entry of removed) {
+    interCoupleBalance = reverseInterCoupleEntryEffect(interCoupleBalance, entry);
+  }
+
+  const interCoupleHistory = recalculateInterCoupleState(history).interCoupleHistory;
+  return { interCoupleBalance, interCoupleHistory };
 }
 
 function findRelatedTransactionIds(
@@ -170,7 +256,11 @@ export function applyTransactionDeletion(state: {
   let debts = state.debts;
   let incomeEntries = state.incomeEntries;
   let interCoupleHistory = state.interCoupleHistory;
+  let interCoupleBalance = state.interCoupleBalance;
   let monthlyExpenses = state.monthlyExpenses;
+  let removedInterCoupleEntries: InterCoupleEntry[] = [];
+  let removedIncomeEntry: IncomeEntry | undefined;
+  let affectedMonthlyExpense: import("@/types").MonthlyExpense | undefined;
 
   switch (target.type) {
     case "expense":
@@ -212,9 +302,19 @@ export function applyTransactionDeletion(state: {
         }
       }
 
-      interCoupleHistory = removeInterCoupleForTransaction(target, interCoupleHistory);
+      const partitioned = partitionInterCoupleEntriesForTransaction(
+        target,
+        interCoupleHistory
+      );
+      if (partitioned.removed.length > 0) {
+        interCoupleHistory = partitioned.kept;
+        removedInterCoupleEntries = partitioned.removed;
+      }
 
       if (target.monthlyExpenseId && target.plannedAmount != null) {
+        affectedMonthlyExpense = monthlyExpenses.find(
+          (expense) => expense.id === target.monthlyExpenseId
+        );
         monthlyExpenses = monthlyExpenses.map((expense) =>
           expense.id === target.monthlyExpenseId ? { ...expense, isPaid: false } : expense
         );
@@ -245,15 +345,21 @@ export function applyTransactionDeletion(state: {
       }
       const incomeEntry = findMatchingIncomeEntry(target, incomeEntries);
       if (incomeEntry) {
+        removedIncomeEntry = incomeEntry;
         incomeEntries = incomeEntries.filter((e) => e.id !== incomeEntry.id);
       }
       break;
     }
 
     case "inter_couple": {
-      interCoupleHistory = interCoupleHistory.filter(
-        (entry) => entry.sourceTransactionId !== target.id
+      const partitioned = partitionInterCoupleEntriesForTransaction(
+        target,
+        interCoupleHistory
       );
+      if (partitioned.removed.length > 0) {
+        interCoupleHistory = partitioned.kept;
+        removedInterCoupleEntries = partitioned.removed;
+      }
       break;
     }
 
@@ -274,8 +380,18 @@ export function applyTransactionDeletion(state: {
       break;
   }
 
-  const interState = recalculateInterCoupleState(interCoupleHistory);
+  if (removedInterCoupleEntries.length > 0) {
+    const interState = applyInterCoupleRemoval(
+      interCoupleBalance,
+      interCoupleHistory,
+      removedInterCoupleEntries
+    );
+    interCoupleBalance = interState.interCoupleBalance;
+    interCoupleHistory = interState.interCoupleHistory;
+  }
+
   const transactions = state.transactions.filter((t) => !removeIds.has(t.id));
+  const removedTransactions = state.transactions.filter((t) => removeIds.has(t.id));
 
   return {
     accounts,
@@ -283,8 +399,15 @@ export function applyTransactionDeletion(state: {
     incomeEntries,
     monthlyExpenses,
     transactions,
-    interCoupleHistory: interState.interCoupleHistory,
-    interCoupleBalance: interState.interCoupleBalance,
+    interCoupleHistory,
+    interCoupleBalance,
+    deletionAudit: {
+      primaryTransactionId: state.transactionId,
+      removedTransactions,
+      removedInterCoupleEntries,
+      removedIncomeEntry,
+      monthlyExpense: affectedMonthlyExpense,
+    },
   };
 }
 

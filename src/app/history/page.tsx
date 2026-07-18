@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Filter, RotateCcw } from "lucide-react";
+import { DeletedHistoryCard } from "@/components/history/deleted-history-card";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { GlassModal } from "@/components/ui/glass-modal";
@@ -37,7 +38,8 @@ const typeColors: Record<TransactionType, string> = {
 };
 
 export default function HistoryPage() {
-  const { transactions, deleteTransaction, resetToSeed } = useFinanceStore();
+  const { transactions, deletedHistory, deleteTransaction, resetToSeed } = useFinanceStore();
+  const [view, setView] = useState<"active" | "deleted">("active");
   const [person, setPerson] = useState<Person | "overall">("overall");
   const [typeFilter, setTypeFilter] = useState<TransactionType | "all">("all");
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -60,12 +62,34 @@ export default function HistoryPage() {
     .filter((t) => typeFilter === "all" || t.type === typeFilter)
     .sort(compareByDateTime);
 
+  const filteredDeleted = (deletedHistory ?? [])
+    .filter((record) => {
+      if (person === "overall") return true;
+      return record.transactions.some(
+        (t) =>
+          t.person === person ||
+          t.paidByPerson === person ||
+          t.expenseOwner === person ||
+          t.beneficiaryPerson === person ||
+          (t.expenseShares?.[person] ?? 0) > 0
+      );
+    })
+    .filter((record) => {
+      if (typeFilter === "all") return true;
+      return record.transactions.some((t) => t.type === typeFilter);
+    })
+    .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">History</h2>
-          <p className="text-muted mt-1">Complete transaction log with auto-generated details</p>
+          <p className="text-muted mt-1">
+            {view === "active"
+              ? "Complete transaction log with auto-generated details"
+              : "Permanent record of everything removed from History"}
+          </p>
         </div>
         <GlassButton
           variant="danger"
@@ -75,6 +99,33 @@ export default function HistoryPage() {
           <RotateCcw className="w-4 h-4" />
           Reset all data
         </GlassButton>
+      </div>
+
+      <div className="glass rounded-2xl p-1 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setView("active")}
+          className={cn(
+            "flex-1 rounded-xl py-2 text-sm font-medium transition-colors",
+            view === "active"
+              ? "bg-[#007aff] text-white"
+              : "text-muted hover:text-foreground"
+          )}
+        >
+          Active
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("deleted")}
+          className={cn(
+            "flex-1 rounded-xl py-2 text-sm font-medium transition-colors",
+            view === "deleted"
+              ? "bg-[#ff3b30] text-white"
+              : "text-muted hover:text-foreground"
+          )}
+        >
+          Deleted ({filteredDeleted.length})
+        </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -100,7 +151,15 @@ export default function HistoryPage() {
       </div>
 
       <GlassCard className="p-0 divide-y divide-white/5">
-        {filtered.length === 0 ? (
+        {view === "deleted" ? (
+          filteredDeleted.length === 0 ? (
+            <p className="text-sm text-muted p-5">No deleted transactions yet</p>
+          ) : (
+            filteredDeleted.map((record) => (
+              <DeletedHistoryCard key={record.id} record={record} />
+            ))
+          )
+        ) : filtered.length === 0 ? (
           <p className="text-sm text-muted p-5">No transactions yet</p>
         ) : (
           filtered.map((transaction) => {
@@ -176,8 +235,9 @@ export default function HistoryPage() {
         title="Reset all data?"
       >
         <p className="text-sm text-muted leading-relaxed">
-          This clears all transaction history, income entries, and resets account balances,
-          debts, and Between Us back to the original starting values.
+          This clears all active transaction history, income entries, and resets account balances,
+          debts, and Between Us back to the original starting values. Your permanent deleted
+          record is kept.
         </p>
         <div className="flex gap-3 mt-5">
           <GlassButton className="flex-1" onClick={() => setShowResetConfirm(false)}>

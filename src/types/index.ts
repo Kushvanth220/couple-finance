@@ -110,6 +110,30 @@ export interface InterCoupleEntry {
   sourceTransactionId?: string;
 }
 
+/** Permanent audit log entry when a transaction is deleted from History. */
+export interface DeletedHistoryRecord {
+  id: string;
+  deletedAt: string;
+  primaryTransactionId: string;
+  transactions: Transaction[];
+  removedInterCoupleEntries: InterCoupleEntry[];
+  removedIncomeEntry?: IncomeEntry;
+  monthlyExpense?: {
+    id: string;
+    name: string;
+    person: Person;
+    amount: number | null;
+    isVariable: boolean;
+    isRecurring: boolean;
+  };
+  context: {
+    accounts: Record<string, { name: string; type: AccountType; person: Person }>;
+    debts: Record<string, { name: string; person: Person }>;
+    incomeSources: Record<string, { name: string; person: Person }>;
+  };
+  summary: string;
+}
+
 export interface FinanceState {
   incomeSources: IncomeSource[];
   incomeEntries: IncomeEntry[];
@@ -120,6 +144,8 @@ export interface FinanceState {
   interCoupleHistory: InterCoupleEntry[];
   /** Positive = Grishma owes Kushvanth */
   interCoupleBalance: number;
+  /** Append-only log of deleted transactions — never removed by delete or reset. */
+  deletedHistory: DeletedHistoryRecord[];
 }
 
 export const PERSON_LABELS: Record<Person, string> = {

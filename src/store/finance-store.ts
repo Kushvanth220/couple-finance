@@ -18,9 +18,12 @@ import {
 import { getMonthlyExpensePaid } from "@/lib/monthly-expense-tracker";
 import {
   applyTransactionDeletion,
+  ensureInterCoupleBaseline,
   getInterCoupleUpdatesFromShares,
+  recalculateInterCoupleState,
   type ExpenseShares,
 } from "@/lib/transaction-reversal";
+import { buildDeletedHistoryRecord } from "@/lib/deleted-history";
 import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data";
 import { parseAppDateTime } from "@/lib/formatters";
 import { seedData } from "@/lib/seed-data";
@@ -922,7 +925,45 @@ export const useFinanceStore = create<FinanceStore>()(
           };
         }),
 
-      updateInterCoupleBalance: (amount) => set({ interCoupleBalance: amount }),
+      updateInterCoupleBalance: (amount) =>
+        set((state) => {
+          const historyWithoutManual = state.interCoupleHistory.filter(
+            (entry) => entry.autoMessage !== "Manual balance adjustment"
+          );
+          const base = recalculateInterCoupleState(historyWithoutManual);
+          const delta = amount - base.interCoupleBalance;
+
+          if (Math.abs(delta) < 0.01) {
+            return {
+              interCoupleBalance: amount,
+              interCoupleHistory: base.interCoupleHistory,
+            };
+          }
+
+          const paidBy: Person = delta > 0 ? "kushvanth" : "grishma";
+          const benefited: Person = delta > 0 ? "grishma" : "kushvanth";
+          const interUpdate = updateInterCoupleFromSpend(
+            paidBy,
+            benefited,
+            Math.abs(delta),
+            base.interCoupleBalance,
+            "Manual balance adjustment"
+          );
+
+          if (!interUpdate.entry) {
+            return { interCoupleBalance: amount };
+          }
+
+          const final = recalculateInterCoupleState([
+            interUpdate.entry,
+            ...base.interCoupleHistory,
+          ]);
+
+          return {
+            interCoupleBalance: final.interCoupleBalance,
+            interCoupleHistory: final.interCoupleHistory,
+          };
+        }),
 
       deleteTransaction: (id) =>
         set((state) => {
@@ -937,15 +978,46 @@ export const useFinanceStore = create<FinanceStore>()(
             transactionId: id,
           });
           if (!result) return state;
-          return result;
+
+          const { deletionAudit, ...nextState } = result;
+          const deletedRecord = buildDeletedHistoryRecord({
+            primaryTransactionId: deletionAudit.primaryTransactionId,
+            removedTransactions: deletionAudit.removedTransactions,
+            removedInterCoupleEntries: deletionAudit.removedInterCoupleEntries,
+            removedIncomeEntry: deletionAudit.removedIncomeEntry,
+            monthlyExpense: deletionAudit.monthlyExpense,
+            accounts: state.accounts,
+            debts: state.debts,
+            incomeSources: state.incomeSources,
+          });
+
+          return {
+            ...nextState,
+            deletedHistory: [...(state.deletedHistory ?? []), deletedRecord],
+          };
         }),
 
       resetToSeed: () => {
+        const preservedDeletedHistory = useFinanceStore.getState().deletedHistory ?? [];
         clearPersistedAppData();
-        set(seedData);
+        set({ ...seedData, deletedHistory: preservedDeletedHistory });
       },
     }),
-    { name: FINANCE_STORAGE_KEY }
+    {
+      name: FINANCE_STORAGE_KEY,
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        if (!state.deletedHistory) {
+          state.deletedHistory = [];
+        }
+        const baseline = ensureInterCoupleBaseline(
+          state.interCoupleHistory,
+          state.interCoupleBalance
+        );
+        state.interCoupleHistory = baseline.interCoupleHistory;
+        state.interCoupleBalance = baseline.interCoupleBalance;
+      },
+    }
   )
 );
 
@@ -971,11 +1043,15 @@ export function getFinanceState(): FinanceState {
     transactions: state.transactions,
     interCoupleHistory: state.interCoupleHistory,
     interCoupleBalance: state.interCoupleBalance,
+    deletedHistory: state.deletedHistory ?? [],
   };
 }
 
 export function applyRemoteFinanceState(state: FinanceState) {
-  useFinanceStore.setState(state);
+  useFinanceStore.setState({
+    ...state,
+    deletedHistory: state.deletedHistory ?? [],
+  });
 }
 
 let hydrationPromise: Promise<void> | null = null;

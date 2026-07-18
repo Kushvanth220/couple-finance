@@ -60,6 +60,18 @@ export const seedData: FinanceState = {
     { id: "debt-g3", person: "grishma", name: "Mama", amount: 2000 },
   ],
   transactions: [],
-  interCoupleHistory: [],
+  interCoupleHistory: [
+    {
+      id: "ic-opening-balance",
+      date: "2020-01-01",
+      time: "00:00",
+      amount: 9080,
+      paidBy: "kushvanth",
+      benefited: "grishma",
+      autoMessage: "Starting balance",
+      runningBalance: 9080,
+    },
+  ],
   interCoupleBalance: 9080,
+  deletedHistory: [],
 };
