@@ -1,0 +1,276 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Cloud,
+  CreditCard,
+  Heart,
+  History,
+  Landmark,
+  LayoutGrid,
+  LayoutDashboard,
+  Loader2,
+  Receipt,
+  TrendingUp,
+  Wallet,
+  X,
+} from "lucide-react";
+import { isSupabaseConfiguredAsync } from "@/lib/supabase/client";
+import {
+  getLastSyncError,
+  onSyncStatusChange,
+  type SyncStatus,
+} from "@/lib/supabase/sync";
+import { cn } from "@/lib/utils";
+
+const primaryTabs = [
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/income", label: "Income", icon: TrendingUp },
+  { href: "/spend", label: "Spend", icon: Wallet, primary: true },
+  { href: "/between", label: "Between", icon: Heart },
+] as const;
+
+const moreLinks = [
+  { href: "/expenses", label: "Expenses", icon: Receipt, tint: "#5856d6" },
+  { href: "/accounts", label: "Accounts", icon: CreditCard, tint: "#007aff" },
+  { href: "/debts", label: "Debts", icon: Landmark, tint: "#ff3b30" },
+  { href: "/history", label: "History", icon: History, tint: "#ff9500" },
+  { href: "/sync", label: "Cloud Sync", icon: Cloud, tint: "#34c759" },
+] as const;
+
+function isPrimaryActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isMoreActive(pathname: string) {
+  return moreLinks.some(
+    (link) => pathname === link.href || pathname.startsWith(`${link.href}/`)
+  );
+}
+
+export function MobileBottomNav() {
+  const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
+  const [syncConfigured, setSyncConfigured] = useState<boolean | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void isSupabaseConfiguredAsync().then(setSyncConfigured);
+    const unsubscribe = onSyncStatusChange((next, nextError) => {
+      setSyncStatus(next);
+      setSyncError(nextError ?? getLastSyncError());
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = moreOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [moreOpen]);
+
+  const moreActive = isMoreActive(pathname);
+
+  return (
+    <>
+      {moreOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="md:hidden fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] animate-fade-in-up"
+          onClick={() => setMoreOpen(false)}
+        />
+      )}
+
+      {moreOpen && (
+        <div className="md:hidden fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-50 animate-scale-in">
+          <div className="glass-strong rounded-[28px] p-4 shadow-2xl border border-white/20">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <div>
+                <p className="font-semibold">More</p>
+                <p className="text-xs text-muted">Accounts, history & sync</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="w-9 h-9 rounded-full glass flex items-center justify-center text-muted"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <Link
+              href="/sync"
+              className="mb-4 flex items-center gap-3 rounded-2xl px-3 py-3 glass border border-white/10"
+            >
+              <span
+                className={cn(
+                  "w-10 h-10 rounded-2xl flex items-center justify-center",
+                  syncStatus === "error"
+                    ? "bg-[#ff3b30]/15 text-[#ff3b30]"
+                    : syncStatus === "syncing"
+                      ? "bg-[#007aff]/15 text-[#007aff]"
+                      : syncConfigured
+                        ? "bg-[#34c759]/15 text-[#34c759]"
+                        : "bg-[#ff9500]/15 text-[#ff9500]"
+                )}
+              >
+                {syncStatus === "syncing" ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Cloud className="w-5 h-5" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">
+                  {syncConfigured === false
+                    ? "Set up cloud sync"
+                    : syncStatus === "syncing"
+                      ? "Syncing now…"
+                      : syncStatus === "error"
+                        ? "Sync needs attention"
+                        : "Auto-sync is on"}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {syncConfigured === false
+                    ? "Add Supabase keys on Vercel"
+                    : syncError ?? "Changes sync across both phones automatically"}
+                </p>
+              </div>
+            </Link>
+
+            <div className="grid grid-cols-2 gap-2">
+              {moreLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isPrimaryActive(pathname, link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-2xl px-3 py-3 transition-all",
+                      active
+                        ? "bg-[#007aff]/12 ring-1 ring-[#007aff]/25"
+                        : "glass hover:bg-black/5 dark:hover:bg-white/5"
+                    )}
+                  >
+                    <span
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${link.tint}18`, color: link.tint }}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </span>
+                    <span className="text-sm font-medium">{link.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <nav className="md:hidden fixed inset-x-0 bottom-0 z-50 pointer-events-none">
+        <div className="mx-auto max-w-lg px-4 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pointer-events-auto">
+          <div className="bottom-nav-shell grid grid-cols-5 items-end gap-1 px-1 pt-2 pb-1">
+            {primaryTabs.map((tab) => {
+              const Icon = tab.icon;
+              const active = isPrimaryActive(pathname, tab.href);
+
+              if ("primary" in tab && tab.primary) {
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    aria-label={tab.label}
+                    className="flex flex-col items-center justify-end -mt-7"
+                  >
+                    <span
+                      className={cn(
+                        "bottom-nav-fab flex h-14 w-14 items-center justify-center rounded-[22px] text-white shadow-lg transition-transform active:scale-95",
+                        active && "ring-4 ring-[#007aff]/25"
+                      )}
+                    >
+                      <Icon className="h-6 w-6" strokeWidth={2.2} />
+                    </span>
+                    <span
+                      className={cn(
+                        "mt-1 text-[10px] font-semibold",
+                        active ? "text-[#007aff]" : "text-muted"
+                      )}
+                    >
+                      {tab.label}
+                    </span>
+                  </Link>
+                );
+              }
+
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className="flex flex-col items-center gap-1 py-1.5"
+                >
+                  <span
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-2xl transition-all",
+                      active
+                        ? "bg-[#007aff]/15 text-[#007aff] scale-105"
+                        : "text-muted"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 2} />
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium",
+                      active ? "text-[#007aff] font-semibold" : "text-muted"
+                    )}
+                  >
+                    {tab.label}
+                  </span>
+                </Link>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setMoreOpen((open) => !open)}
+              className="flex flex-col items-center gap-1 py-1.5"
+              aria-expanded={moreOpen}
+              aria-label="More navigation"
+            >
+              <span
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-2xl transition-all",
+                  moreActive || moreOpen
+                    ? "bg-[#007aff]/15 text-[#007aff] scale-105"
+                    : "text-muted"
+                )}
+              >
+                <LayoutGrid className="h-5 w-5" strokeWidth={moreActive || moreOpen ? 2.4 : 2} />
+              </span>
+              <span
+                className={cn(
+                  "text-[10px] font-medium",
+                  moreActive || moreOpen ? "text-[#007aff] font-semibold" : "text-muted"
+                )}
+              >
+                More
+              </span>
+            </button>
+          </div>
+        </div>
+      </nav>
+    </>
+  );
+}
