@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Area,
@@ -22,6 +22,7 @@ import {
   Bell,
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
+import { PersonTabs, type PersonFilter } from "@/components/ui/person-tabs";
 import { GrikLogo } from "@/components/layout/grik-logo";
 import { useFinanceStore } from "@/store/finance-store";
 import {
@@ -30,11 +31,13 @@ import {
   getCreditUtilization,
   getMonthExpenses,
   getMonthlyIncome,
+  getMonthlyExpensesTotal,
   getNetWorth,
   getTotalDebt,
   getTransactionsForMonth,
   groupExpensesByCategory,
   sumMonthlyExpenses,
+  transactionInvolvesPerson,
 } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, compareByDateTime } from "@/lib/formatters";
 import {
@@ -65,51 +68,51 @@ export default function DashboardPage() {
     interCoupleBalance,
   } = useFinanceStore();
 
+  const [view, setView] = useState<PersonFilter>("overall");
+  const person = view === "overall" ? null : view;
+
   const now = useMemo(() => new Date(), []);
 
   const stats = useMemo(() => {
     const kushIncome = getMonthlyIncome(incomeEntries, "kushvanth", now);
     const grishIncome = getMonthlyIncome(incomeEntries, "grishma", now);
     const householdIncome = kushIncome + grishIncome;
+    const income = person ? getMonthlyIncome(incomeEntries, person, now) : householdIncome;
 
     const kushPlanned = sumMonthlyExpenses(getMonthExpenses(monthlyExpenses, "kushvanth", now));
     const grishPlanned = sumMonthlyExpenses(getMonthExpenses(monthlyExpenses, "grishma", now));
+    const planned = person
+      ? sumMonthlyExpenses(getMonthExpenses(monthlyExpenses, person, now))
+      : kushPlanned + grishPlanned;
 
-    const monthTx = getTransactionsForMonth(transactions, now);
-    const actualExpenses = monthTx
-      .filter((t) => t.type === "expense")
-      .reduce((s, t) => s + t.amount, 0);
-
-    const remaining = householdIncome - actualExpenses;
-    const savingsRate = householdIncome > 0 ? (remaining / householdIncome) * 100 : 0;
-    const budgetUsed = householdIncome > 0 ? (actualExpenses / householdIncome) * 100 : 0;
+    const actualExpenses = getMonthlyExpensesTotal(transactions, person, now);
+    const remaining = income - actualExpenses;
+    const savingsRate = income > 0 ? (remaining / income) * 100 : 0;
+    const budgetUsed = income > 0 ? (actualExpenses / income) * 100 : 0;
 
     return {
       kushIncome,
       grishIncome,
       householdIncome,
+      income,
       kushPlanned,
       grishPlanned,
+      planned,
       householdPlanned: kushPlanned + grishPlanned,
       actualExpenses,
       remaining,
       savingsRate,
       budgetUsed,
-      netWorth: getNetWorth(accounts, debts, null),
-      totalCash: getAccountBalances(accounts, null, "cash"),
-      totalDebit: getAccountBalances(accounts, null, "debit"),
-      totalDebt: getTotalDebt(debts, null),
+      netWorth: getNetWorth(accounts, debts, person),
+      totalCash: getAccountBalances(accounts, person, "cash"),
+      totalDebit: getAccountBalances(accounts, person, "debit"),
+      totalDebt: getTotalDebt(debts, person),
       kushNet: getNetWorth(accounts, debts, "kushvanth"),
       grishNet: getNetWorth(accounts, debts, "grishma"),
       kushDebt: getTotalDebt(debts, "kushvanth"),
       grishDebt: getTotalDebt(debts, "grishma"),
     };
-  }, [incomeEntries, monthlyExpenses, accounts, debts, transactions, now]);
-
-  const dueSoon = useMemo(
-    () => getUpcomingExpenseReminders(monthlyExpenses, 7, now),
-    [monthlyExpenses, now]
-  );
+  }, [incomeEntries, monthlyExpenses, accounts, debts, transactions, now, person]);
 
   const trendData = useMemo(() => {
     const months: { month: string; income: number; expenses: number }[] = [];
@@ -117,24 +120,41 @@ export default function DashboardPage() {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       months.push({
         month: d.toLocaleDateString("en-US", { month: "short" }),
-        income: getMonthlyIncome(incomeEntries, null, d),
-        expenses: getTransactionsForMonth(transactions, d)
-          .filter((t) => t.type === "expense")
-          .reduce((s, t) => s + t.amount, 0),
+        income: getMonthlyIncome(incomeEntries, person, d),
+        expenses: getMonthlyExpensesTotal(transactions, person, d),
       });
     }
     return months;
-  }, [incomeEntries, transactions, now]);
+  }, [incomeEntries, transactions, now, person]);
 
-  const creditAccounts = accounts.filter((a) => a.type === "credit");
+  const creditAccounts = accounts.filter(
+    (account) => account.type === "credit" && (!person || account.person === person)
+  );
   const expenseByCategory = groupExpensesByCategory(
-    getTransactionsForMonth(transactions, now)
+    getTransactionsForMonth(transactions, now),
+    person
   ).slice(0, 5);
 
   const recentActivity = useMemo(
-    () => [...transactions].sort(compareByDateTime).slice(0, 6),
-    [transactions]
+    () =>
+      [...transactions]
+        .filter((transaction) => !person || transactionInvolvesPerson(transaction, person))
+        .sort(compareByDateTime)
+        .slice(0, 6),
+    [transactions, person]
   );
+
+  const dueSoon = useMemo(
+    () =>
+      getUpcomingExpenseReminders(monthlyExpenses, 7, now).filter(
+        (reminder) => !person || reminder.expense.person === person
+      ),
+    [monthlyExpenses, now, person]
+  );
+
+  const viewLabel =
+    view === "overall" ? "Household" : PERSON_LABELS[view];
+  const heroAccent = view === "overall" ? "#007aff" : PERSON_ACCENT[view];
 
   const greeting =
     now.getHours() < 12
@@ -167,19 +187,26 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      <PersonTabs value={view} onChange={setView} includeOverall />
+
       <div className="relative overflow-hidden rounded-[28px] glass-strong p-6 md:p-8">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#007aff]/15 via-[#5856d6]/10 to-[#34c759]/10 pointer-events-none" />
-        <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-[#007aff]/10 blur-3xl pointer-events-none" />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `linear-gradient(to bottom right, ${heroAccent}22, transparent 60%)`,
+          }}
+        />
+        <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ backgroundColor: `${heroAccent}15` }} />
         <div className="relative">
           <div className="flex items-center gap-2 text-sm text-muted mb-1">
-            <Sparkles className="w-4 h-4 text-[#007aff]" />
-            Household net worth
+            <Sparkles className="w-4 h-4" style={{ color: heroAccent }} />
+            {viewLabel} net worth
           </div>
           <p className="text-4xl md:text-5xl font-bold tracking-tight">
             {formatCurrency(stats.netWorth)}
           </p>
           <div className="flex flex-wrap gap-4 mt-5">
-            <HeroPill icon={TrendingUp} label="Income" value={stats.householdIncome} positive />
+            <HeroPill icon={TrendingUp} label="Income" value={stats.income} positive />
             <HeroPill icon={TrendingDown} label="Spent" value={stats.actualExpenses} />
             <HeroPill
               icon={PiggyBank}
@@ -205,7 +232,7 @@ export default function DashboardPage() {
                   cy="18"
                   r="15.5"
                   fill="none"
-                  stroke="#007aff"
+                  stroke={heroAccent}
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeDasharray={`${Math.min(100, stats.budgetUsed)} 100`}
@@ -219,8 +246,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-medium">Monthly budget used</p>
               <p className="text-xs text-muted">
-                {formatCurrency(stats.actualExpenses)} of{" "}
-                {formatCurrency(stats.householdIncome)} income ·{" "}
+                {formatCurrency(stats.actualExpenses)} of {formatCurrency(stats.income)} income ·{" "}
                 {stats.savingsRate.toFixed(0)}% savings rate
               </p>
             </div>
@@ -228,52 +254,98 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <PersonCard
-          person="kushvanth"
-          income={stats.kushIncome}
-          planned={stats.kushPlanned}
-          netWorth={stats.kushNet}
-          debt={stats.kushDebt}
-        />
-        <PersonCard
-          person="grishma"
-          income={stats.grishIncome}
-          planned={stats.grishPlanned}
-          netWorth={stats.grishNet}
-          debt={stats.grishDebt}
-        />
-        <Link href="/between" className="block group">
-          <GlassCard
-            strong
-            className="h-full bg-gradient-to-br from-[#ff2d55]/10 to-[#ff9500]/5 border-[#ff2d55]/20 group-hover:scale-[1.01] transition-transform"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-[#ff2d55]/20 flex items-center justify-center">
-                <Heart className="w-5 h-5 text-[#ff2d55]" />
+      {view === "overall" ? (
+        <div className="grid md:grid-cols-3 gap-4">
+          <PersonCard
+            person="kushvanth"
+            income={stats.kushIncome}
+            planned={stats.kushPlanned}
+            netWorth={stats.kushNet}
+            debt={stats.kushDebt}
+          />
+          <PersonCard
+            person="grishma"
+            income={stats.grishIncome}
+            planned={stats.grishPlanned}
+            netWorth={stats.grishNet}
+            debt={stats.grishDebt}
+          />
+          <Link href="/between" className="block group">
+            <GlassCard
+              strong
+              className="h-full bg-gradient-to-br from-[#ff2d55]/10 to-[#ff9500]/5 border-[#ff2d55]/20 group-hover:scale-[1.01] transition-transform"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-[#ff2d55]/20 flex items-center justify-center">
+                  <Heart className="w-5 h-5 text-[#ff2d55]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Between Us</p>
+                  <p className="text-[10px] text-muted">Money owed</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold">Between Us</p>
-                <p className="text-[10px] text-muted">Money owed</p>
+              <p className="text-2xl font-bold text-[#007aff]">
+                {formatCurrency(Math.abs(interCoupleBalance))}
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {interCoupleBalance > 0
+                  ? "Grishma owes Kushvanth"
+                  : interCoupleBalance < 0
+                    ? "Kushvanth owes Grishma"
+                    : "All settled up"}
+              </p>
+              <p className="text-xs text-[#007aff] mt-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                View history <ArrowUpRight className="w-3 h-3" />
+              </p>
+            </GlassCard>
+          </Link>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          <PersonCard
+            person={view}
+            income={stats.income}
+            planned={stats.planned}
+            netWorth={stats.netWorth}
+            debt={stats.totalDebt}
+          />
+          <Link href="/between" className="block group">
+            <GlassCard
+              strong
+              className="h-full bg-gradient-to-br from-[#ff2d55]/10 to-[#ff9500]/5 border-[#ff2d55]/20 group-hover:scale-[1.01] transition-transform"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-[#ff2d55]/20 flex items-center justify-center">
+                  <Heart className="w-5 h-5 text-[#ff2d55]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Between Us</p>
+                  <p className="text-[10px] text-muted">Shared balance</p>
+                </div>
               </div>
-            </div>
-            <p className="text-2xl font-bold text-[#007aff]">
-              {formatCurrency(interCoupleBalance)}
-            </p>
-            <p className="text-xs text-muted mt-1">Grishma owes Kushvanth</p>
-            <p className="text-xs text-[#007aff] mt-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              View history <ArrowUpRight className="w-3 h-3" />
-            </p>
-          </GlassCard>
-        </Link>
-      </div>
+              <p className="text-2xl font-bold text-[#007aff]">
+                {formatCurrency(Math.abs(interCoupleBalance))}
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {interCoupleBalance > 0
+                  ? "Grishma owes Kushvanth"
+                  : interCoupleBalance < 0
+                    ? "Kushvanth owes Grishma"
+                    : "All settled up"}
+              </p>
+            </GlassCard>
+          </Link>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-4">
         <GlassCard className="lg:col-span-2 p-0 overflow-hidden">
           <div className="p-5 pb-2 flex items-center justify-between">
             <div>
               <h3 className="font-semibold">Cash flow</h3>
-              <p className="text-xs text-muted">Last 6 months</p>
+              <p className="text-xs text-muted">
+                Last 6 months · {viewLabel}
+              </p>
             </div>
             <div className="flex gap-3 text-[10px] font-medium">
               <span className="flex items-center gap-1">
@@ -391,7 +463,14 @@ export default function DashboardPage() {
       )}
 
       <div>
-        <h3 className="font-semibold mb-3 px-1">Credit cards</h3>
+        <h3 className="font-semibold mb-3 px-1">
+          Credit cards{view !== "overall" ? ` · ${viewLabel}` : ""}
+        </h3>
+        {creditAccounts.length === 0 ? (
+          <GlassCard className="text-sm text-muted text-center py-6">
+            No credit cards for this view
+          </GlassCard>
+        ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {creditAccounts.map((account) => {
             const util = getCreditUtilization(account);
@@ -432,12 +511,13 @@ export default function DashboardPage() {
             );
           })}
         </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
         <GlassCard>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Recent activity</h3>
+            <h3 className="font-semibold">Recent activity · {viewLabel}</h3>
             <Link href="/history" className="text-xs text-[#007aff] font-medium">
               See all
             </Link>
@@ -483,7 +563,7 @@ export default function DashboardPage() {
         </GlassCard>
 
         <GlassCard>
-          <h3 className="font-semibold mb-4">Top spending this month</h3>
+          <h3 className="font-semibold mb-4">Top spending this month · {viewLabel}</h3>
           {expenseByCategory.length === 0 ? (
             <p className="text-sm text-muted py-4 text-center">No expenses recorded yet</p>
           ) : (

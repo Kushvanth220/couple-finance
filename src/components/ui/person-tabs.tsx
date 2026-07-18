@@ -3,29 +3,60 @@
 import { cn } from "@/lib/utils";
 import { PERSON_LABELS, type Person } from "@/types";
 
-interface PersonTabsProps {
+export type PersonFilter = Person | "overall";
+
+type PersonTabsBaseProps = {
+  className?: string;
+};
+
+type PersonTabsWithoutOverall = PersonTabsBaseProps & {
+  includeOverall?: false;
   value: Person;
   onChange: (person: Person) => void;
-  className?: string;
-}
+};
 
-export function PersonTabs({ value, onChange, className }: PersonTabsProps) {
-  const persons: Person[] = ["kushvanth", "grishma"];
+type PersonTabsWithOverall = PersonTabsBaseProps & {
+  includeOverall: true;
+  value: PersonFilter;
+  onChange: (person: PersonFilter) => void;
+};
+
+type PersonTabsProps = PersonTabsWithoutOverall | PersonTabsWithOverall;
+
+export function PersonTabs(props: PersonTabsProps) {
+  const { value, onChange, className } = props;
+  const includeOverall = props.includeOverall === true;
+  const tabs: { id: PersonFilter; label: string }[] = includeOverall
+    ? [
+        { id: "overall", label: "Overall" },
+        { id: "kushvanth", label: PERSON_LABELS.kushvanth },
+        { id: "grishma", label: PERSON_LABELS.grishma },
+      ]
+    : [
+        { id: "kushvanth", label: PERSON_LABELS.kushvanth },
+        { id: "grishma", label: PERSON_LABELS.grishma },
+      ];
 
   return (
     <div className={cn("glass rounded-2xl p-1 flex gap-1", className)}>
-      {persons.map((person) => (
+      {tabs.map(({ id, label }) => (
         <button
-          key={person}
-          onClick={() => onChange(person)}
+          key={id}
+          onClick={() => {
+            if (includeOverall) {
+              (onChange as (person: PersonFilter) => void)(id);
+            } else {
+              (onChange as (person: Person) => void)(id as Person);
+            }
+          }}
           className={cn(
-            "flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all duration-300",
-            value === person
+            "flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all duration-300",
+            value === id
               ? "bg-[#007aff] text-white shadow-md"
               : "text-muted hover:text-foreground"
           )}
         >
-          {PERSON_LABELS[person]}
+          {label}
         </button>
       ))}
     </div>

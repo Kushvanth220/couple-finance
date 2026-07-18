@@ -50,6 +50,7 @@ export function buildExpenseAutoMessage(opts: {
   category: string;
   paymentMethod: string;
   expenseOwner?: Person;
+  expenseShares?: Partial<Record<Person, number>>;
   plannedAmount?: number;
   categoryRemaining?: number;
   isSplitShare?: boolean;
@@ -60,6 +61,7 @@ export function buildExpenseAutoMessage(opts: {
     category,
     paymentMethod,
     expenseOwner,
+    expenseShares,
     plannedAmount,
     categoryRemaining,
     isSplitShare,
@@ -67,7 +69,14 @@ export function buildExpenseAutoMessage(opts: {
 
   let msg = `${PERSON_LABELS[paidBy]} paid ${formatCurrency(amount)} for ${category} via ${paymentMethod}`;
 
-  if (expenseOwner && expenseOwner !== paidBy) {
+  if (expenseShares) {
+    const shareParts = (["kushvanth", "grishma"] as Person[])
+      .filter((person) => (expenseShares[person] ?? 0) > 0)
+      .map((person) => `${PERSON_LABELS[person]} ${formatCurrency(expenseShares[person]!)}`);
+    if (shareParts.length > 0) {
+      msg += ` (shared: ${shareParts.join(", ")})`;
+    }
+  } else if (expenseOwner && expenseOwner !== paidBy) {
     msg += ` (${PERSON_LABELS[expenseOwner]}'s expense)`;
   }
 

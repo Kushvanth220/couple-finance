@@ -136,14 +136,58 @@ export function groupIncomeBySource(
   return Array.from(grouped.entries()).map(([name, amount]) => ({ name, amount }));
 }
 
+export function getTransactionExpenseShare(
+  transaction: Transaction,
+  person: Person
+): number {
+  if (transaction.type !== "expense") return 0;
+  const share = transaction.expenseShares?.[person];
+  if (share != null) return share;
+  const owner = transaction.expenseOwner ?? transaction.beneficiaryPerson ?? transaction.person;
+  return owner === person ? transaction.amount : 0;
+}
+
+export function transactionInvolvesPerson(
+  transaction: Transaction,
+  person: Person
+): boolean {
+  if (transaction.person === person || transaction.paidByPerson === person) return true;
+  if (transaction.expenseOwner === person || transaction.beneficiaryPerson === person) {
+    return true;
+  }
+  return (transaction.expenseShares?.[person] ?? 0) > 0;
+}
+
+export function getMonthlyExpensesTotal(
+  transactions: Transaction[],
+  person: Person | null,
+  date: Date = new Date()
+): number {
+  const monthTx = getTransactionsForMonth(transactions, date).filter(
+    (transaction) => transaction.type === "expense"
+  );
+  if (!person) {
+    return monthTx.reduce((sum, transaction) => sum + transaction.amount, 0);
+  }
+  return monthTx.reduce(
+    (sum, transaction) => sum + getTransactionExpenseShare(transaction, person),
+    0
+  );
+}
+
 export function groupExpensesByCategory(
-  transactions: Transaction[]
+  transactions: Transaction[],
+  person: Person | null = null
 ): { name: string; amount: number }[] {
   const grouped = new Map<string, number>();
   for (const transaction of transactions) {
     if (transaction.type !== "expense") continue;
     const category = transaction.category ?? "Other";
-    grouped.set(category, (grouped.get(category) ?? 0) + transaction.amount);
+    const amount = person
+      ? getTransactionExpenseShare(transaction, person)
+      : transaction.amount;
+    if (amount <= 0) continue;
+    grouped.set(category, (grouped.get(category) ?? 0) + amount);
   }
   return Array.from(grouped.entries()).map(([name, amount]) => ({ name, amount }));
 }

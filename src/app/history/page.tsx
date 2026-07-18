@@ -38,7 +38,7 @@ const typeColors: Record<TransactionType, string> = {
 
 export default function HistoryPage() {
   const { transactions, deleteTransaction, resetToSeed } = useFinanceStore();
-  const [person, setPerson] = useState<Person | "all">("all");
+  const [person, setPerson] = useState<Person | "overall">("overall");
   const [typeFilter, setTypeFilter] = useState<TransactionType | "all">("all");
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -48,7 +48,15 @@ export default function HistoryPage() {
   };
 
   const filtered = transactions
-    .filter((t) => person === "all" || t.person === person || t.paidByPerson === person)
+    .filter(
+      (t) =>
+        person === "overall" ||
+        t.person === person ||
+        t.paidByPerson === person ||
+        t.expenseOwner === person ||
+        t.beneficiaryPerson === person ||
+        (t.expenseShares?.[person] ?? 0) > 0
+    )
     .filter((t) => typeFilter === "all" || t.type === typeFilter)
     .sort(compareByDateTime);
 
@@ -71,8 +79,9 @@ export default function HistoryPage() {
 
       <div className="flex flex-col sm:flex-row gap-3">
         <PersonTabs
-          value={person === "all" ? "kushvanth" : person}
-          onChange={(p) => setPerson(p)}
+          value={person}
+          onChange={setPerson}
+          includeOverall
           className="flex-1"
         />
         <div className="glass rounded-2xl px-4 py-2 flex items-center gap-2">

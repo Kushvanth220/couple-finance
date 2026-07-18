@@ -16,6 +16,11 @@ import {
   getPaymentMethodLabel,
 } from "@/lib/transaction-messages";
 import { getMonthlyExpensePaid } from "@/lib/monthly-expense-tracker";
+import {
+  applyTransactionDeletion,
+  getInterCoupleUpdatesFromShares,
+  type ExpenseShares,
+} from "@/lib/transaction-reversal";
 import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data";
 import { parseAppDateTime } from "@/lib/formatters";
 import { seedData } from "@/lib/seed-data";
@@ -45,11 +50,13 @@ interface SpendOptions {
   monthlyExpenseId?: string;
   expenseOwner?: Person;
   plannedAmount?: number;
+  expenseShares?: ExpenseShares;
 }
 
 interface SpendSplitOptions {
   category: string;
-  expenseOwner: Person;
+  expenseOwner?: Person;
+  expenseShares?: ExpenseShares;
   notes?: string;
   payments: SplitPayment[];
   monthlyExpenseId?: string;
@@ -155,7 +162,8 @@ function updateInterCoupleFromSpend(
   beneficiary: Person | undefined,
   amount: number,
   currentBalance: number,
-  notes?: string
+  notes?: string,
+  sourceTransactionId?: string
 ): { balance: number; entry?: InterCoupleEntry } {
   if (!beneficiary || paidBy === beneficiary) {
     return { balance: currentBalance };
@@ -187,6 +195,7 @@ function updateInterCoupleFromSpend(
       notes,
       autoMessage,
       runningBalance: newBalance,
+      sourceTransactionId,
     },
   };
 }
@@ -402,6 +411,7 @@ export const useFinanceStore = create<FinanceStore>()(
               paymentMethod: account.name,
               autoMessage,
               notes: notes ?? "Manual balance update",
+              previousBalance: account.balance,
             }
           );
 
@@ -567,7 +577,8 @@ export const useFinanceStore = create<FinanceStore>()(
               debt.person,
               amount,
               state.interCoupleBalance,
-              autoMessage
+              autoMessage,
+              transaction.id
             );
             interCoupleBalance = interUpdate.balance;
             if (interUpdate.entry) {
@@ -598,6 +609,7 @@ export const useFinanceStore = create<FinanceStore>()(
             monthlyExpenseId,
             expenseOwner,
             plannedAmount,
+            expenseShares,
           } = options;
 
           const applied = applyPaymentFromAccount(
@@ -636,7 +648,8 @@ export const useFinanceStore = create<FinanceStore>()(
             amount,
             category: category ?? "expense",
             paymentMethod,
-            expenseOwner: owner,
+            expenseOwner: expenseShares ? undefined : owner,
+            expenseShares,
             plannedAmount,
             categoryRemaining,
           });
@@ -672,6 +685,7 @@ export const useFinanceStore = create<FinanceStore>()(
               beneficiaryPerson,
               paidByPerson: person,
               expenseOwner: owner,
+              expenseShares,
               monthlyExpenseId,
               plannedAmount,
               categoryPaidBefore,
@@ -679,27 +693,57 @@ export const useFinanceStore = create<FinanceStore>()(
             })
           );
 
+          const expenseTransaction = newTransactions[newTransactions.length - 1];
+
           let interCoupleBalance = state.interCoupleBalance;
           let interCoupleHistory = state.interCoupleHistory;
 
-          const benefitPerson = beneficiaryPerson ?? (expenseOwner && expenseOwner !== person ? expenseOwner : undefined);
-
-          if (!skipInterCouple && benefitPerson && benefitPerson !== person) {
-            const interMsg = buildInterCoupleAutoMessage({
-              paidBy: person,
-              benefited: benefitPerson,
-              amount,
-            });
-            const interUpdate = updateInterCoupleFromSpend(
+          if (expenseShares) {
+            for (const { benefited, amount: shareAmount } of getInterCoupleUpdatesFromShares(
               person,
-              benefitPerson,
-              amount,
-              state.interCoupleBalance,
-              interMsg
-            );
-            interCoupleBalance = interUpdate.balance;
-            if (interUpdate.entry) {
-              interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
+              expenseShares
+            )) {
+              const interMsg = buildInterCoupleAutoMessage({
+                paidBy: person,
+                benefited,
+                amount: shareAmount,
+              });
+              const interUpdate = updateInterCoupleFromSpend(
+                person,
+                benefited,
+                shareAmount,
+                interCoupleBalance,
+                `${interMsg} (${category ?? "expense"} shared)`,
+                expenseTransaction.id
+              );
+              interCoupleBalance = interUpdate.balance;
+              if (interUpdate.entry) {
+                interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
+              }
+            }
+          } else {
+            const benefitPerson =
+              beneficiaryPerson ??
+              (expenseOwner && expenseOwner !== person ? expenseOwner : undefined);
+
+            if (!skipInterCouple && benefitPerson && benefitPerson !== person) {
+              const interMsg = buildInterCoupleAutoMessage({
+                paidBy: person,
+                benefited: benefitPerson,
+                amount,
+              });
+              const interUpdate = updateInterCoupleFromSpend(
+                person,
+                benefitPerson,
+                amount,
+                interCoupleBalance,
+                interMsg,
+                expenseTransaction.id
+              );
+              interCoupleBalance = interUpdate.balance;
+              if (interUpdate.entry) {
+                interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
+              }
             }
           }
 
@@ -714,8 +758,15 @@ export const useFinanceStore = create<FinanceStore>()(
 
       spendSplit: (options) =>
         set((state) => {
-          const { category, expenseOwner, notes, payments, monthlyExpenseId, plannedAmount } =
-            options;
+          const {
+            category,
+            expenseOwner,
+            expenseShares,
+            notes,
+            payments,
+            monthlyExpenseId,
+            plannedAmount,
+          } = options;
           if (payments.length === 0) return state;
 
           let accounts = state.accounts;
@@ -730,7 +781,7 @@ export const useFinanceStore = create<FinanceStore>()(
                   const exp = state.monthlyExpenses.find((e) => e.id === monthlyExpenseId);
                   return exp ? getMonthlyExpensePaid(state.transactions, exp) : 0;
                 })()
-              : plannedAmount != null
+              : plannedAmount != null && expenseOwner
                 ? getCategorySpentThisMonth(state.transactions, category, expenseOwner)
                 : undefined;
           let runningPaid = categoryPaidBefore ?? 0;
@@ -785,7 +836,8 @@ export const useFinanceStore = create<FinanceStore>()(
               amount: payment.amount,
               category,
               paymentMethod,
-              expenseOwner,
+              expenseOwner: expenseShares ? undefined : expenseOwner,
+              expenseShares,
               plannedAmount,
               categoryRemaining,
               isSplitShare: true,
@@ -801,6 +853,7 @@ export const useFinanceStore = create<FinanceStore>()(
                 notes,
                 paidByPerson: payment.person,
                 expenseOwner,
+                expenseShares,
                 monthlyExpenseId,
                 plannedAmount,
                 categoryPaidBefore: categoryPaidBefore,
@@ -808,7 +861,9 @@ export const useFinanceStore = create<FinanceStore>()(
               })
             );
 
-            if (payment.person !== expenseOwner) {
+            const shareTransaction = newTransactions[newTransactions.length - 1];
+
+            if (expenseOwner && !expenseShares && payment.person !== expenseOwner) {
               const interMsg = buildInterCoupleAutoMessage({
                 paidBy: payment.person,
                 benefited: expenseOwner,
@@ -819,7 +874,8 @@ export const useFinanceStore = create<FinanceStore>()(
                 expenseOwner,
                 payment.amount,
                 interCoupleBalance,
-                `${interMsg} (${category} split)`
+                `${interMsg} (${category} split)`,
+                shareTransaction.id
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
@@ -841,22 +897,23 @@ export const useFinanceStore = create<FinanceStore>()(
         set((state) => {
           const autoMessage =
             notes ?? buildInterCoupleAutoMessage({ paidBy, benefited, amount });
-          const interUpdate = updateInterCoupleFromSpend(
-            paidBy,
-            benefited,
-            amount,
-            state.interCoupleBalance,
-            autoMessage
-          );
-          if (!interUpdate.entry) return state;
-
-          const entry = { ...interUpdate.entry, notes, autoMessage };
           const transaction = createTransaction("inter_couple", paidBy, amount, {
             beneficiaryPerson: benefited,
             paidByPerson: paidBy,
             autoMessage,
             notes,
           });
+          const interUpdate = updateInterCoupleFromSpend(
+            paidBy,
+            benefited,
+            amount,
+            state.interCoupleBalance,
+            autoMessage,
+            transaction.id
+          );
+          if (!interUpdate.entry) return state;
+
+          const entry = { ...interUpdate.entry, notes, autoMessage, sourceTransactionId: transaction.id };
 
           return {
             interCoupleBalance: interUpdate.balance,
@@ -868,9 +925,20 @@ export const useFinanceStore = create<FinanceStore>()(
       updateInterCoupleBalance: (amount) => set({ interCoupleBalance: amount }),
 
       deleteTransaction: (id) =>
-        set((state) => ({
-          transactions: state.transactions.filter((t) => t.id !== id),
-        })),
+        set((state) => {
+          const result = applyTransactionDeletion({
+            accounts: state.accounts,
+            debts: state.debts,
+            transactions: state.transactions,
+            incomeEntries: state.incomeEntries,
+            interCoupleHistory: state.interCoupleHistory,
+            interCoupleBalance: state.interCoupleBalance,
+            monthlyExpenses: state.monthlyExpenses,
+            transactionId: id,
+          });
+          if (!result) return state;
+          return result;
+        }),
 
       resetToSeed: () => {
         clearPersistedAppData();

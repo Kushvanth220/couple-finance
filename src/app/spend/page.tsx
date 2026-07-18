@@ -23,7 +23,9 @@ type PaidByMode = "kushvanth" | "grishma" | "split";
 type CategorySelection =
   | { type: "expense"; item: MonthlyExpense }
   | { type: "debt"; item: Debt }
-  | { type: "custom"; name: string; owner: Person };
+  | { type: "custom"; name: string; owner: Person | "both" };
+
+type ExpenseOwner = Person | "both";
 
 interface PaymentSelection {
   person: Person;
@@ -41,10 +43,14 @@ function expenseSubLine(expense: MonthlyExpense, transactions: ReturnType<typeof
   return `${formatCurrency(progress.remainingThisMonth)} left`;
 }
 
-function getOwner(selection: CategorySelection | null): Person {
+function getOwner(selection: CategorySelection | null): ExpenseOwner {
   if (!selection) return "kushvanth";
   if (selection.type === "custom") return selection.owner;
   return selection.item.person;
+}
+
+function isSharedExpense(selection: CategorySelection | null): boolean {
+  return selection?.type === "custom" && selection.owner === "both";
 }
 
 function getLabel(selection: CategorySelection | null): string {
@@ -73,7 +79,7 @@ export default function SpendPage() {
   const [amount, setAmount] = useState("");
   const [selection, setSelection] = useState<CategorySelection | null>(null);
   const [customName, setCustomName] = useState("");
-  const [customOwner, setCustomOwner] = useState<Person>("kushvanth");
+  const [customOwner, setCustomOwner] = useState<ExpenseOwner>("kushvanth");
   const [paidByMode, setPaidByMode] = useState<PaidByMode>("kushvanth");
   const [kushShare, setKushShare] = useState("");
   const [grishShare, setGrishShare] = useState("");
@@ -85,6 +91,7 @@ export default function SpendPage() {
 
   const parsedAmount = parseFloat(amount) || 0;
   const expenseOwner = getOwner(selection);
+  const sharedExpense = isSharedExpense(selection);
   const categoryLabel = getLabel(selection);
   const payingDebt = isDebt(selection);
 
@@ -157,10 +164,11 @@ export default function SpendPage() {
   const handleAmountChange = (val: string) => {
     setAmount(val);
     const num = parseFloat(val) || 0;
-    if (paidByMode !== "split") {
+    if (sharedExpense) {
+      applySplitAmounts(num, "split", true);
+    } else if (paidByMode !== "split") {
       applySplitAmounts(num, paidByMode);
     }
-    // In split mode, keep custom shares — user adjusts manually
   };
 
   const handlePaidByChange = (mode: PaidByMode) => {
@@ -198,7 +206,7 @@ export default function SpendPage() {
   const grishAmount = parseFloat(grishShare) || 0;
 
   const sharesValid =
-    paidByMode === "split"
+    paidByMode === "split" || sharedExpense
       ? kushAmount + grishAmount > 0 &&
         Math.abs(kushAmount + grishAmount - parsedAmount) < 0.01
       : true;
@@ -240,11 +248,14 @@ export default function SpendPage() {
       return {
         monthlyExpenseId: selection.item.id,
         plannedAmount: selection.item.amount,
-        expenseOwner: selection.item.person,
+        expenseOwner: selection.item.person as Person,
       };
     }
-    return { expenseOwner };
-  }, [selection, expenseOwner]);
+    if (sharedExpense) {
+      return { expenseOwner: undefined as Person | undefined };
+    }
+    return { expenseOwner: expenseOwner === "both" ? undefined : expenseOwner };
+  }, [selection, expenseOwner, sharedExpense]);
 
   const handleDetailsNext = () => {
     if (!isCategoryValid || parsedAmount <= 0 || !sharesValid) return;
@@ -345,7 +356,8 @@ export default function SpendPage() {
     } else {
       spendSplit({
         category: label,
-        expenseOwner,
+        expenseOwner: sharedExpense ? undefined : (expenseOwner as Person),
+        expenseShares: getExpenseShares(),
         notes: notes || undefined,
         payments,
         monthlyExpenseId: spendMeta.monthlyExpenseId,
@@ -354,6 +366,19 @@ export default function SpendPage() {
     }
     setStep("done");
   };
+
+  const getExpenseShares = () => {
+    if (!sharedExpense) return undefined;
+    return {
+      kushvanth: kushAmount,
+      grishma: grishAmount,
+    };
+  };
+
+  const expenseOwnerLabel =
+    expenseOwner === "both"
+      ? "Both"
+      : PERSON_LABELS[expenseOwner as Person];
 
   const confirmTransaction = (
     payer: Person,
@@ -383,7 +408,13 @@ export default function SpendPage() {
         cashSourceAccountId,
         category: label,
         notes: notes || undefined,
-        beneficiaryPerson: payer !== expenseOwner ? expenseOwner : undefined,
+        beneficiaryPerson:
+          sharedExpense || getExpenseShares()
+            ? undefined
+            : payer !== expenseOwner && expenseOwner !== "both"
+              ? (expenseOwner as Person)
+              : undefined,
+        expenseShares: getExpenseShares(),
         monthlyExpenseId: spendMeta.monthlyExpenseId,
         plannedAmount: spendMeta.plannedAmount ?? undefined,
         expenseOwner: spendMeta.expenseOwner,
@@ -622,24 +653,81 @@ export default function SpendPage() {
                 <div className="mt-2">
                   <label className="text-sm font-medium text-muted px-1 mb-2 block">Whose expense?</label>
                   <div className="glass rounded-2xl p-1 flex gap-1">
-                    {(["kushvanth", "grishma"] as Person[]).map((p) => (
+                    {(["kushvanth", "grishma", "both"] as ExpenseOwner[]).map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => {
                           setCustomOwner(p);
                           setSelection({ type: "custom", name: customName, owner: p });
+                          if (p === "both" && parsedAmount > 0) {
+                            applySplitAmounts(parsedAmount, "split", true);
+                          }
                         }}
                         className={cn(
                           "flex-1 py-2 rounded-xl text-sm font-medium transition-all",
                           customOwner === p ? "bg-[#007aff] text-white" : "text-muted"
                         )}
                       >
-                        {PERSON_LABELS[p]}
+                        {p === "both" ? "Both" : PERSON_LABELS[p]}
                       </button>
                     ))}
                   </div>
                 </div>
+                {sharedExpense && (
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-muted px-1">
+                      Split the expense between you — Between Us updates automatically.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <GlassInput
+                        label={`${PERSON_LABELS.kushvanth}'s share`}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={kushShare}
+                        onChange={(e) => handleKushShareChange(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <GlassInput
+                        label={`${PERSON_LABELS.grishma}'s share`}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={grishShare}
+                        onChange={(e) => handleGrishShareChange(e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    {parsedAmount > 0 && (
+                      <>
+                        <div className="flex items-center justify-between px-1 text-xs">
+                          <span className="text-muted">
+                            Total: {formatCurrency(kushAmount + grishAmount)} /{" "}
+                            {formatCurrency(parsedAmount)}
+                          </span>
+                          {!sharesValid && (
+                            <span className="text-[#ff3b30] font-medium">
+                              {splitRemaining > 0
+                                ? `${formatCurrency(splitRemaining)} remaining`
+                                : `${formatCurrency(Math.abs(splitRemaining))} over`}
+                            </span>
+                          )}
+                          {sharesValid && kushAmount + grishAmount > 0 && (
+                            <span className="text-[#34c759] font-medium">✓ Balanced</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={applyEvenSplit}
+                          className="text-xs text-[#007aff] font-medium px-1 hover:underline"
+                        >
+                          Reset to 50 / 50 ({formatCurrency(parsedAmount / 2)} each)
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -748,8 +836,8 @@ export default function SpendPage() {
             <p className="text-3xl font-bold">{formatCurrency(parsedAmount)}</p>
             <p className="text-xs text-muted mt-1">
               {paidByMode === "split"
-                ? `Split · ${PERSON_LABELS[expenseOwner]}'s ${payingDebt ? "debt" : "expense"}`
-                : `${PERSON_LABELS[paidByMode]} paying · ${PERSON_LABELS[expenseOwner]}'s ${payingDebt ? "debt" : "expense"}`}
+                ? `Split · ${expenseOwnerLabel}'s ${payingDebt ? "debt" : "expense"}`
+                : `${PERSON_LABELS[paidByMode]} paying · ${expenseOwnerLabel}'s ${payingDebt ? "debt" : "expense"}`}
             </p>
           </GlassCard>
 

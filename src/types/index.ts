@@ -86,10 +86,14 @@ export interface Transaction {
   paymentMethod?: string;
   monthlyExpenseId?: string;
   expenseOwner?: Person;
+  /** Per-person share when expense is split (e.g. both ate, $10 each). */
+  expenseShares?: Partial<Record<Person, number>>;
   plannedAmount?: number;
   categoryPaidBefore?: number;
   categoryRemaining?: number;
   debtRemaining?: number;
+  /** Account balance before a manual adjustment (for reversal on delete). */
+  previousBalance?: number;
 }
 
 export interface InterCoupleEntry {
@@ -103,6 +107,7 @@ export interface InterCoupleEntry {
   notes?: string;
   autoMessage?: string;
   runningBalance: number;
+  sourceTransactionId?: string;
 }
 
 export interface FinanceState {
