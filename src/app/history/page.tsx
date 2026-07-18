@@ -140,7 +140,7 @@ export default function HistoryPage() {
                   )}
                   {transaction.debtRemaining != null && (
                     <p className="text-xs text-[#ff9500] mt-1">
-                      {formatCurrency(transaction.debtRemaining)} still owed
+                      {formatCurrency(transaction.debtRemaining)} still to pay
                     </p>
                   )}
                   {transaction.notes && transaction.notes !== message && (

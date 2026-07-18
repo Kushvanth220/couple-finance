@@ -981,14 +981,26 @@ export function applyRemoteFinanceState(state: FinanceState) {
 let hydrationPromise: Promise<void> | null = null;
 
 /** Wait until localStorage data has loaded into the store. */
-export function waitForStoreHydration(): Promise<void> {
+export function waitForStoreHydration(timeoutMs = 5000): Promise<void> {
   if (useFinanceStore.persist.hasHydrated()) {
     return Promise.resolve();
   }
 
   if (!hydrationPromise) {
     hydrationPromise = new Promise((resolve) => {
-      useFinanceStore.persist.onFinishHydration(() => resolve());
+      const finish = () => resolve();
+
+      if (useFinanceStore.persist.hasHydrated()) {
+        finish();
+        return;
+      }
+
+      useFinanceStore.persist.onFinishHydration(finish);
+
+      setTimeout(() => {
+        console.warn("[finance-store] Hydration timed out — continuing with defaults.");
+        finish();
+      }, timeoutMs);
     });
   }
 

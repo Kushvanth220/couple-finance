@@ -14,6 +14,8 @@ import { useFinanceStore } from "@/store/finance-store";
 import { getMonthExpenses } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/formatters";
 import { getMonthlyExpensePaid, getMonthlyExpenseProgress } from "@/lib/monthly-expense-tracker";
+import { getInterCoupleUpdatesFromShares } from "@/lib/transaction-reversal";
+import { describeInterCoupleFromSpend } from "@/lib/inter-couple";
 import { PERSON_LABELS, type Account, type Debt, type MonthlyExpense, type Person } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +85,8 @@ export default function SpendPage() {
   const [paidByMode, setPaidByMode] = useState<PaidByMode>("kushvanth");
   const [kushShare, setKushShare] = useState("");
   const [grishShare, setGrishShare] = useState("");
+  const [expenseShareKush, setExpenseShareKush] = useState("");
+  const [expenseShareGrish, setExpenseShareGrish] = useState("");
   const [notes, setNotes] = useState("");
 
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
@@ -115,6 +119,8 @@ export default function SpendPage() {
     setPaidByMode("kushvanth");
     setKushShare("");
     setGrishShare("");
+    setExpenseShareKush("");
+    setExpenseShareGrish("");
     setNotes("");
     setSelectedAccount(null);
     setPendingCashFor(null);
@@ -147,6 +153,12 @@ export default function SpendPage() {
     setSelection({ type: "custom", name: customName, owner: customOwner });
   };
 
+  const applyEvenExpenseSplit = (total: number) => {
+    const half = total / 2;
+    setExpenseShareKush(String(half));
+    setExpenseShareGrish(String(half));
+  };
+
   const applySplitAmounts = (total: number, mode: PaidByMode, resetSplit = false) => {
     if (mode === "kushvanth") {
       setKushShare(String(total));
@@ -165,18 +177,31 @@ export default function SpendPage() {
     setAmount(val);
     const num = parseFloat(val) || 0;
     if (sharedExpense) {
-      applySplitAmounts(num, "split", true);
+      applyEvenExpenseSplit(num);
     } else if (paidByMode !== "split") {
       applySplitAmounts(num, paidByMode);
+    } else if (paidByMode === "split") {
+      applySplitAmounts(num, "split", kushShare === "" && grishShare === "");
     }
   };
 
   const handlePaidByChange = (mode: PaidByMode) => {
     setPaidByMode(mode);
     setSplitPayments({});
-    if (parsedAmount > 0) {
-      applySplitAmounts(parsedAmount, mode, mode === "split");
+    if (parsedAmount <= 0) return;
+    if (mode === "split") {
+      applySplitAmounts(parsedAmount, "split", true);
+    } else if (!sharedExpense) {
+      applySplitAmounts(parsedAmount, mode);
     }
+  };
+
+  const handleExpenseShareKushChange = (val: string) => {
+    setExpenseShareKush(val);
+  };
+
+  const handleExpenseShareGrishChange = (val: string) => {
+    setExpenseShareGrish(val);
   };
 
   const handleKushShareChange = (val: string) => {
@@ -191,10 +216,13 @@ export default function SpendPage() {
 
   const applyEvenSplit = () => {
     if (parsedAmount <= 0) return;
-    const half = parsedAmount / 2;
-    setKushShare(String(half));
-    setGrishShare(String(half));
+    applySplitAmounts(parsedAmount, "split", true);
     setSplitPayments({});
+  };
+
+  const applyEvenExpenseSplitAction = () => {
+    if (parsedAmount <= 0) return;
+    applyEvenExpenseSplit(parsedAmount);
   };
 
   const isCategoryValid =
@@ -204,14 +232,23 @@ export default function SpendPage() {
 
   const kushAmount = parseFloat(kushShare) || 0;
   const grishAmount = parseFloat(grishShare) || 0;
+  const expenseShareKushAmt = parseFloat(expenseShareKush) || 0;
+  const expenseShareGrishAmt = parseFloat(expenseShareGrish) || 0;
 
-  const sharesValid =
-    paidByMode === "split" || sharedExpense
-      ? kushAmount + grishAmount > 0 &&
-        Math.abs(kushAmount + grishAmount - parsedAmount) < 0.01
-      : true;
+  const paymentSharesValid =
+    paidByMode !== "split" ||
+    (kushAmount + grishAmount > 0 &&
+      Math.abs(kushAmount + grishAmount - parsedAmount) < 0.01);
+
+  const expenseSharesValid =
+    !sharedExpense ||
+    (expenseShareKushAmt + expenseShareGrishAmt > 0 &&
+      Math.abs(expenseShareKushAmt + expenseShareGrishAmt - parsedAmount) < 0.01);
+
+  const sharesValid = paymentSharesValid && expenseSharesValid;
 
   const splitRemaining = parsedAmount - kushAmount - grishAmount;
+  const expenseSplitRemaining = parsedAmount - expenseShareKushAmt - expenseShareGrishAmt;
 
   const categoryProgress = useMemo(() => {
     if (selection?.type === "expense" && selection.item.amount != null && !selection.item.isVariable) {
@@ -370,10 +407,44 @@ export default function SpendPage() {
   const getExpenseShares = () => {
     if (!sharedExpense) return undefined;
     return {
-      kushvanth: kushAmount,
-      grishma: grishAmount,
+      kushvanth: expenseShareKushAmt,
+      grishma: expenseShareGrishAmt,
     };
   };
+
+  const betweenUsPreview = useMemo(() => {
+    if (parsedAmount <= 0) return null;
+
+    if (sharedExpense && expenseSharesValid) {
+      const shares = {
+        kushvanth: expenseShareKushAmt,
+        grishma: expenseShareGrishAmt,
+      };
+      if (paidByMode === "split") return null;
+      return getInterCoupleUpdatesFromShares(paidByMode, shares).map(({ benefited, amount }) =>
+        describeInterCoupleFromSpend(paidByMode, benefited, amount)
+      );
+    }
+
+    if (
+      !sharedExpense &&
+      expenseOwner !== "both" &&
+      paidByMode !== "split" &&
+      paidByMode !== expenseOwner
+    ) {
+      return [describeInterCoupleFromSpend(paidByMode, expenseOwner as Person, parsedAmount)];
+    }
+
+    return null;
+  }, [
+    parsedAmount,
+    sharedExpense,
+    expenseSharesValid,
+    expenseShareKushAmt,
+    expenseShareGrishAmt,
+    paidByMode,
+    expenseOwner,
+  ]);
 
   const expenseOwnerLabel =
     expenseOwner === "both"
@@ -409,7 +480,7 @@ export default function SpendPage() {
         category: label,
         notes: notes || undefined,
         beneficiaryPerson:
-          sharedExpense || getExpenseShares()
+          sharedExpense
             ? undefined
             : payer !== expenseOwner && expenseOwner !== "both"
               ? (expenseOwner as Person)
@@ -457,7 +528,7 @@ export default function SpendPage() {
                   {a.name}
                 </span>
                 <span className="text-sm text-muted">
-                  {formatCurrency((a.creditLimit ?? 0) - a.balance)} avail
+                  {formatCurrency((a.creditLimit ?? 0) - a.balance)} left
                 </span>
               </GlassCard>
             ))}
@@ -524,7 +595,7 @@ export default function SpendPage() {
               <p className="text-sm font-semibold">{categoryProgress.label}</p>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-muted">{categoryProgress.isDebt ? "Total owed" : "Monthly budget"}</span>
+                  <span className="text-muted">{categoryProgress.isDebt ? "Total to pay" : "Monthly budget"}</span>
                   <p className="font-semibold">{formatCurrency(categoryProgress.planned)}</p>
                 </div>
                 {!categoryProgress.isDebt && (
@@ -661,7 +732,10 @@ export default function SpendPage() {
                           setCustomOwner(p);
                           setSelection({ type: "custom", name: customName, owner: p });
                           if (p === "both" && parsedAmount > 0) {
-                            applySplitAmounts(parsedAmount, "split", true);
+                            applyEvenExpenseSplit(parsedAmount);
+                          } else if (p !== "both") {
+                            setExpenseShareKush("");
+                            setExpenseShareGrish("");
                           }
                         }}
                         className={cn(
@@ -685,8 +759,8 @@ export default function SpendPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={kushShare}
-                        onChange={(e) => handleKushShareChange(e.target.value)}
+                        value={expenseShareKush}
+                        onChange={(e) => handleExpenseShareKushChange(e.target.value)}
                         placeholder="0.00"
                       />
                       <GlassInput
@@ -694,8 +768,8 @@ export default function SpendPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={grishShare}
-                        onChange={(e) => handleGrishShareChange(e.target.value)}
+                        value={expenseShareGrish}
+                        onChange={(e) => handleExpenseShareGrishChange(e.target.value)}
                         placeholder="0.00"
                       />
                     </div>
@@ -703,23 +777,23 @@ export default function SpendPage() {
                       <>
                         <div className="flex items-center justify-between px-1 text-xs">
                           <span className="text-muted">
-                            Total: {formatCurrency(kushAmount + grishAmount)} /{" "}
+                            Total: {formatCurrency(expenseShareKushAmt + expenseShareGrishAmt)} /{" "}
                             {formatCurrency(parsedAmount)}
                           </span>
-                          {!sharesValid && (
+                          {!expenseSharesValid && (
                             <span className="text-[#ff3b30] font-medium">
-                              {splitRemaining > 0
-                                ? `${formatCurrency(splitRemaining)} remaining`
-                                : `${formatCurrency(Math.abs(splitRemaining))} over`}
+                              {expenseSplitRemaining > 0
+                                ? `${formatCurrency(expenseSplitRemaining)} remaining`
+                                : `${formatCurrency(Math.abs(expenseSplitRemaining))} over`}
                             </span>
                           )}
-                          {sharesValid && kushAmount + grishAmount > 0 && (
+                          {expenseSharesValid && expenseShareKushAmt + expenseShareGrishAmt > 0 && (
                             <span className="text-[#34c759] font-medium">✓ Balanced</span>
                           )}
                         </div>
                         <button
                           type="button"
-                          onClick={applyEvenSplit}
+                          onClick={applyEvenExpenseSplitAction}
                           className="text-xs text-[#007aff] font-medium px-1 hover:underline"
                         >
                           Reset to 50 / 50 ({formatCurrency(parsedAmount / 2)} each)
@@ -731,6 +805,17 @@ export default function SpendPage() {
               </>
             )}
           </div>
+
+          {betweenUsPreview && betweenUsPreview.length > 0 && (
+            <GlassCard className="bg-[#af52de]/5 border border-[#af52de]/20 py-3 px-4">
+              <p className="text-xs font-semibold text-[#af52de] mb-1">Between Us preview</p>
+              {betweenUsPreview.map((line) => (
+                <p key={line} className="text-sm">
+                  {line}
+                </p>
+              ))}
+            </GlassCard>
+          )}
 
           {/* Paid by */}
           <div>
@@ -785,14 +870,14 @@ export default function SpendPage() {
                     <span className="text-muted">
                       Total: {formatCurrency(kushAmount + grishAmount)} / {formatCurrency(parsedAmount)}
                     </span>
-                    {!sharesValid && (
+                    {!paymentSharesValid && (
                       <span className="text-[#ff3b30] font-medium">
                         {splitRemaining > 0
                           ? `${formatCurrency(splitRemaining)} remaining`
                           : `${formatCurrency(Math.abs(splitRemaining))} over`}
                       </span>
                     )}
-                    {sharesValid && kushAmount + grishAmount > 0 && (
+                    {paymentSharesValid && kushAmount + grishAmount > 0 && (
                       <span className="text-[#34c759] font-medium">✓ Balanced</span>
                     )}
                   </div>
@@ -899,7 +984,7 @@ export default function SpendPage() {
           </p>
           {categoryProgress && (
             <p className="text-sm">
-              {categoryProgress.isDebt ? "Remaining owed" : "Remaining this month"}:{" "}
+              {categoryProgress.isDebt ? "Still to pay" : "Remaining this month"}:{" "}
               <span className="font-semibold text-[#34c759]">
                 {formatCurrency(categoryProgress.remaining)}
               </span>

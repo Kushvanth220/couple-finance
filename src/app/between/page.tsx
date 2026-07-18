@@ -8,6 +8,7 @@ import { GlassInput } from "@/components/ui/glass-input";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { useFinanceStore } from "@/store/finance-store";
 import { formatCurrency, formatDateTime, compareByDateTime } from "@/lib/formatters";
+import { getInterCoupleSummary } from "@/lib/inter-couple";
 import { PERSON_LABELS, type Person } from "@/types";
 
 export default function BetweenPage() {
@@ -43,12 +44,14 @@ export default function BetweenPage() {
     setShowEditBalance(false);
   };
 
+  const balanceSummary = getInterCoupleSummary(interCoupleBalance);
+
   return (
     <div className="space-y-6 animate-fade-in-up max-w-2xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Between Us</h2>
-          <p className="text-muted mt-1">Money owed between Kushvanth & Grishma</p>
+          <p className="text-muted mt-1">Who paid for what — and who should pay back</p>
         </div>
         <GlassButton onClick={() => setShowAdd(true)}>
           <Plus className="w-4 h-4" /> Record
@@ -56,9 +59,9 @@ export default function BetweenPage() {
       </div>
 
       <GlassCard strong className="text-center py-8 space-y-2">
-        <p className="text-sm text-muted">Grishma owes Kushvanth</p>
+        <p className="text-sm text-muted">{balanceSummary.label}</p>
         <p className="text-5xl font-bold tracking-tight text-[#007aff]">
-          {formatCurrency(interCoupleBalance)}
+          {formatCurrency(balanceSummary.amount)}
         </p>
         <GlassButton
           size="sm"
@@ -96,13 +99,13 @@ export default function BetweenPage() {
                   </div>
                   <p className="font-medium text-sm leading-snug">
                     {entry.autoMessage ??
-                      `${PERSON_LABELS[entry.paidBy]} paid ${formatCurrency(entry.amount)} for ${PERSON_LABELS[entry.benefited]}`}
+                      `${PERSON_LABELS[entry.paidBy]} paid ${formatCurrency(entry.amount)} for ${PERSON_LABELS[entry.benefited]}'s share`}
                   </p>
                   {entry.notes && entry.notes !== entry.autoMessage && (
                     <p className="text-xs text-muted mt-1">Note: {entry.notes}</p>
                   )}
                   <p className="text-xs text-muted mt-1">
-                    Benefited: {PERSON_LABELS[entry.benefited]}
+                    For: {PERSON_LABELS[entry.benefited]}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -166,7 +169,8 @@ export default function BetweenPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Positive amount means Grishma owes Kushvanth.
+            Positive = {PERSON_LABELS.grishma} should pay {PERSON_LABELS.kushvanth} back.
+            Negative = {PERSON_LABELS.kushvanth} should pay {PERSON_LABELS.grishma} back.
           </p>
           <GlassInput
             label="Balance"

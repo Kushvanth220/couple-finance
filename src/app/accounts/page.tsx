@@ -10,6 +10,7 @@ import { PersonTabs } from "@/components/ui/person-tabs";
 import { useFinanceStore } from "@/store/finance-store";
 import { getAvailableCredit, getCreditUtilization } from "@/lib/calculations";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
+import { CREDIT_LABELS } from "@/lib/inter-couple";
 import { PERSON_LABELS, type Account, type AccountType, type Person } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -143,13 +144,13 @@ export default function AccountsPage() {
                 <div className="flex items-end justify-between">
                   <div>
                     <p className="text-xs text-muted">
-                      {account.type === "credit" ? "Balance Owed" : "Balance"}
+                      {account.type === "credit" ? CREDIT_LABELS.cardBalance : "Balance"}
                     </p>
                     <p className="text-2xl font-bold">{formatCurrency(account.balance)}</p>
                   </div>
                   {account.type === "credit" && account.creditLimit != null && (
                     <div className="text-right">
-                      <p className="text-xs text-muted">Available</p>
+                      <p className="text-xs text-muted">{CREDIT_LABELS.leftToSpend}</p>
                       <p className="font-semibold text-[#34c759]">
                         {formatCurrency(getAvailableCredit(account))}
                       </p>
@@ -162,7 +163,7 @@ export default function AccountsPage() {
                         />
                       </div>
                       <p className="text-[10px] text-muted mt-0.5">
-                        {formatPercent(getCreditUtilization(account))} utilized
+                        {formatPercent(getCreditUtilization(account))} {CREDIT_LABELS.percentUsed}
                       </p>
                     </div>
                   )}
@@ -180,14 +181,14 @@ export default function AccountsPage() {
       >
         <div className="space-y-4">
           <GlassInput
-            label={editAccount?.type === "credit" ? "Amount Owed" : "Balance"}
+            label={editAccount?.type === "credit" ? CREDIT_LABELS.currentBalance : "Balance"}
             type="number"
             value={newBalance}
             onChange={(e) => setNewBalance(e.target.value)}
           />
           {editAccount?.type === "credit" && (
             <GlassInput
-              label="Credit Limit"
+              label={CREDIT_LABELS.limit}
               type="number"
               value={newLimit}
               onChange={(e) => setNewLimit(e.target.value)}
@@ -241,7 +242,7 @@ export default function AccountsPage() {
           </div>
 
           <GlassInput
-            label={newType === "credit" ? "Current Balance Owed" : "Initial Balance"}
+            label={newType === "credit" ? CREDIT_LABELS.initialBalance : "Initial Balance"}
             type="number"
             value={initialBalance}
             onChange={(e) => setInitialBalance(e.target.value)}
@@ -249,7 +250,7 @@ export default function AccountsPage() {
 
           {newType === "credit" && (
             <GlassInput
-              label="Credit Limit"
+              label={CREDIT_LABELS.limit}
               type="number"
               value={initialLimit}
               onChange={(e) => setInitialLimit(e.target.value)}

@@ -45,6 +45,7 @@ import {
   getTransactionActor,
 } from "@/lib/transaction-messages";
 import { getUpcomingExpenseReminders } from "@/lib/monthly-expense-tracker";
+import { getInterCoupleSummary, CREDIT_LABELS } from "@/lib/inter-couple";
 import { PERSON_LABELS, type Person } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -155,6 +156,7 @@ export default function DashboardPage() {
   const viewLabel =
     view === "overall" ? "Household" : PERSON_LABELS[view];
   const heroAccent = view === "overall" ? "#007aff" : PERSON_ACCENT[view];
+  const betweenUs = getInterCoupleSummary(interCoupleBalance);
 
   const greeting =
     now.getHours() < 12
@@ -281,19 +283,13 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold">Between Us</p>
-                  <p className="text-[10px] text-muted">Money owed</p>
+                  <p className="text-[10px] text-muted">Pay each other back</p>
                 </div>
               </div>
               <p className="text-2xl font-bold text-[#007aff]">
-                {formatCurrency(Math.abs(interCoupleBalance))}
+                {formatCurrency(betweenUs.amount)}
               </p>
-              <p className="text-xs text-muted mt-1">
-                {interCoupleBalance > 0
-                  ? "Grishma owes Kushvanth"
-                  : interCoupleBalance < 0
-                    ? "Kushvanth owes Grishma"
-                    : "All settled up"}
-              </p>
+              <p className="text-xs text-muted mt-1">{betweenUs.label}</p>
               <p className="text-xs text-[#007aff] mt-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 View history <ArrowUpRight className="w-3 h-3" />
               </p>
@@ -324,15 +320,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-bold text-[#007aff]">
-                {formatCurrency(Math.abs(interCoupleBalance))}
+                {formatCurrency(betweenUs.amount)}
               </p>
-              <p className="text-xs text-muted mt-1">
-                {interCoupleBalance > 0
-                  ? "Grishma owes Kushvanth"
-                  : interCoupleBalance < 0
-                    ? "Kushvanth owes Grishma"
-                    : "All settled up"}
-              </p>
+              <p className="text-xs text-muted mt-1">{betweenUs.label}</p>
             </GlassCard>
           </Link>
         </div>
@@ -494,7 +484,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-2xl font-bold mt-4">{formatCurrency(account.balance)}</p>
                 <p className="text-[10px] text-muted mt-0.5">
-                  {formatCurrency(avail)} available
+                  {formatCurrency(avail)} {CREDIT_LABELS.leftToSpend.toLowerCase()}
                 </p>
                 <div className="mt-3 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
                   <div
@@ -506,7 +496,7 @@ export default function DashboardPage() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-muted mt-1">{util.toFixed(0)}% utilized</p>
+                <p className="text-[10px] text-muted mt-1">{util.toFixed(0)}% {CREDIT_LABELS.percentUsed}</p>
               </div>
             );
           })}

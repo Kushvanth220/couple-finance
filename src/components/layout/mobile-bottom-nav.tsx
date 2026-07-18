@@ -3,53 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Cloud,
-  CreditCard,
-  Heart,
-  History,
-  Landmark,
-  LayoutGrid,
-  LayoutDashboard,
-  Loader2,
-  Receipt,
-  TrendingUp,
-  Wallet,
-  X,
-} from "lucide-react";
+import { LayoutGrid, Loader2, X } from "lucide-react";
 import { isSupabaseConfiguredAsync } from "@/lib/supabase/client";
 import {
   getLastSyncError,
   onSyncStatusChange,
   type SyncStatus,
 } from "@/lib/supabase/sync";
+import {
+  isMoreNavActive,
+  isNavActive,
+  moreNavItems,
+  primaryNavItems,
+} from "@/components/layout/nav-config";
 import { cn } from "@/lib/utils";
-
-const primaryTabs = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/income", label: "Income", icon: TrendingUp },
-  { href: "/spend", label: "Spend", icon: Wallet, primary: true },
-  { href: "/between", label: "Between", icon: Heart },
-] as const;
-
-const moreLinks = [
-  { href: "/expenses", label: "Expenses", icon: Receipt, tint: "#5856d6" },
-  { href: "/accounts", label: "Accounts", icon: CreditCard, tint: "#007aff" },
-  { href: "/debts", label: "Debts", icon: Landmark, tint: "#ff3b30" },
-  { href: "/history", label: "History", icon: History, tint: "#ff9500" },
-  { href: "/sync", label: "Cloud Sync", icon: Cloud, tint: "#34c759" },
-] as const;
-
-function isPrimaryActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function isMoreActive(pathname: string) {
-  return moreLinks.some(
-    (link) => pathname === link.href || pathname.startsWith(`${link.href}/`)
-  );
-}
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -78,7 +45,8 @@ export function MobileBottomNav() {
     };
   }, [moreOpen]);
 
-  const moreActive = isMoreActive(pathname);
+  const moreActive = isMoreNavActive(pathname);
+  const syncLink = moreNavItems.find((item) => item.href === "/sync");
 
   return (
     <>
@@ -97,7 +65,7 @@ export function MobileBottomNav() {
             <div className="flex items-center justify-between mb-4 px-1">
               <div>
                 <p className="font-semibold">More</p>
-                <p className="text-xs text-muted">Accounts, history & sync</p>
+                <p className="text-xs text-muted">Income, accounts & history</p>
               </div>
               <button
                 type="button"
@@ -109,71 +77,75 @@ export function MobileBottomNav() {
               </button>
             </div>
 
-            <Link
-              href="/sync"
-              className="mb-4 flex items-center gap-3 rounded-2xl px-3 py-3 glass border border-white/10"
-            >
-              <span
-                className={cn(
-                  "w-10 h-10 rounded-2xl flex items-center justify-center",
-                  syncStatus === "error"
-                    ? "bg-[#ff3b30]/15 text-[#ff3b30]"
-                    : syncStatus === "syncing"
-                      ? "bg-[#007aff]/15 text-[#007aff]"
-                      : syncConfigured
-                        ? "bg-[#34c759]/15 text-[#34c759]"
-                        : "bg-[#ff9500]/15 text-[#ff9500]"
-                )}
+            {syncLink && (
+              <Link
+                href={syncLink.href}
+                className="mb-4 flex items-center gap-3 rounded-2xl px-3 py-3 glass border border-white/10"
               >
-                {syncStatus === "syncing" ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Cloud className="w-5 h-5" />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">
-                  {syncConfigured === false
-                    ? "Set up cloud sync"
-                    : syncStatus === "syncing"
-                      ? "Syncing now…"
-                      : syncStatus === "error"
-                        ? "Sync needs attention"
-                        : "Auto-sync is on"}
-                </p>
-                <p className="text-xs text-muted truncate">
-                  {syncConfigured === false
-                    ? "Add Supabase keys on Vercel"
-                    : syncError ?? "Changes sync across both phones automatically"}
-                </p>
-              </div>
-            </Link>
+                <span
+                  className={cn(
+                    "w-10 h-10 rounded-2xl flex items-center justify-center",
+                    syncStatus === "error"
+                      ? "bg-[#ff3b30]/15 text-[#ff3b30]"
+                      : syncStatus === "syncing"
+                        ? "bg-[#007aff]/15 text-[#007aff]"
+                        : syncConfigured
+                          ? "bg-[#34c759]/15 text-[#34c759]"
+                          : "bg-[#ff9500]/15 text-[#ff9500]"
+                  )}
+                >
+                  {syncStatus === "syncing" ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <syncLink.icon className="w-5 h-5" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">
+                    {syncConfigured === false
+                      ? "Set up cloud sync"
+                      : syncStatus === "syncing"
+                        ? "Syncing now…"
+                        : syncStatus === "error"
+                          ? "Sync needs attention"
+                          : "Auto-sync is on"}
+                  </p>
+                  <p className="text-xs text-muted truncate">
+                    {syncConfigured === false
+                      ? "Add Supabase keys on Vercel"
+                      : syncError ?? "Changes sync across both phones automatically"}
+                  </p>
+                </div>
+              </Link>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
-              {moreLinks.map((link) => {
-                const Icon = link.icon;
-                const active = isPrimaryActive(pathname, link.href);
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-2xl px-3 py-3 transition-all",
-                      active
-                        ? "bg-[#007aff]/12 ring-1 ring-[#007aff]/25"
-                        : "glass hover:bg-black/5 dark:hover:bg-white/5"
-                    )}
-                  >
-                    <span
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: `${link.tint}18`, color: link.tint }}
+              {moreNavItems
+                .filter((link) => link.href !== "/sync")
+                .map((link) => {
+                  const Icon = link.icon;
+                  const active = isNavActive(pathname, link.href);
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-2xl px-3 py-3 transition-all",
+                        active
+                          ? "bg-[#007aff]/12 ring-1 ring-[#007aff]/25"
+                          : "glass hover:bg-black/5 dark:hover:bg-white/5"
+                      )}
                     >
-                      <Icon className="w-5 h-5" />
-                    </span>
-                    <span className="text-sm font-medium">{link.label}</span>
-                  </Link>
-                );
-              })}
+                      <span
+                        className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${link.tint}18`, color: link.tint }}
+                      >
+                        <Icon className="w-5 h-5" />
+                      </span>
+                      <span className="text-sm font-medium">{link.label}</span>
+                    </Link>
+                  );
+                })}
             </div>
           </div>
         </div>
@@ -181,10 +153,10 @@ export function MobileBottomNav() {
 
       <nav className="md:hidden fixed inset-x-0 bottom-0 z-50 pointer-events-none">
         <div className="mx-auto max-w-lg px-4 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pointer-events-auto">
-          <div className="bottom-nav-shell grid grid-cols-5 items-end gap-1 px-1 pt-2 pb-1">
-            {primaryTabs.map((tab) => {
+          <div className="bottom-nav-shell grid grid-cols-4 items-end gap-1 px-1 pt-2 pb-1">
+            {primaryNavItems.map((tab) => {
               const Icon = tab.icon;
-              const active = isPrimaryActive(pathname, tab.href);
+              const active = isNavActive(pathname, tab.href);
 
               if ("primary" in tab && tab.primary) {
                 return (

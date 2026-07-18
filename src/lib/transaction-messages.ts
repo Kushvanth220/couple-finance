@@ -108,7 +108,7 @@ export function buildDebtAutoMessage(opts: {
   }
 
   if (debtRemaining != null) {
-    msg += ` · ${formatCurrency(debtRemaining)} still owed`;
+    msg += ` · ${formatCurrency(debtRemaining)} still to pay`;
   }
 
   return msg;
@@ -128,7 +128,7 @@ export function buildInterCoupleAutoMessage(opts: {
   benefited: Person;
   amount: number;
 }): string {
-  return `${PERSON_LABELS[opts.paidBy]} paid ${formatCurrency(opts.amount)} for ${PERSON_LABELS[opts.benefited]}`;
+  return `${PERSON_LABELS[opts.paidBy]} paid ${formatCurrency(opts.amount)} for ${PERSON_LABELS[opts.benefited]}'s share`;
 }
 
 export function buildCashWithdrawalMessage(opts: {
