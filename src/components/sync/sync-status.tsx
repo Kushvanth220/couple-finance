@@ -53,7 +53,7 @@ export function SyncStatusBadge() {
       ? "Syncing"
       : status === "error"
         ? "Sync error"
-        : "Synced";
+        : "Auto-sync";
 
   const Icon = status === "syncing" ? Loader2 : Cloud;
 

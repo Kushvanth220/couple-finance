@@ -3,9 +3,11 @@
 import { useEffect, useRef } from "react";
 import { loadSyncConfig } from "@/lib/supabase/client";
 import {
+  flushPendingPush,
   isApplyingRemoteSync,
+  markLocalChangePending,
   onSyncStatusChange,
-  pullRemoteIfNewer,
+  runAutoSyncCycle,
   runInitialSyncSession,
   scheduleFinancePush,
   stopSyncSession,
@@ -42,32 +44,65 @@ export function SyncProvider() {
           getFinanceState,
           applyRemoteFinanceState
         );
+
+        if (cancelled) return;
+
         readyRef.current = true;
+
+        // Upload anything that changed while sync was starting, then refresh.
+        await runAutoSyncCycle(
+          config.householdKey,
+          getFinanceState,
+          applyRemoteFinanceState
+        );
       } catch {
         readyRef.current = true;
+        const householdId = householdIdRef.current;
+        if (householdId) {
+          void flushPendingPush();
+        }
       }
     }
 
     void startSync();
 
     const unsubscribeStore = useFinanceStore.subscribe(() => {
+      if (isApplyingRemoteSync()) return;
+
+      markLocalChangePending();
+
       const householdId = householdIdRef.current;
-      if (!householdId || !readyRef.current || isApplyingRemoteSync()) return;
+      if (!householdId || !readyRef.current) return;
+
       scheduleFinancePush(householdId, getFinanceState);
     });
 
-    function refreshFromCloud() {
+    function runBackgroundSync() {
       const householdId = householdIdRef.current;
       if (!householdId || !readyRef.current) return;
-      void pullRemoteIfNewer(householdId, applyRemoteFinanceState);
+
+      void runAutoSyncCycle(
+        householdId,
+        getFinanceState,
+        applyRemoteFinanceState
+      );
     }
 
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible") refreshFromCloud();
+      if (document.visibilityState === "hidden") {
+        void flushPendingPush();
+        return;
+      }
+      runBackgroundSync();
+    }
+
+    function handlePageHide() {
+      void flushPendingPush();
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", refreshFromCloud);
+    window.addEventListener("focus", runBackgroundSync);
+    window.addEventListener("pagehide", handlePageHide);
 
     const unsubscribeStatus = onSyncStatusChange(() => {
       // Status is consumed by SyncStatusBadge and /sync page.
@@ -78,7 +113,8 @@ export function SyncProvider() {
       unsubscribeStore();
       unsubscribeStatus();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", refreshFromCloud);
+      window.removeEventListener("focus", runBackgroundSync);
+      window.removeEventListener("pagehide", handlePageHide);
       readyRef.current = false;
       householdIdRef.current = null;
       stopSyncSession();

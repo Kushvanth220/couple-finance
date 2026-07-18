@@ -8,13 +8,14 @@ import {
 } from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
 
-export const SYNC_META_KEY = "couple-finance-sync-meta";
+/** Bumped to reset stale per-device sync timestamps from older builds. */
+export const SYNC_META_KEY = "couple-finance-sync-meta-v4";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 
 export interface SyncMeta {
-  localUpdatedAt: string | null;
   lastSyncedAt: string | null;
+  lastPushedAt: string | null;
 }
 
 export interface RemoteFinanceRow {
@@ -34,21 +35,26 @@ export interface SyncDiagnostics {
   householdId: string;
   configured: boolean;
   steps: SyncDiagnosticStep[];
+  cloudUpdatedAt?: string;
+  cloudTransactionCount?: number;
 }
 
 type SyncListener = (status: SyncStatus, error?: string) => void;
 
 let applyingRemote = false;
+let pendingLocalChanges = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
 let activeConfig: SyncConfig | null = null;
 let lastSyncError: string | null = null;
 let syncInProgress: Promise<void> | null = null;
+let pushStateGetter: (() => FinanceState) | null = null;
+let pushHouseholdId: string | null = null;
 const listeners = new Set<SyncListener>();
 
-const PUSH_DEBOUNCE_MS = 500;
-const POLL_INTERVAL_MS = 5_000;
+const PUSH_DEBOUNCE_MS = 250;
+const POLL_INTERVAL_MS = 2_000;
 
 function getConfigOrThrow() {
   const config = activeConfig ?? getCachedSyncConfig();
@@ -89,21 +95,25 @@ function notifyStatus(status: SyncStatus, error?: string) {
 
 export function readSyncMeta(): SyncMeta {
   if (typeof window === "undefined") {
-    return { localUpdatedAt: null, lastSyncedAt: null };
+    return { lastSyncedAt: null, lastPushedAt: null };
   }
 
   try {
     const raw = localStorage.getItem(SYNC_META_KEY);
-    if (!raw) return { localUpdatedAt: null, lastSyncedAt: null };
+    if (!raw) return { lastSyncedAt: null, lastPushedAt: null };
     return JSON.parse(raw) as SyncMeta;
   } catch {
-    return { localUpdatedAt: null, lastSyncedAt: null };
+    return { lastSyncedAt: null, lastPushedAt: null };
   }
 }
 
 function writeSyncMeta(meta: SyncMeta) {
   if (typeof window === "undefined") return;
   localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
+}
+
+function lastSyncedTime(meta = readSyncMeta()) {
+  return meta.lastSyncedAt ? new Date(meta.lastSyncedAt).getTime() : 0;
 }
 
 function helpfulErrorMessage(error: unknown) {
@@ -122,6 +132,10 @@ function helpfulErrorMessage(error: unknown) {
   }
 
   return message;
+}
+
+function stateSignature(state: FinanceState) {
+  return JSON.stringify(state);
 }
 
 export async function fetchRemoteFinance(
@@ -169,9 +183,10 @@ export async function pushFinanceState(
 
   if (error) throw new Error(helpfulErrorMessage(error));
 
+  pendingLocalChanges = false;
   writeSyncMeta({
-    localUpdatedAt: data.updated_at,
     lastSyncedAt: data.updated_at,
+    lastPushedAt: data.updated_at,
   });
 
   return {
@@ -181,11 +196,19 @@ export async function pushFinanceState(
   };
 }
 
+export function markLocalChangePending() {
+  pendingLocalChanges = true;
+}
+
 export function scheduleFinancePush(
   householdId: string,
   getState: () => FinanceState
 ) {
   if (applyingRemote || !activeConfig) return;
+
+  pendingLocalChanges = true;
+  pushHouseholdId = householdId;
+  pushStateGetter = getState;
 
   if (pushTimer) clearTimeout(pushTimer);
 
@@ -202,6 +225,19 @@ export function scheduleFinancePush(
   }, PUSH_DEBOUNCE_MS);
 }
 
+export async function flushPendingPush() {
+  if (!pendingLocalChanges || !pushHouseholdId || !pushStateGetter) return;
+
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+
+  notifyStatus("syncing");
+  await pushFinanceState(pushHouseholdId, pushStateGetter());
+  notifyStatus("synced");
+}
+
 function applyRemoteRow(
   row: RemoteFinanceRow,
   applyRemoteState: (state: FinanceState) => void
@@ -209,28 +245,40 @@ function applyRemoteRow(
   applyingRemote = true;
   applyRemoteState(row.data);
   applyingRemote = false;
+  pendingLocalChanges = false;
   writeSyncMeta({
-    localUpdatedAt: row.updated_at,
     lastSyncedAt: row.updated_at,
+    lastPushedAt: readSyncMeta().lastPushedAt,
   });
   notifyStatus("synced");
 }
 
+function shouldPullRemote(
+  remote: RemoteFinanceRow,
+  localState: FinanceState,
+  meta = readSyncMeta()
+) {
+  const remoteTime = new Date(remote.updated_at).getTime();
+  const syncedTime = lastSyncedTime(meta);
+
+  if (remoteTime > syncedTime) return true;
+
+  if (!meta.lastSyncedAt) return true;
+
+  return stateSignature(remote.data) !== stateSignature(localState);
+}
+
 export function pullRemoteIfNewer(
   householdId: string,
+  getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ): Promise<boolean> {
   return (async () => {
     const remote = await fetchRemoteFinance(householdId);
     if (!remote) return false;
 
-    const meta = readSyncMeta();
-    const remoteTime = new Date(remote.updated_at).getTime();
-    const localTime = meta.localUpdatedAt
-      ? new Date(meta.localUpdatedAt).getTime()
-      : 0;
-
-    if (remoteTime <= localTime) return false;
+    const localState = getLocalState();
+    if (!shouldPullRemote(remote, localState)) return false;
 
     applyRemoteRow(remote, applyRemoteState);
     return true;
@@ -243,8 +291,8 @@ export async function resolveInitialSync(
   applyRemoteState: (state: FinanceState) => void
 ): Promise<"local" | "remote" | "none"> {
   const remote = await fetchRemoteFinance(householdId);
-  const meta = readSyncMeta();
   const localState = getLocalState();
+  const meta = readSyncMeta();
 
   if (!remote) {
     await pushFinanceState(householdId, localState);
@@ -252,25 +300,12 @@ export async function resolveInitialSync(
     return "local";
   }
 
-  const remoteTime = new Date(remote.updated_at).getTime();
-  const localTime = meta.localUpdatedAt
-    ? new Date(meta.localUpdatedAt).getTime()
-    : 0;
-  const lastSyncedTime = meta.lastSyncedAt
-    ? new Date(meta.lastSyncedAt).getTime()
-    : 0;
-  const remoteTxCount = remote.data.transactions?.length ?? 0;
-  const localTxCount = localState.transactions?.length ?? 0;
-
-  if (
-    remoteTime > Math.max(localTime, lastSyncedTime) ||
-    (remoteTime >= localTime && remoteTxCount > localTxCount)
-  ) {
+  if (shouldPullRemote(remote, localState, meta)) {
     applyRemoteRow(remote, applyRemoteState);
     return "remote";
   }
 
-  if (localTime > remoteTime || localTxCount > remoteTxCount) {
+  if (pendingLocalChanges) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
@@ -282,6 +317,7 @@ export async function resolveInitialSync(
 
 export function subscribeToFinanceChanges(
   householdId: string,
+  getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
   const config = getConfigOrThrow();
@@ -307,26 +343,21 @@ export function subscribeToFinanceChanges(
         const row = payload.new as RemoteFinanceRow | null;
         if (!row?.data) return;
 
-        const meta = readSyncMeta();
-        const remoteTime = new Date(row.updated_at).getTime();
-        const localTime = meta.localUpdatedAt
-          ? new Date(meta.localUpdatedAt).getTime()
-          : 0;
-
-        if (remoteTime <= localTime) return;
+        if (!shouldPullRemote(row, getLocalState())) return;
 
         applyRemoteRow(row, applyRemoteState);
       }
     )
     .subscribe((status) => {
       if (status === "CHANNEL_ERROR") {
-        notifyStatus("error", "Live sync unavailable — using refresh every 5s");
+        notifyStatus("error", "Live sync unavailable — refreshing every 2s");
       }
     });
 }
 
 export function startPollingSync(
   householdId: string,
+  getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
   stopPollingSync();
@@ -334,10 +365,26 @@ export function startPollingSync(
   pollTimer = setInterval(() => {
     if (document.visibilityState !== "visible") return;
 
-    void pullRemoteIfNewer(householdId, applyRemoteState).catch((err) => {
+    void (async () => {
+      await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
+      if (pendingLocalChanges) {
+        await flushPendingPush();
+      }
+    })().catch((err) => {
       notifyStatus("error", helpfulErrorMessage(err));
     });
   }, POLL_INTERVAL_MS);
+}
+
+export async function runAutoSyncCycle(
+  householdId: string,
+  getLocalState: () => FinanceState,
+  applyRemoteState: (state: FinanceState) => void
+) {
+  await pullRemoteIfNewer(householdId, getLocalState, applyRemoteState);
+  if (pendingLocalChanges) {
+    await flushPendingPush();
+  }
 }
 
 export function stopPollingSync() {
@@ -368,6 +415,7 @@ export async function forcePushNow(
     pushTimer = null;
   }
 
+  pendingLocalChanges = true;
   notifyStatus("syncing");
   await pushFinanceState(householdId, getState());
   notifyStatus("synced");
@@ -407,8 +455,8 @@ export async function runInitialSyncSession(
 
     try {
       await resolveInitialSync(householdId, getLocalState, applyRemoteState);
-      subscribeToFinanceChanges(householdId, applyRemoteState);
-      startPollingSync(householdId, applyRemoteState);
+      subscribeToFinanceChanges(householdId, getLocalState, applyRemoteState);
+      startPollingSync(householdId, getLocalState, applyRemoteState);
     } catch (err) {
       notifyStatus("error", helpfulErrorMessage(err));
       throw err;
@@ -426,6 +474,8 @@ export function stopSyncSession() {
   unsubscribeFromFinanceChanges();
   activeConfig = null;
   syncInProgress = null;
+  pushHouseholdId = null;
+  pushStateGetter = null;
 }
 
 export function getActiveHouseholdId() {
@@ -449,7 +499,7 @@ export async function diagnoseSync(
           name: "Supabase config",
           ok: false,
           message:
-            "Missing NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local or hosting settings.",
+            "Missing NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
         },
       ],
     };
@@ -462,14 +512,16 @@ export async function diagnoseSync(
     message: "URL and key found",
   });
 
+  let remote: RemoteFinanceRow | null = null;
+
   try {
-    const remote = await fetchRemoteFinance(householdId);
+    remote = await fetchRemoteFinance(householdId);
     steps.push({
       name: "Read cloud",
       ok: true,
       message: remote
-        ? `Cloud data found (${remote.data.transactions?.length ?? 0} transactions)`
-        : "No cloud data yet — will upload on first change",
+        ? `Cloud has ${remote.data.transactions?.length ?? 0} transactions, updated ${new Date(remote.updated_at).toLocaleString()}`
+        : "No cloud data yet — will upload automatically",
     });
   } catch (err) {
     steps.push({
@@ -493,8 +545,22 @@ export async function diagnoseSync(
       ok: false,
       message: helpfulErrorMessage(err),
     });
-    return { ok: false, configured: true, householdId, steps };
+    return {
+      ok: false,
+      configured: true,
+      householdId,
+      steps,
+      cloudUpdatedAt: remote?.updated_at,
+      cloudTransactionCount: remote?.data.transactions?.length,
+    };
   }
 
-  return { ok: true, configured: true, householdId, steps };
+  return {
+    ok: true,
+    configured: true,
+    householdId,
+    steps,
+    cloudUpdatedAt: remote?.updated_at,
+    cloudTransactionCount: remote?.data.transactions?.length,
+  };
 }
