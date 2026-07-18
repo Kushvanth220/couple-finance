@@ -1,8 +1,5 @@
--- Run this entire file once in Supabase → SQL Editor
-
-drop policy if exists "Users manage own finance data" on public.household_finance;
-drop policy if exists "anon household sync" on public.household_finance;
-drop policy if exists "open household sync" on public.household_finance;
+-- Grik Finance: run this ENTIRE file once in Supabase SQL Editor
+-- Safe for first-time setup (no existing table needed)
 
 drop table if exists public.household_finance cascade;
 
@@ -30,8 +27,6 @@ begin
   return new;
 end;
 $$;
-
-drop trigger if exists household_finance_updated_at on public.household_finance;
 
 create trigger household_finance_updated_at
   before update on public.household_finance
