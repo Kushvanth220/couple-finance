@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  getHouseholdSyncKey,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 import {
   isApplyingRemoteSync,
   onSyncStatusChange,
@@ -18,25 +21,19 @@ import {
 } from "@/store/finance-store";
 
 export function SyncProvider() {
-  const userIdRef = useRef<string | null>(null);
   const readyRef = useRef(false);
   const startingRef = useRef(false);
+  const householdId = getHouseholdSyncKey();
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
-    const supabase = createClient();
-    if (!supabase) return;
-
     let cancelled = false;
 
-    async function startSync(userId: string) {
-      if (cancelled) return;
-      if (startingRef.current) return;
-      if (userIdRef.current === userId && readyRef.current) return;
+    async function startSync() {
+      if (cancelled || startingRef.current || readyRef.current) return;
 
       startingRef.current = true;
-      userIdRef.current = userId;
       readyRef.current = false;
 
       try {
@@ -44,7 +41,7 @@ export function SyncProvider() {
         if (cancelled) return;
 
         await runInitialSyncSession(
-          userId,
+          householdId,
           getFinanceState,
           applyRemoteFinanceState
         );
@@ -57,43 +54,16 @@ export function SyncProvider() {
       startingRef.current = false;
     }
 
-    function stopSync() {
-      userIdRef.current = null;
-      readyRef.current = false;
-      startingRef.current = false;
-      stopSyncSession();
-    }
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        void startSync(session.user.id);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        void startSync(session.user.id);
-      } else {
-        stopSync();
-      }
-    });
+    void startSync();
 
     const unsubscribeStore = useFinanceStore.subscribe(() => {
-      const userId = userIdRef.current;
-      if (!userId || !readyRef.current || isApplyingRemoteSync()) return;
-
-      scheduleFinancePush(userId, getFinanceState);
+      if (!readyRef.current || isApplyingRemoteSync()) return;
+      scheduleFinancePush(householdId, getFinanceState);
     });
 
     function handleVisibilityChange() {
-      const userId = userIdRef.current;
-      if (!userId || !readyRef.current || document.visibilityState !== "visible") {
-        return;
-      }
-
-      void pullRemoteIfNewer(userId, applyRemoteFinanceState);
+      if (!readyRef.current || document.visibilityState !== "visible") return;
+      void pullRemoteIfNewer(householdId, applyRemoteFinanceState);
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -104,13 +74,14 @@ export function SyncProvider() {
 
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
       unsubscribeStore();
       unsubscribeStatus();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      stopSync();
+      readyRef.current = false;
+      startingRef.current = false;
+      stopSyncSession();
     };
-  }, []);
+  }, [householdId]);
 
   return null;
 }

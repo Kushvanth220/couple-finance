@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Cloud, Loader2 } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { GlassInput } from "@/components/ui/glass-input";
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { getHouseholdSyncKey, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   forcePullNow,
   forcePushNow,
-  getCurrentSyncUserId,
+  getActiveHouseholdId,
   getLastSyncError,
   onSyncStatusChange,
   type SyncStatus,
@@ -18,118 +16,36 @@ import {
 import { applyRemoteFinanceState, getFinanceState } from "@/store/finance-store";
 
 export default function SyncPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    isSupabaseConfigured() ? "idle" : "offline"
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
   const configured = isSupabaseConfigured();
+  const householdId = getHouseholdSyncKey();
 
   useEffect(() => {
     if (!configured) return;
 
-    const supabase = createClient();
-    if (!supabase) return;
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    const unsubscribe = onSyncStatusChange((next, error) => {
+    const unsubscribe = onSyncStatusChange((next, err) => {
       setSyncStatus(next);
-      setSyncError(error ?? getLastSyncError());
+      setSyncError(err ?? getLastSyncError());
     });
 
-    return () => {
-      subscription.unsubscribe();
-      unsubscribe();
-    };
+    return unsubscribe;
   }, [configured]);
 
-  async function handleSignIn(event: React.FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    const supabase = createClient();
-    if (!supabase) {
-      setError("Supabase is not configured.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-      return;
-    }
-
-    setMessage("Signed in. Your data will sync across devices.");
-    setLoading(false);
-  }
-
-  async function handleSignUp(event: React.FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    const supabase = createClient();
-    if (!supabase) {
-      setError("Supabase is not configured.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    setMessage(
-      "Account created. If email confirmation is enabled, check your inbox, then sign in on every device with the same account."
-    );
-    setLoading(false);
-  }
-
-  async function handleSignOut() {
-    const supabase = createClient();
-    if (!supabase) return;
-
-    await supabase.auth.signOut();
-    setMessage("Signed out. This device will keep using local data only.");
-  }
-
   async function handleForcePull() {
-    const userId = user?.id ?? getCurrentSyncUserId();
-    if (!userId) return;
-
     setLoading(true);
     setError(null);
 
     try {
-      const pulled = await forcePullNow(userId, applyRemoteFinanceState);
+      const pulled = await forcePullNow(
+        getActiveHouseholdId(),
+        applyRemoteFinanceState
+      );
       setMessage(
         pulled
           ? "Latest data downloaded from the cloud."
@@ -143,14 +59,11 @@ export default function SyncPage() {
   }
 
   async function handleForceSync() {
-    const userId = user?.id ?? getCurrentSyncUserId();
-    if (!userId) return;
-
     setLoading(true);
     setError(null);
 
     try {
-      await forcePushNow(userId, getFinanceState);
+      await forcePushNow(getActiveHouseholdId(), getFinanceState);
       setMessage("Latest data uploaded to the cloud.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
@@ -167,8 +80,7 @@ export default function SyncPage() {
           Cloud Sync
         </h1>
         <p className="text-muted mt-1 text-sm">
-          Sign in with the same account on every device so Kushvanth and Grishma
-          always see the same numbers.
+          Your data syncs automatically across both phones. No login needed.
         </p>
       </div>
 
@@ -182,17 +94,19 @@ export default function SyncPage() {
               <code className="text-xs">.env.local</code>
             </li>
             <li>
-              Run the SQL in{" "}
-              <code className="text-xs">supabase/migrations/001_household_finance.sql</code>
+              Run the SQL migrations in{" "}
+              <code className="text-xs">supabase/migrations/</code>
             </li>
-            <li>Restart the dev server</li>
+            <li>Restart the dev server and redeploy</li>
           </ol>
         </GlassCard>
-      ) : user ? (
+      ) : (
         <GlassCard className="p-6 space-y-4">
           <div>
-            <p className="font-medium">Signed in</p>
-            <p className="text-sm text-muted">{user.email}</p>
+            <p className="font-medium">Automatic sync is on</p>
+            <p className="text-sm text-muted">
+              Both phones share the same cloud data when they open the same website.
+            </p>
           </div>
 
           <div className="flex items-center gap-2 text-sm">
@@ -206,7 +120,7 @@ export default function SyncPage() {
               {syncStatus === "syncing"
                 ? "Syncing…"
                 : syncStatus === "error"
-                  ? "Error — try Sync now"
+                  ? "Error — try the buttons below"
                   : "Connected"}
             </span>
           </div>
@@ -218,75 +132,35 @@ export default function SyncPage() {
             <GlassButton variant="secondary" onClick={handleForcePull} disabled={loading}>
               Download latest
             </GlassButton>
-            <GlassButton variant="secondary" onClick={handleSignOut}>
-              Sign out
-            </GlassButton>
           </div>
 
-          {syncError ? (
+          {(syncError || error) && (
             <p className="text-sm text-[#ff3b30] bg-[#ff3b30]/10 rounded-2xl px-4 py-3">
-              {syncError}
+              {syncError ?? error}
+            </p>
+          )}
+
+          {message ? (
+            <p className="text-sm text-[#34c759] bg-[#34c759]/10 rounded-2xl px-4 py-3">
+              {message}
             </p>
           ) : null}
         </GlassCard>
-      ) : (
-        <GlassCard className="p-6">
-          <form className="space-y-4" onSubmit={handleSignIn}>
-            <GlassInput
-              label="Email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-            <GlassInput
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-
-            <div className="flex flex-wrap gap-2 pt-2">
-              <GlassButton type="submit" disabled={loading}>
-                Sign in
-              </GlassButton>
-              <GlassButton
-                type="button"
-                variant="secondary"
-                disabled={loading}
-                onClick={handleSignUp}
-              >
-                Create account
-              </GlassButton>
-            </div>
-          </form>
-        </GlassCard>
       )}
-
-      {message ? (
-        <p className="text-sm text-[#34c759] bg-[#34c759]/10 rounded-2xl px-4 py-3">
-          {message}
-        </p>
-      ) : null}
-
-      {error ? (
-        <p className="text-sm text-[#ff3b30] bg-[#ff3b30]/10 rounded-2xl px-4 py-3">
-          {error}
-        </p>
-      ) : null}
 
       <GlassCard className="p-6 space-y-2">
         <p className="font-medium text-sm">How it works</p>
         <ul className="text-sm text-muted space-y-1 list-disc list-inside">
-          <li>Create one shared login for your household.</li>
-          <li>Sign in on phone, laptop, and any other browser.</li>
+          <li>Open the same website URL on both phones.</li>
           <li>Changes upload automatically and refresh every 10 seconds.</li>
-          <li>On the second phone, open Sync and tap Download latest if needed.</li>
-          <li>Without sign-in, data stays on this device only.</li>
+          <li>On the second phone, tap Download latest if you need it right away.</li>
+          <li>No account or password required.</li>
         </ul>
+        {configured ? (
+          <p className="text-xs text-muted pt-2">
+            Household key: <code>{householdId}</code>
+          </p>
+        ) : null}
       </GlassCard>
     </div>
   );

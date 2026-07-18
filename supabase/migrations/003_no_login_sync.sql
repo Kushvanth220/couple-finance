@@ -1,17 +1,16 @@
--- Grik Finance cloud sync (no login).
--- One row per household; all devices using the same sync key share data.
+-- Migrate from auth-based sync (user_id) to key-based sync (household_id, no login).
 
-create table if not exists public.household_finance (
+drop policy if exists "Users manage own finance data" on public.household_finance;
+
+drop table if exists public.household_finance cascade;
+
+create table public.household_finance (
   household_id text primary key,
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
 alter table public.household_finance enable row level security;
-
-drop policy if exists "Users manage own finance data" on public.household_finance;
-drop policy if exists "anon household sync" on public.household_finance;
-drop policy if exists "open household sync" on public.household_finance;
 
 create policy "open household sync"
   on public.household_finance
@@ -29,8 +28,6 @@ begin
   return new;
 end;
 $$;
-
-drop trigger if exists household_finance_updated_at on public.household_finance;
 
 create trigger household_finance_updated_at
   before update on public.household_finance

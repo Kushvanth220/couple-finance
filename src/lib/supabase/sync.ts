@@ -1,5 +1,9 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  createClient,
+  getHouseholdSyncKey,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
 
 export const SYNC_META_KEY = "couple-finance-sync-meta";
@@ -12,7 +16,7 @@ export interface SyncMeta {
 }
 
 export interface RemoteFinanceRow {
-  user_id: string;
+  household_id: string;
   data: FinanceState;
   updated_at: string;
 }
@@ -23,7 +27,7 @@ let applyingRemote = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
-let currentUserId: string | null = null;
+let currentHouseholdId: string | null = null;
 let lastSyncError: string | null = null;
 let syncInProgress: Promise<void> | null = null;
 const listeners = new Set<SyncListener>();
@@ -39,9 +43,15 @@ export function getLastSyncError() {
   return lastSyncError;
 }
 
+export function getCurrentHouseholdId() {
+  return currentHouseholdId;
+}
+
 export function onSyncStatusChange(listener: SyncListener) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 function notifyStatus(status: SyncStatus, error?: string) {
@@ -70,35 +80,35 @@ export function readSyncMeta(): SyncMeta {
   }
 }
 
-export function writeSyncMeta(meta: SyncMeta) {
+function writeSyncMeta(meta: SyncMeta) {
   if (typeof window === "undefined") return;
   localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
 }
 
 export async function fetchRemoteFinance(
-  userId: string
+  householdId: string
 ): Promise<RemoteFinanceRow | null> {
   const supabase = createClient();
   if (!supabase) return null;
 
   const { data, error } = await supabase
     .from("household_finance")
-    .select("user_id, data, updated_at")
-    .eq("user_id", userId)
+    .select("household_id, data, updated_at")
+    .eq("household_id", householdId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!data) return null;
 
   return {
-    user_id: data.user_id,
+    household_id: data.household_id,
     data: data.data as FinanceState,
     updated_at: data.updated_at,
   };
 }
 
 export async function pushFinanceState(
-  userId: string,
+  householdId: string,
   state: FinanceState
 ): Promise<RemoteFinanceRow> {
   const supabase = createClient();
@@ -108,12 +118,12 @@ export async function pushFinanceState(
     .from("household_finance")
     .upsert(
       {
-        user_id: userId,
+        household_id: householdId,
         data: state,
       },
-      { onConflict: "user_id" }
+      { onConflict: "household_id" }
     )
-    .select("user_id, data, updated_at")
+    .select("household_id, data, updated_at")
     .single();
 
   if (error) throw new Error(error.message);
@@ -124,14 +134,14 @@ export async function pushFinanceState(
   });
 
   return {
-    user_id: data.user_id,
+    household_id: data.household_id,
     data: data.data as FinanceState,
     updated_at: data.updated_at,
   };
 }
 
 export function scheduleFinancePush(
-  userId: string,
+  householdId: string,
   getState: () => FinanceState
 ) {
   if (applyingRemote || !isSupabaseConfigured()) return;
@@ -143,7 +153,7 @@ export function scheduleFinancePush(
     notifyStatus("syncing");
 
     try {
-      await pushFinanceState(userId, getState());
+      await pushFinanceState(householdId, getState());
       notifyStatus("synced");
     } catch (err) {
       notifyStatus("error", err instanceof Error ? err.message : "Sync failed");
@@ -166,11 +176,11 @@ function applyRemoteRow(
 }
 
 export function pullRemoteIfNewer(
-  userId: string,
+  householdId: string,
   applyRemoteState: (state: FinanceState) => void
 ): Promise<boolean> {
   return (async () => {
-    const remote = await fetchRemoteFinance(userId);
+    const remote = await fetchRemoteFinance(householdId);
     if (!remote) return false;
 
     const meta = readSyncMeta();
@@ -187,16 +197,16 @@ export function pullRemoteIfNewer(
 }
 
 export async function resolveInitialSync(
-  userId: string,
+  householdId: string,
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ): Promise<"local" | "remote" | "none"> {
-  const remote = await fetchRemoteFinance(userId);
+  const remote = await fetchRemoteFinance(householdId);
   const meta = readSyncMeta();
   const localState = getLocalState();
 
   if (!remote) {
-    await pushFinanceState(userId, localState);
+    await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
   }
@@ -215,7 +225,7 @@ export async function resolveInitialSync(
   }
 
   if (localTime > remoteTime) {
-    await pushFinanceState(userId, localState);
+    await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
   }
@@ -225,7 +235,7 @@ export async function resolveInitialSync(
 }
 
 export function subscribeToFinanceChanges(
-  userId: string,
+  householdId: string,
   applyRemoteState: (state: FinanceState) => void
 ) {
   const supabase = createClient();
@@ -233,16 +243,16 @@ export function subscribeToFinanceChanges(
 
   unsubscribeFromFinanceChanges();
 
-  currentUserId = userId;
+  currentHouseholdId = householdId;
   realtimeChannel = supabase
-    .channel(`household_finance:${userId}`)
+    .channel(`household_finance:${householdId}`)
     .on(
       "postgres_changes",
       {
         event: "*",
         schema: "public",
         table: "household_finance",
-        filter: `user_id=eq.${userId}`,
+        filter: `household_id=eq.${householdId}`,
       },
       (payload) => {
         if (payload.eventType === "DELETE") return;
@@ -269,7 +279,7 @@ export function subscribeToFinanceChanges(
 }
 
 export function startPollingSync(
-  userId: string,
+  householdId: string,
   applyRemoteState: (state: FinanceState) => void
 ) {
   stopPollingSync();
@@ -277,7 +287,7 @@ export function startPollingSync(
   pollTimer = setInterval(() => {
     if (document.visibilityState !== "visible") return;
 
-    void pullRemoteIfNewer(userId, applyRemoteState).catch((err) => {
+    void pullRemoteIfNewer(householdId, applyRemoteState).catch((err) => {
       notifyStatus(
         "error",
         err instanceof Error ? err.message : "Could not refresh data"
@@ -301,16 +311,12 @@ export function unsubscribeFromFinanceChanges() {
     }
     realtimeChannel = null;
   }
-  currentUserId = null;
+  currentHouseholdId = null;
   stopPollingSync();
 }
 
-export function getCurrentSyncUserId() {
-  return currentUserId;
-}
-
 export async function forcePushNow(
-  userId: string,
+  householdId: string,
   getState: () => FinanceState
 ) {
   if (pushTimer) {
@@ -319,17 +325,17 @@ export async function forcePushNow(
   }
 
   notifyStatus("syncing");
-  await pushFinanceState(userId, getState());
+  await pushFinanceState(householdId, getState());
   notifyStatus("synced");
 }
 
 export async function forcePullNow(
-  userId: string,
+  householdId: string,
   applyRemoteState: (state: FinanceState) => void
 ) {
   notifyStatus("syncing");
 
-  const remote = await fetchRemoteFinance(userId);
+  const remote = await fetchRemoteFinance(householdId);
   if (!remote) {
     notifyStatus("synced");
     return false;
@@ -340,7 +346,7 @@ export async function forcePullNow(
 }
 
 export async function runInitialSyncSession(
-  userId: string,
+  householdId: string,
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
@@ -353,9 +359,9 @@ export async function runInitialSyncSession(
     notifyStatus("syncing");
 
     try {
-      await resolveInitialSync(userId, getLocalState, applyRemoteState);
-      subscribeToFinanceChanges(userId, applyRemoteState);
-      startPollingSync(userId, applyRemoteState);
+      await resolveInitialSync(householdId, getLocalState, applyRemoteState);
+      subscribeToFinanceChanges(householdId, applyRemoteState);
+      startPollingSync(householdId, applyRemoteState);
     } catch (err) {
       notifyStatus(
         "error",
@@ -374,6 +380,10 @@ export async function runInitialSyncSession(
 
 export function stopSyncSession() {
   unsubscribeFromFinanceChanges();
-  currentUserId = null;
+  currentHouseholdId = null;
   syncInProgress = null;
+}
+
+export function getActiveHouseholdId() {
+  return currentHouseholdId ?? getHouseholdSyncKey();
 }

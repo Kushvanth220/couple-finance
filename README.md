@@ -15,25 +15,24 @@ Personal finance management for **Kushvanth** and **Grishma**, built with a Liqu
 
 All data persists in your browser via localStorage. Optional **Supabase cloud sync** keeps both partners in sync across devices.
 
-## Cloud Sync (Supabase)
+## Cloud Sync (Supabase) — no login
 
 1. Create a [Supabase](https://supabase.com) project (free tier is fine).
 2. In **Project Settings → API**, copy the project URL and anon key.
 3. Copy `.env.local.example` to `.env.local` and paste those values.
-4. In the Supabase **SQL Editor**, run both migration files:
-   - `supabase/migrations/001_household_finance.sql`
-   - `supabase/migrations/002_realtime_replica_identity.sql`
-5. Restart the dev server (`npm run dev`).
-6. Open **Sync** in the app header, create one shared account, and sign in on **every phone** with the same email and password.
+4. In the Supabase **SQL Editor**, run:
+   - `supabase/migrations/001_household_finance.sql` (new projects), **or**
+   - `supabase/migrations/003_no_login_sync.sql` (if you already ran the old login-based migration)
+5. Restart the dev server and **redeploy** with the same env vars on your hosting (Vercel, etc.).
 
-Changes sync automatically (every 10 seconds, plus when you reopen the app). Without sign-in, data stays on that device only.
+Both phones open the **same website URL** — data syncs automatically every 10 seconds. No account or password needed.
 
 ### Sync not working?
 
-- Header should say **Synced** (not "Sign in to sync" or "Setup sync")
-- Both phones must use the **same Sync login**
+- Header should say **Synced** (not "Setup sync")
+- Both phones must use the **same website** (same deployment / env vars)
 - On the second phone, open **Sync → Download latest**
-- If you see an error on the Sync page, run migration `002_realtime_replica_identity.sql` in Supabase
+- If you used the old login-based setup, run `003_no_login_sync.sql` in Supabase
 
 ## Getting Started
 
