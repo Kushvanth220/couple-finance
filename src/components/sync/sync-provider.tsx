@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  getHouseholdSyncKey,
-  isSupabaseConfigured,
-} from "@/lib/supabase/client";
+import { loadSyncConfig } from "@/lib/supabase/client";
 import {
   isApplyingRemoteSync,
   onSyncStatusChange,
@@ -22,18 +19,18 @@ import {
 
 export function SyncProvider() {
   const readyRef = useRef(false);
-  const startingRef = useRef(false);
-  const householdId = getHouseholdSyncKey();
+  const householdIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-
     let cancelled = false;
 
     async function startSync() {
-      if (cancelled || startingRef.current || readyRef.current) return;
+      const config = await loadSyncConfig();
+      if (cancelled || !config) {
+        return;
+      }
 
-      startingRef.current = true;
+      householdIdRef.current = config.householdKey;
       readyRef.current = false;
 
       try {
@@ -41,32 +38,36 @@ export function SyncProvider() {
         if (cancelled) return;
 
         await runInitialSyncSession(
-          householdId,
+          config,
           getFinanceState,
           applyRemoteFinanceState
         );
+        readyRef.current = true;
       } catch {
-        // Errors are surfaced via sync status.
+        readyRef.current = true;
       }
-
-      if (cancelled) return;
-      readyRef.current = true;
-      startingRef.current = false;
     }
 
     void startSync();
 
     const unsubscribeStore = useFinanceStore.subscribe(() => {
-      if (!readyRef.current || isApplyingRemoteSync()) return;
+      const householdId = householdIdRef.current;
+      if (!householdId || !readyRef.current || isApplyingRemoteSync()) return;
       scheduleFinancePush(householdId, getFinanceState);
     });
 
-    function handleVisibilityChange() {
-      if (!readyRef.current || document.visibilityState !== "visible") return;
+    function refreshFromCloud() {
+      const householdId = householdIdRef.current;
+      if (!householdId || !readyRef.current) return;
       void pullRemoteIfNewer(householdId, applyRemoteFinanceState);
     }
 
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") refreshFromCloud();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", refreshFromCloud);
 
     const unsubscribeStatus = onSyncStatusChange(() => {
       // Status is consumed by SyncStatusBadge and /sync page.
@@ -77,11 +78,12 @@ export function SyncProvider() {
       unsubscribeStore();
       unsubscribeStatus();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", refreshFromCloud);
       readyRef.current = false;
-      startingRef.current = false;
+      householdIdRef.current = null;
       stopSyncSession();
     };
-  }, [householdId]);
+  }, []);
 
   return null;
 }

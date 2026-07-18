@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, Loader2 } from "lucide-react";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { isSupabaseConfiguredAsync } from "@/lib/supabase/client";
 import {
   getLastSyncError,
   onSyncStatusChange,
@@ -12,14 +12,12 @@ import {
 import { cn } from "@/lib/utils";
 
 export function SyncStatusBadge() {
-  const [status, setStatus] = useState<SyncStatus>(
-    isSupabaseConfigured() ? "idle" : "offline"
-  );
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<SyncStatus>("offline");
   const [error, setError] = useState<string | null>(null);
-  const configured = isSupabaseConfigured();
 
   useEffect(() => {
-    if (!configured) return;
+    void isSupabaseConfiguredAsync().then(setConfigured);
 
     const unsubscribe = onSyncStatusChange((next, nextError) => {
       setStatus(next);
@@ -27,7 +25,15 @@ export function SyncStatusBadge() {
     });
 
     return unsubscribe;
-  }, [configured]);
+  }, []);
+
+  if (configured === null) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-muted">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      </span>
+    );
+  }
 
   if (!configured) {
     return (

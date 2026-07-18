@@ -1,8 +1,10 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   createClient,
+  getCachedSyncConfig,
   getHouseholdSyncKey,
-  isSupabaseConfigured,
+  loadSyncConfig,
+  type SyncConfig,
 } from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
 
@@ -21,19 +23,38 @@ export interface RemoteFinanceRow {
   updated_at: string;
 }
 
+export interface SyncDiagnosticStep {
+  name: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface SyncDiagnostics {
+  ok: boolean;
+  householdId: string;
+  configured: boolean;
+  steps: SyncDiagnosticStep[];
+}
+
 type SyncListener = (status: SyncStatus, error?: string) => void;
 
 let applyingRemote = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
-let currentHouseholdId: string | null = null;
+let activeConfig: SyncConfig | null = null;
 let lastSyncError: string | null = null;
 let syncInProgress: Promise<void> | null = null;
 const listeners = new Set<SyncListener>();
 
-const PUSH_DEBOUNCE_MS = 800;
-const POLL_INTERVAL_MS = 10_000;
+const PUSH_DEBOUNCE_MS = 500;
+const POLL_INTERVAL_MS = 5_000;
+
+function getConfigOrThrow() {
+  const config = activeConfig ?? getCachedSyncConfig();
+  if (!config) throw new Error("Supabase is not configured");
+  return config;
+}
 
 export function isApplyingRemoteSync() {
   return applyingRemote;
@@ -44,7 +65,7 @@ export function getLastSyncError() {
 }
 
 export function getCurrentHouseholdId() {
-  return currentHouseholdId;
+  return activeConfig?.householdKey ?? getHouseholdSyncKey();
 }
 
 export function onSyncStatusChange(listener: SyncListener) {
@@ -85,10 +106,29 @@ function writeSyncMeta(meta: SyncMeta) {
   localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
 }
 
+function helpfulErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unknown error";
+
+  if (message.includes("household_id") && message.includes("does not exist")) {
+    return "Database table is outdated. Run supabase/setup.sql in Supabase SQL Editor.";
+  }
+
+  if (message.includes("Could not find the table")) {
+    return "Table missing. Run supabase/setup.sql in Supabase SQL Editor.";
+  }
+
+  if (message.includes("permission denied") || message.includes("RLS")) {
+    return "Database permissions blocked sync. Run supabase/setup.sql again.";
+  }
+
+  return message;
+}
+
 export async function fetchRemoteFinance(
   householdId: string
 ): Promise<RemoteFinanceRow | null> {
-  const supabase = createClient();
+  const config = getConfigOrThrow();
+  const supabase = createClient(config);
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -97,7 +137,7 @@ export async function fetchRemoteFinance(
     .eq("household_id", householdId)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(helpfulErrorMessage(error));
   if (!data) return null;
 
   return {
@@ -111,7 +151,8 @@ export async function pushFinanceState(
   householdId: string,
   state: FinanceState
 ): Promise<RemoteFinanceRow> {
-  const supabase = createClient();
+  const config = getConfigOrThrow();
+  const supabase = createClient(config);
   if (!supabase) throw new Error("Supabase is not configured");
 
   const { data, error } = await supabase
@@ -126,7 +167,7 @@ export async function pushFinanceState(
     .select("household_id, data, updated_at")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(helpfulErrorMessage(error));
 
   writeSyncMeta({
     localUpdatedAt: data.updated_at,
@@ -144,7 +185,7 @@ export function scheduleFinancePush(
   householdId: string,
   getState: () => FinanceState
 ) {
-  if (applyingRemote || !isSupabaseConfigured()) return;
+  if (applyingRemote || !activeConfig) return;
 
   if (pushTimer) clearTimeout(pushTimer);
 
@@ -156,7 +197,7 @@ export function scheduleFinancePush(
       await pushFinanceState(householdId, getState());
       notifyStatus("synced");
     } catch (err) {
-      notifyStatus("error", err instanceof Error ? err.message : "Sync failed");
+      notifyStatus("error", helpfulErrorMessage(err));
     }
   }, PUSH_DEBOUNCE_MS);
 }
@@ -218,13 +259,18 @@ export async function resolveInitialSync(
   const lastSyncedTime = meta.lastSyncedAt
     ? new Date(meta.lastSyncedAt).getTime()
     : 0;
+  const remoteTxCount = remote.data.transactions?.length ?? 0;
+  const localTxCount = localState.transactions?.length ?? 0;
 
-  if (remoteTime > Math.max(localTime, lastSyncedTime)) {
+  if (
+    remoteTime > Math.max(localTime, lastSyncedTime) ||
+    (remoteTime >= localTime && remoteTxCount > localTxCount)
+  ) {
     applyRemoteRow(remote, applyRemoteState);
     return "remote";
   }
 
-  if (localTime > remoteTime) {
+  if (localTime > remoteTime || localTxCount > remoteTxCount) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
@@ -238,12 +284,13 @@ export function subscribeToFinanceChanges(
   householdId: string,
   applyRemoteState: (state: FinanceState) => void
 ) {
-  const supabase = createClient();
+  const config = getConfigOrThrow();
+  const supabase = createClient(config);
   if (!supabase) return;
 
   unsubscribeFromFinanceChanges();
 
-  currentHouseholdId = householdId;
+  activeConfig = config;
   realtimeChannel = supabase
     .channel(`household_finance:${householdId}`)
     .on(
@@ -273,7 +320,7 @@ export function subscribeToFinanceChanges(
     )
     .subscribe((status) => {
       if (status === "CHANNEL_ERROR") {
-        notifyStatus("error", "Live sync unavailable — using periodic refresh");
+        notifyStatus("error", "Live sync unavailable — using refresh every 5s");
       }
     });
 }
@@ -288,10 +335,7 @@ export function startPollingSync(
     if (document.visibilityState !== "visible") return;
 
     void pullRemoteIfNewer(householdId, applyRemoteState).catch((err) => {
-      notifyStatus(
-        "error",
-        err instanceof Error ? err.message : "Could not refresh data"
-      );
+      notifyStatus("error", helpfulErrorMessage(err));
     });
   }, POLL_INTERVAL_MS);
 }
@@ -305,13 +349,13 @@ export function stopPollingSync() {
 
 export function unsubscribeFromFinanceChanges() {
   if (realtimeChannel) {
-    const supabase = createClient();
+    const config = activeConfig ?? getCachedSyncConfig();
+    const supabase = createClient(config);
     if (supabase) {
       supabase.removeChannel(realtimeChannel);
     }
     realtimeChannel = null;
   }
-  currentHouseholdId = null;
   stopPollingSync();
 }
 
@@ -346,7 +390,7 @@ export async function forcePullNow(
 }
 
 export async function runInitialSyncSession(
-  householdId: string,
+  config: SyncConfig,
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
@@ -354,6 +398,9 @@ export async function runInitialSyncSession(
     await syncInProgress;
     return;
   }
+
+  activeConfig = config;
+  const householdId = config.householdKey;
 
   syncInProgress = (async () => {
     notifyStatus("syncing");
@@ -363,10 +410,7 @@ export async function runInitialSyncSession(
       subscribeToFinanceChanges(householdId, applyRemoteState);
       startPollingSync(householdId, applyRemoteState);
     } catch (err) {
-      notifyStatus(
-        "error",
-        err instanceof Error ? err.message : "Initial sync failed"
-      );
+      notifyStatus("error", helpfulErrorMessage(err));
       throw err;
     }
   })();
@@ -380,10 +424,77 @@ export async function runInitialSyncSession(
 
 export function stopSyncSession() {
   unsubscribeFromFinanceChanges();
-  currentHouseholdId = null;
+  activeConfig = null;
   syncInProgress = null;
 }
 
 export function getActiveHouseholdId() {
-  return currentHouseholdId ?? getHouseholdSyncKey();
+  return activeConfig?.householdKey ?? getHouseholdSyncKey();
+}
+
+export async function diagnoseSync(
+  getLocalState: () => FinanceState
+): Promise<SyncDiagnostics> {
+  const config = await loadSyncConfig();
+  const householdId = config?.householdKey ?? getHouseholdSyncKey();
+  const steps: SyncDiagnosticStep[] = [];
+
+  if (!config) {
+    return {
+      ok: false,
+      configured: false,
+      householdId,
+      steps: [
+        {
+          name: "Supabase config",
+          ok: false,
+          message:
+            "Missing NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local or hosting settings.",
+        },
+      ],
+    };
+  }
+
+  activeConfig = config;
+  steps.push({
+    name: "Supabase config",
+    ok: true,
+    message: "URL and key found",
+  });
+
+  try {
+    const remote = await fetchRemoteFinance(householdId);
+    steps.push({
+      name: "Read cloud",
+      ok: true,
+      message: remote
+        ? `Cloud data found (${remote.data.transactions?.length ?? 0} transactions)`
+        : "No cloud data yet — will upload on first change",
+    });
+  } catch (err) {
+    steps.push({
+      name: "Read cloud",
+      ok: false,
+      message: helpfulErrorMessage(err),
+    });
+    return { ok: false, configured: true, householdId, steps };
+  }
+
+  try {
+    await pushFinanceState(householdId, getLocalState());
+    steps.push({
+      name: "Write cloud",
+      ok: true,
+      message: "Upload test succeeded",
+    });
+  } catch (err) {
+    steps.push({
+      name: "Write cloud",
+      ok: false,
+      message: helpfulErrorMessage(err),
+    });
+    return { ok: false, configured: true, householdId, steps };
+  }
+
+  return { ok: true, configured: true, householdId, steps };
 }

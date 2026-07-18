@@ -1,59 +1,118 @@
-# Couple Finance
+# Couple Finance (Grik Finance)
 
-Personal finance management for **Kushvanth** and **Grishma**, built with a Liquid Glass–inspired Apple UI. Designed as a responsive web app that can later be wrapped as an iPhone app.
+Personal finance app for Kushvanth & Grishma.
 
-## Features
+## Cloud sync between 2 phones (no login)
 
-- **Dashboard** — Household overview with charts, credit utilization, and couple summary
-- **Spend** — Quick expense entry with payment method selection and cash withdrawal flow
-- **Income** — Track income by source with monthly/yearly totals
-- **Expenses** — Editable recurring and one-time monthly expenses (e.g. Mama $2,000 in August)
-- **Accounts** — Credit cards, debit accounts, and cash wallets with live balances
-- **Debts** — Outstanding debts with payment tracking
-- **Between Us** — Money owed between partners with full history
-- **History** — Complete transaction log
+Both phones open the **same Vercel URL**. Changes sync automatically every 5 seconds.
 
-All data persists in your browser via localStorage. Optional **Supabase cloud sync** keeps both partners in sync across devices.
+---
 
-## Cloud Sync (Supabase) — no login
+## Part 1 — Create Supabase project
 
-1. Create a [Supabase](https://supabase.com) project (free tier is fine).
-2. In **Project Settings → API**, copy the project URL and anon key.
-3. Copy `.env.local.example` to `.env.local` and paste those values.
-4. In the Supabase **SQL Editor**, run:
-   - `supabase/migrations/001_household_finance.sql` (new projects), **or**
-   - `supabase/migrations/003_no_login_sync.sql` (if you already ran the old login-based migration)
-5. Restart the dev server and **redeploy** with the same env vars on your hosting (Vercel, etc.).
+1. Go to **[supabase.com](https://supabase.com)** and sign in (GitHub is easiest).
+2. Click **New project**.
+3. Fill in:
+   - **Name:** `grik-finance` (or anything)
+   - **Database password:** choose a strong password (save it somewhere)
+   - **Region:** pick closest to you (e.g. `East US`)
+4. Click **Create new project** and wait ~2 minutes.
 
-Both phones open the **same website URL** — data syncs automatically every 10 seconds. No account or password needed.
+### Run the database setup
 
-### Sync not working?
+1. In Supabase, open **SQL Editor** (left sidebar).
+2. Click **New query**.
+3. Open the file `supabase/setup.sql` from this repo, copy **all** of it, paste into the editor.
+4. Click **Run** (or Ctrl+Enter).
+5. You should see **Success. No rows returned**.
 
-- Header should say **Synced** (not "Setup sync")
-- Both phones must use the **same website** (same deployment / env vars)
-- On the second phone, open **Sync → Download latest**
-- If you used the old login-based setup, run `003_no_login_sync.sql` in Supabase
+### Copy your API keys
 
-## Getting Started
+1. In Supabase, go to **Project Settings** (gear icon) → **API**.
+2. Copy these two values:
+   - **Project URL** → looks like `https://abcdefgh.supabase.co`
+   - **anon public** key → long string under "Project API keys"
 
-```bash
-cd couple-finance
-npm install
-npm run dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000).
+## Part 2 — Local setup (optional, for testing)
 
-## Tech Stack
+1. Copy `.env.local.example` to `.env.local`:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT-ID.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+   ```
+2. Paste your real URL and anon key from Supabase.
+3. Run:
+   ```bash
+   npm install
+   npm run dev
+   ```
+4. Open [http://localhost:3000/sync](http://localhost:3000/sync) → click **Test connection** → all green ✓
 
-- Next.js 16 (App Router)
-- TypeScript
-- Tailwind CSS 4
-- Zustand (state + persistence)
-- Supabase (optional cloud sync)
-- Recharts (dashboard charts)
-- Lucide React (icons)
+---
 
-## Future Roadmap
+## Part 3 — Push to GitHub (GitHub Desktop)
 
-Architecture supports adding: budget planning, investments, savings goals, bill reminders, export, Face ID, notifications, and AI insights.
+1. Open **GitHub Desktop**.
+2. **File → Add local repository** → select the `couple-finance` folder.
+3. If it asks to create a repo, click **Create a repository**:
+   - Name: `couple-finance`
+   - Keep "Initialize with README" **unchecked** (you already have files)
+4. Review changed files in the left panel (should **not** include `.env.local` — that stays private).
+5. Write a commit message, e.g. `Add Supabase cloud sync`.
+6. Click **Commit to main**.
+7. Click **Publish repository** (or **Push origin** if already published).
+
+> **Important:** Never commit `.env.local`. It is in `.gitignore`.
+
+---
+
+## Part 4 — Deploy on Vercel
+
+1. Go to **[vercel.com](https://vercel.com)** and sign in with GitHub.
+2. Click **Add New… → Project**.
+3. Import your `couple-finance` repository.
+4. Before clicking Deploy, expand **Environment Variables** and add:
+
+   | Name | Value |
+   |------|--------|
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://YOUR-PROJECT-ID.supabase.co` |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | your anon key from Supabase |
+
+5. Click **Deploy** and wait for the build to finish.
+6. Open your Vercel URL (e.g. `https://couple-finance.vercel.app`).
+
+### After changing env vars on Vercel
+
+Always click **Redeploy** (Deployments → ⋯ → Redeploy) so the new keys are baked into the build.
+
+---
+
+## Part 5 — Use on both phones
+
+1. Open the **same Vercel URL** on phone 1 and phone 2.
+2. Header should show **Synced** (tap it to open `/sync`).
+3. On phone 1: add a spend or income.
+4. On phone 2: wait ~5 seconds, or go to **Sync → Download latest**.
+
+No login. No password. Same URL = same data.
+
+---
+
+## Troubleshooting
+
+| Header shows | Fix |
+|--------------|-----|
+| **Setup sync** | Add env vars on Vercel and redeploy |
+| **Sync error** | Open `/sync` → **Test connection** — follow the red message |
+| Table missing | Run `supabase/setup.sql` again in Supabase SQL Editor |
+| Phones out of sync | Both must use the **exact same Vercel URL** |
+
+---
+
+## Tech stack
+
+- Next.js 16, React 19, TypeScript, Tailwind CSS 4
+- Zustand (local state + localStorage)
+- Supabase (cloud sync, no auth)
