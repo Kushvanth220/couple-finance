@@ -1,5 +1,6 @@
 import { formatCurrency } from "./formatters";
-import { PERSON_LABELS, type Person } from "@/types";
+import { recalculateInterCoupleState } from "./transaction-reversal";
+import { PERSON_LABELS, type Person, type InterCoupleEntry, type Transaction } from "@/types";
 
 /** Plain-language summary for the Between Us balance card. */
 export function getInterCoupleSummary(balance: number) {
@@ -35,3 +36,45 @@ export const CREDIT_LABELS = {
   limit: "Credit limit",
   percentUsed: "used",
 } as const;
+
+/** Recompute running balances from full history (newest first). */
+export function getDisplayInterCoupleHistory(history: InterCoupleEntry[]) {
+  return recalculateInterCoupleState(history).interCoupleHistory;
+}
+
+/** Find the main History transaction linked to a Between Us entry. */
+export function resolveLinkedTransactionId(
+  entry: InterCoupleEntry,
+  transactions: Transaction[]
+): string | undefined {
+  if (entry.autoMessage === "Starting balance") return undefined;
+
+  if (entry.sourceTransactionId) {
+    const linked = transactions.find((t) => t.id === entry.sourceTransactionId);
+    if (linked) return linked.id;
+  }
+
+  const match = transactions.find((transaction) => {
+    if (transaction.date !== entry.date || transaction.time !== entry.time) return false;
+    if (Math.abs(transaction.amount - entry.amount) >= 0.02) return false;
+
+    const paidBy = transaction.paidByPerson ?? transaction.person;
+    if (paidBy !== entry.paidBy) return false;
+
+    if (transaction.type === "inter_couple") {
+      return transaction.beneficiaryPerson === entry.benefited;
+    }
+
+    if (transaction.expenseShares) {
+      const share = transaction.expenseShares[entry.benefited] ?? 0;
+      return share > 0 && Math.abs(share - entry.amount) < 0.02;
+    }
+
+    return (
+      transaction.beneficiaryPerson === entry.benefited ||
+      transaction.expenseOwner === entry.benefited
+    );
+  });
+
+  return match?.id;
+}

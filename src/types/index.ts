@@ -114,6 +114,8 @@ export interface InterCoupleEntry {
 export interface DeletedHistoryRecord {
   id: string;
   deletedAt: string;
+  /** Who removed this from active History (Kushvanth or Grishma). */
+  deletedBy?: Person;
   primaryTransactionId: string;
   transactions: Transaction[];
   removedInterCoupleEntries: InterCoupleEntry[];

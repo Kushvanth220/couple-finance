@@ -1,4 +1,4 @@
--- Grik Finance: run this ENTIRE file once in Supabase SQL Editor
+-- KG Finance: run this ENTIRE file once in Supabase SQL Editor
 -- Safe for first-time setup (no existing table needed)
 
 drop table if exists public.household_finance cascade;

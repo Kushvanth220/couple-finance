@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BRAND_INITIALS } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 interface GrikLogoProps {
@@ -35,7 +36,7 @@ export function GrikLogo({
             isHero ? "text-4xl md:text-5xl" : "text-xl"
           )}
         >
-          {"Grik".split("").map((letter, index) => (
+          {BRAND_INITIALS.split("").map((letter, index) => (
             <span
               key={`${letter}-${index}`}
               className="grik-letter grik-gradient-text inline-block"

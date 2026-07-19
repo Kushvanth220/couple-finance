@@ -1,4 +1,4 @@
-# Couple Finance (Grik Finance)
+# Couple Finance (KG Finance)
 
 Personal finance app for Kushvanth & Grishma.
 

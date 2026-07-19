@@ -134,6 +134,11 @@ export function DeletedHistoryCard({ record }: { record: DeletedHistoryRecord })
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#ff3b30]/15 text-[#ff3b30]">
               Deleted
             </span>
+            {record.deletedBy ? (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#5856d6]/15 text-[#5856d6]">
+                By {PERSON_LABELS[record.deletedBy]}
+              </span>
+            ) : null}
             <span className="text-xs text-muted">
               Removed {formatDateTime(record.deletedAt.slice(0, 10), record.deletedAt.slice(11, 19), record.deletedAt)}
             </span>
@@ -159,6 +164,19 @@ export function DeletedHistoryCard({ record }: { record: DeletedHistoryRecord })
           Full deleted details
         </summary>
         <div className="mt-3 space-y-3">
+          <DetailRow
+            label="Deleted by"
+            value={record.deletedBy ? PERSON_LABELS[record.deletedBy] : "Not recorded"}
+          />
+          <DetailRow
+            label="Deleted at"
+            value={formatDateTime(
+              record.deletedAt.slice(0, 10),
+              record.deletedAt.slice(11, 19),
+              record.deletedAt
+            )}
+          />
+
           {record.transactions.map((transaction) => (
             <TransactionDetails
               key={transaction.id}

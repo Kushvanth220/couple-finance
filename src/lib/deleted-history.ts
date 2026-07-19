@@ -8,8 +8,10 @@ import type {
   IncomeSource,
   InterCoupleEntry,
   MonthlyExpense,
+  Person,
   Transaction,
 } from "@/types";
+import { PERSON_LABELS } from "@/types";
 
 export function buildDeletedHistoryRecord(opts: {
   primaryTransactionId: string;
@@ -20,6 +22,7 @@ export function buildDeletedHistoryRecord(opts: {
   accounts: Account[];
   debts: Debt[];
   incomeSources: IncomeSource[];
+  deletedBy: Person;
   deletedAt?: string;
 }): DeletedHistoryRecord {
   const {
@@ -31,6 +34,7 @@ export function buildDeletedHistoryRecord(opts: {
     accounts,
     debts,
     incomeSources,
+    deletedBy,
     deletedAt = new Date().toISOString(),
   } = opts;
 
@@ -38,7 +42,9 @@ export function buildDeletedHistoryRecord(opts: {
     removedTransactions.find((t) => t.id === primaryTransactionId) ??
     removedTransactions[0];
 
-  const summaryParts: string[] = [];
+  const summaryParts: string[] = [
+    `Deleted by ${PERSON_LABELS[deletedBy]}`,
+  ];
   if (primary) {
     summaryParts.push(getTransactionDisplayMessage(primary));
   }
@@ -58,6 +64,7 @@ export function buildDeletedHistoryRecord(opts: {
   return {
     id: uuidv4(),
     deletedAt,
+    deletedBy,
     primaryTransactionId,
     transactions: removedTransactions.map((t) => ({ ...t })),
     removedInterCoupleEntries: removedInterCoupleEntries.map((e) => ({ ...e })),

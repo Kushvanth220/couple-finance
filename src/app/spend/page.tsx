@@ -4,12 +4,13 @@ import { useState, useMemo } from "react";
 import {
   ArrowRight,
   Banknote,
+  ChevronDown,
   CreditCard,
   Wallet,
 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { GlassInput } from "@/components/ui/glass-input";
+import { PersonTabs } from "@/components/ui/person-tabs";
 import { useFinanceStore } from "@/store/finance-store";
 import { getMonthExpenses } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/formatters";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 type Step = "details" | "payment" | "cash-source" | "done";
 type PaidByMode = "kushvanth" | "grishma" | "split";
+type CategoryMode = "bills" | "debts" | "custom";
 
 type CategorySelection =
   | { type: "expense"; item: MonthlyExpense }
@@ -88,6 +90,9 @@ export default function SpendPage() {
   const [expenseShareKush, setExpenseShareKush] = useState("");
   const [expenseShareGrish, setExpenseShareGrish] = useState("");
   const [notes, setNotes] = useState("");
+  const [categoryPerson, setCategoryPerson] = useState<Person>("kushvanth");
+  const [categoryMode, setCategoryMode] = useState<CategoryMode>("bills");
+  const [showNotes, setShowNotes] = useState(false);
 
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [pendingCashFor, setPendingCashFor] = useState<Person | null>(null);
@@ -125,9 +130,56 @@ export default function SpendPage() {
     setSelectedAccount(null);
     setPendingCashFor(null);
     setSplitPayments({});
+    setCategoryPerson("kushvanth");
+    setCategoryMode("bills");
+    setShowNotes(false);
   };
 
+  const handleCategoryModeChange = (mode: CategoryMode) => {
+    setCategoryMode(mode);
+    if (mode === "custom") {
+      setSelection({ type: "custom", name: customName, owner: customOwner });
+    } else if (selection?.type === "custom") {
+      setSelection(null);
+      setCustomName("");
+    }
+  };
+
+  const handleCategoryPersonChange = (person: Person) => {
+    setCategoryPerson(person);
+    if (
+      selection &&
+      selection.type !== "custom" &&
+      selection.item.person !== person
+    ) {
+      setSelection(null);
+    }
+  };
+
+  const selectionSummary = useMemo(() => {
+    if (!selection) return null;
+    if (selection.type === "custom") {
+      return customName.trim() ? customName.trim() : "Something else";
+    }
+    return selection.item.name;
+  }, [selection, customName]);
+
+  const selectionMeta = useMemo(() => {
+    if (!selection) return null;
+    if (selection.type === "custom") {
+      return customOwner === "both"
+        ? "Custom · both of you"
+        : `Custom · ${PERSON_LABELS[customOwner]}`;
+    }
+    if (selection.type === "debt") {
+      return `Debt · ${PERSON_LABELS[selection.item.person]}`;
+    }
+    return `Monthly bill · ${PERSON_LABELS[selection.item.person]}`;
+  }, [selection, customOwner]);
+
   const selectExpense = (expense: MonthlyExpense) => {
+    setCategoryPerson(expense.person);
+    setCategoryMode("bills");
     setSelection({ type: "expense", item: expense });
     setCustomName("");
     if (!amount.trim() && expense.amount != null) {
@@ -139,6 +191,8 @@ export default function SpendPage() {
   };
 
   const selectDebt = (debt: Debt) => {
+    setCategoryPerson(debt.person);
+    setCategoryMode("debts");
     setSelection({ type: "debt", item: debt });
     setCustomName("");
     if (!amount.trim()) {
@@ -147,16 +201,6 @@ export default function SpendPage() {
         applySplitAmounts(debt.amount, paidByMode);
       }
     }
-  };
-
-  const selectCustom = () => {
-    setSelection({ type: "custom", name: customName, owner: customOwner });
-  };
-
-  const applyEvenExpenseSplit = (total: number) => {
-    const half = total / 2;
-    setExpenseShareKush(String(half));
-    setExpenseShareGrish(String(half));
   };
 
   const applySplitAmounts = (total: number, mode: PaidByMode, resetSplit = false) => {
@@ -171,6 +215,12 @@ export default function SpendPage() {
       setKushShare(String(half));
       setGrishShare(String(half));
     }
+  };
+
+  const applyEvenExpenseSplit = (total: number) => {
+    const half = total / 2;
+    setExpenseShareKush(String(half));
+    setExpenseShareGrish(String(half));
   };
 
   const handleAmountChange = (val: string) => {
@@ -448,7 +498,7 @@ export default function SpendPage() {
 
   const expenseOwnerLabel =
     expenseOwner === "both"
-      ? "Both"
+      ? "Both of us"
       : PERSON_LABELS[expenseOwner as Person];
 
   const confirmTransaction = (
@@ -510,10 +560,10 @@ export default function SpendPage() {
     const done = paidByMode === "split" && !!splitPayments[person];
 
     return (
-      <div key={person} className="space-y-2">
-        <p className="text-sm font-medium px-1 flex items-center justify-between">
-          {PERSON_LABELS[person]} — {formatCurrency(paidByMode === "split" ? share : parsedAmount)}
-          {done && <span className="text-[#34c759] text-xs">✓ Selected</span>}
+      <div key={person} className="space-y-1.5">
+        <p className="text-xs font-medium px-1 flex items-center justify-between">
+          {PERSON_LABELS[person]} · {formatCurrency(paidByMode === "split" ? share : parsedAmount)}
+          {done && <span className="text-[#34c759] text-[10px]">✓</span>}
         </p>
         {(!done || paidByMode !== "split") && (
           <>
@@ -521,13 +571,13 @@ export default function SpendPage() {
               <GlassCard
                 key={a.id}
                 onClick={() => handleSelectAccount(a, person)}
-                className="flex justify-between py-3 cursor-pointer"
+                className="flex justify-between py-2 px-3 cursor-pointer"
               >
-                <span className="font-medium">
-                  <CreditCard className="w-4 h-4 inline mr-2" />
+                <span className="text-sm font-medium">
+                  <CreditCard className="w-3.5 h-3.5 inline mr-1.5" />
                   {a.name}
                 </span>
-                <span className="text-sm text-muted">
+                <span className="text-[11px] text-muted">
                   {formatCurrency((a.creditLimit ?? 0) - a.balance)} left
                 </span>
               </GlassCard>
@@ -536,25 +586,25 @@ export default function SpendPage() {
               <GlassCard
                 key={a.id}
                 onClick={() => handleSelectAccount(a, person)}
-                className="flex justify-between py-3 cursor-pointer"
+                className="flex justify-between py-2 px-3 cursor-pointer"
               >
-                <span className="font-medium">
-                  <Wallet className="w-4 h-4 inline mr-2" />
+                <span className="text-sm font-medium">
+                  <Wallet className="w-3.5 h-3.5 inline mr-1.5" />
                   {a.name}
                 </span>
-                <span className="text-sm text-muted">{formatCurrency(a.balance)}</span>
+                <span className="text-[11px] text-muted">{formatCurrency(a.balance)}</span>
               </GlassCard>
             ))}
             {getCashAccount(person) && (
               <GlassCard
                 onClick={() => handleSelectAccount(getCashAccount(person)!, person)}
-                className="flex justify-between py-3 cursor-pointer"
+                className="flex justify-between py-2 px-3 cursor-pointer"
               >
-                <span className="font-medium">
-                  <Banknote className="w-4 h-4 inline mr-2" />
-                  Cash Wallet
+                <span className="text-sm font-medium">
+                  <Banknote className="w-3.5 h-3.5 inline mr-1.5" />
+                  Cash
                 </span>
-                <span className="text-sm text-muted">
+                <span className="text-[11px] text-muted">
                   {formatCurrency(getCashAccount(person)!.balance)}
                 </span>
               </GlassCard>
@@ -566,266 +616,225 @@ export default function SpendPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in-up max-w-lg mx-auto">
+    <div className="space-y-4 animate-fade-in-up max-w-lg mx-auto pb-2">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Spend</h2>
-        <p className="text-muted mt-1">Pay expenses, bills & debts</p>
+        <h2 className="text-2xl font-bold tracking-tight">Spend</h2>
+        <p className="text-muted text-sm mt-0.5">Record a payment</p>
       </div>
 
       {step === "details" && (
-        <GlassCard strong className="space-y-5">
-          {/* Amount */}
-          <div className="text-center py-2">
-            <label className="text-sm text-muted">Amount</label>
-            <div className="flex items-center justify-center gap-1 mt-2">
-              <span className="text-4xl font-light text-muted">$</span>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                placeholder="0"
-                className="text-5xl font-bold bg-transparent outline-none w-48 text-center"
-                autoFocus
-              />
-            </div>
+        <GlassCard strong className="space-y-3 p-4">
+          <div className="flex items-center justify-center gap-1 py-1">
+            <span className="text-2xl font-light text-muted">$</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => handleAmountChange(e.target.value)}
+              placeholder="0"
+              className="text-4xl font-bold bg-transparent outline-none w-36 text-center"
+              autoFocus
+            />
           </div>
 
           {categoryProgress && parsedAmount > 0 && (
-            <GlassCard className="bg-[#007aff]/5 border border-[#007aff]/20 space-y-2 py-4">
-              <p className="text-sm font-semibold">{categoryProgress.label}</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted">{categoryProgress.isDebt ? "Total to pay" : "Monthly budget"}</span>
-                  <p className="font-semibold">{formatCurrency(categoryProgress.planned)}</p>
-                </div>
-                {!categoryProgress.isDebt && (
-                  <div>
-                    <span className="text-muted">Already paid this month</span>
-                    <p className="font-semibold">{formatCurrency(categoryProgress.spent)}</p>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted">This payment</span>
-                  <p className="font-semibold text-[#ff3b30]">{formatCurrency(categoryProgress.thisPayment)}</p>
-                </div>
-                <div>
-                  <span className="text-muted">{categoryProgress.isDebt ? "Remaining after" : "Left this month"}</span>
-                  <p className="font-semibold text-[#34c759]">{formatCurrency(categoryProgress.remaining)}</p>
-                </div>
+            <div className="rounded-xl bg-[#007aff]/5 border border-[#007aff]/20 px-3 py-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold truncate">{categoryProgress.label}</span>
+                <span className="text-[#34c759] font-semibold shrink-0">
+                  {formatCurrency(categoryProgress.remaining)} left
+                </span>
               </div>
               {!categoryProgress.isDebt && (
-                <div className="mt-2 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                <div className="mt-1.5 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
                   <div
-                    className="h-full bg-[#007aff] rounded-full transition-all"
+                    className="h-full bg-[#007aff] rounded-full"
                     style={{
-                      width: `${Math.min(100, ((categoryProgress.spent + categoryProgress.thisPayment) / categoryProgress.planned) * 100)}%`,
+                      width: `${Math.min(
+                        100,
+                        ((categoryProgress.spent + categoryProgress.thisPayment) /
+                          categoryProgress.planned) *
+                          100
+                      )}%`,
                     }}
                   />
                 </div>
               )}
-            </GlassCard>
+            </div>
           )}
 
-          {/* Category picker — expenses + debts unified */}
-          <div>
-            <label className="text-sm font-medium text-muted px-1 mb-2 block">
-              What is this for?
-            </label>
+          <div className="space-y-2">
+            {selectionSummary && (
+              <div className="rounded-xl border border-[#34c759]/30 bg-[#34c759]/10 px-3 py-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{selectionSummary}</p>
+                  {selectionMeta && <p className="text-[11px] text-muted truncate">{selectionMeta}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelection(null);
+                    setCustomName("");
+                  }}
+                  className="text-[11px] text-[#007aff] font-medium shrink-0"
+                >
+                  Change
+                </button>
+              </div>
+            )}
 
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide px-1 mt-3 mb-1.5">
-              Kushvanth — Expenses
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {expenseCategories.kush.map((expense) => (
-                <CategoryButton
-                  key={expense.id}
-                  label={expense.name}
-                  sub={expenseSubLine(expense, transactions)}
-                  selected={selection?.type === "expense" && selection.item.id === expense.id}
-                  onClick={() => selectExpense(expense)}
-                />
+            <PersonTabs value={categoryPerson} onChange={handleCategoryPersonChange} />
+
+            <div className="glass rounded-xl p-0.5 flex gap-0.5">
+              {(
+                [
+                  { id: "bills" as CategoryMode, label: "Bills" },
+                  { id: "debts" as CategoryMode, label: "Debt" },
+                  { id: "custom" as CategoryMode, label: "Custom" },
+                ]
+              ).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleCategoryModeChange(id)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-lg text-xs font-medium transition-all",
+                    categoryMode === id ? "bg-[#007aff] text-white" : "text-muted"
+                  )}
+                >
+                  {label}
+                </button>
               ))}
             </div>
 
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide px-1 mt-3 mb-1.5">
-              Grishma — Expenses
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {expenseCategories.grish.map((expense) => (
-                <CategoryButton
-                  key={expense.id}
-                  label={expense.name}
-                  sub={expenseSubLine(expense, transactions)}
-                  selected={selection?.type === "expense" && selection.item.id === expense.id}
-                  onClick={() => selectExpense(expense)}
-                />
-              ))}
-            </div>
+            {categoryMode === "bills" && (
+              <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                {(categoryPerson === "kushvanth"
+                  ? expenseCategories.kush
+                  : expenseCategories.grish
+                ).map((expense) => (
+                  <CategoryButton
+                    key={expense.id}
+                    label={expense.name}
+                    sub={expenseSubLine(expense, transactions)}
+                    tag="Bill"
+                    selected={selection?.type === "expense" && selection.item.id === expense.id}
+                    onClick={() => selectExpense(expense)}
+                  />
+                ))}
+              </div>
+            )}
 
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide px-1 mt-3 mb-1.5">
-              Kushvanth — Debts
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {debtCategories.kush.map((debt) => (
-                <CategoryButton
-                  key={debt.id}
-                  label={debt.name}
-                  sub={formatCurrency(debt.amount)}
-                  selected={selection?.type === "debt" && selection.item.id === debt.id}
-                  onClick={() => selectDebt(debt)}
-                  variant="debt"
-                />
-              ))}
-            </div>
-
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide px-1 mt-3 mb-1.5">
-              Grishma — Debts
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {debtCategories.grish.map((debt) => (
-                <CategoryButton
-                  key={debt.id}
-                  label={debt.name}
-                  sub={formatCurrency(debt.amount)}
-                  selected={selection?.type === "debt" && selection.item.id === debt.id}
-                  onClick={() => selectDebt(debt)}
-                  variant="debt"
-                />
-              ))}
-            </div>
-
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide px-1 mt-3 mb-1.5">
-              Other
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setSelection({ type: "custom", name: customName, owner: customOwner });
-              }}
-              className={cn(
-                "w-full glass rounded-xl px-3 py-2.5 text-left text-sm mb-2 transition-all",
-                selection?.type === "custom" && "ring-2 ring-[#007aff]"
-              )}
-            >
-              <p className="font-medium">Custom</p>
-              <p className="text-[10px] text-muted">Anything else</p>
-            </button>
-            {selection?.type === "custom" && (
+            {categoryMode === "debts" && (
               <>
-                <GlassInput
-                  label="Description"
+                {(categoryPerson === "kushvanth" ? debtCategories.kush : debtCategories.grish)
+                  .length === 0 ? (
+                  <p className="text-xs text-muted px-1 py-2 text-center">No debts listed.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                    {(categoryPerson === "kushvanth"
+                      ? debtCategories.kush
+                      : debtCategories.grish
+                    ).map((debt) => (
+                      <CategoryButton
+                        key={debt.id}
+                        label={debt.name}
+                        sub={`${formatCurrency(debt.amount)} owed`}
+                        tag="Debt"
+                        selected={selection?.type === "debt" && selection.item.id === debt.id}
+                        onClick={() => selectDebt(debt)}
+                        variant="debt"
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {categoryMode === "custom" && (
+              <div className="space-y-2 rounded-xl border border-[#007aff]/20 bg-[#007aff]/5 p-3">
+                <input
                   value={customName}
                   onChange={(e) => {
                     setCustomName(e.target.value);
                     setSelection({ type: "custom", name: e.target.value, owner: customOwner });
                   }}
-                  placeholder="e.g. Groceries, Gift"
+                  placeholder="What was it? e.g. Groceries"
+                  className="w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
                 />
-                <div className="mt-2">
-                  <label className="text-sm font-medium text-muted px-1 mb-2 block">Whose expense?</label>
-                  <div className="glass rounded-2xl p-1 flex gap-1">
-                    {(["kushvanth", "grishma", "both"] as ExpenseOwner[]).map((p) => (
+
+                <div>
+                  <p className="text-[11px] text-muted px-1 mb-1">Who is this for?</p>
+                  <div className="glass rounded-xl p-0.5 flex gap-0.5">
+                    {(
+                      [
+                        { id: "kushvanth" as ExpenseOwner, label: PERSON_LABELS.kushvanth },
+                        { id: "grishma" as ExpenseOwner, label: PERSON_LABELS.grishma },
+                        { id: "both" as ExpenseOwner, label: "Both" },
+                      ]
+                    ).map(({ id, label }) => (
                       <button
-                        key={p}
+                        key={id}
                         type="button"
                         onClick={() => {
-                          setCustomOwner(p);
-                          setSelection({ type: "custom", name: customName, owner: p });
-                          if (p === "both" && parsedAmount > 0) {
+                          setCustomOwner(id);
+                          setSelection({ type: "custom", name: customName, owner: id });
+                          if (id === "both" && parsedAmount > 0) {
                             applyEvenExpenseSplit(parsedAmount);
-                          } else if (p !== "both") {
+                          } else if (id !== "both") {
                             setExpenseShareKush("");
                             setExpenseShareGrish("");
                           }
                         }}
                         className={cn(
-                          "flex-1 py-2 rounded-xl text-sm font-medium transition-all",
-                          customOwner === p ? "bg-[#007aff] text-white" : "text-muted"
+                          "flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                          customOwner === id ? "bg-[#007aff] text-white" : "text-muted"
                         )}
                       >
-                        {p === "both" ? "Both" : PERSON_LABELS[p]}
+                        {label}
                       </button>
                     ))}
                   </div>
                 </div>
+
                 {sharedExpense && (
-                  <div className="mt-3 space-y-3">
-                    <p className="text-xs text-muted px-1">
-                      Split the expense between you — Between Us updates automatically.
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <GlassInput
-                        label={`${PERSON_LABELS.kushvanth}'s share`}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={expenseShareKush}
-                        onChange={(e) => handleExpenseShareKushChange(e.target.value)}
-                        placeholder="0.00"
-                      />
-                      <GlassInput
-                        label={`${PERSON_LABELS.grishma}'s share`}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={expenseShareGrish}
-                        onChange={(e) => handleExpenseShareGrishChange(e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    {parsedAmount > 0 && (
-                      <>
-                        <div className="flex items-center justify-between px-1 text-xs">
-                          <span className="text-muted">
-                            Total: {formatCurrency(expenseShareKushAmt + expenseShareGrishAmt)} /{" "}
-                            {formatCurrency(parsedAmount)}
-                          </span>
-                          {!expenseSharesValid && (
-                            <span className="text-[#ff3b30] font-medium">
-                              {expenseSplitRemaining > 0
-                                ? `${formatCurrency(expenseSplitRemaining)} remaining`
-                                : `${formatCurrency(Math.abs(expenseSplitRemaining))} over`}
-                            </span>
-                          )}
-                          {expenseSharesValid && expenseShareKushAmt + expenseShareGrishAmt > 0 && (
-                            <span className="text-[#34c759] font-medium">✓ Balanced</span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={applyEvenExpenseSplitAction}
-                          className="text-xs text-[#007aff] font-medium px-1 hover:underline"
-                        >
-                          Reset to 50 / 50 ({formatCurrency(parsedAmount / 2)} each)
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  <CompactSplitInputs
+                    kushLabel={`${PERSON_LABELS.kushvanth}'s part`}
+                    grishLabel={`${PERSON_LABELS.grishma}'s part`}
+                    kushValue={expenseShareKush}
+                    grishValue={expenseShareGrish}
+                    onKushChange={handleExpenseShareKushChange}
+                    onGrishChange={handleExpenseShareGrishChange}
+                    total={parsedAmount}
+                    kushAmt={expenseShareKushAmt}
+                    grishAmt={expenseShareGrishAmt}
+                    valid={expenseSharesValid}
+                    remaining={expenseSplitRemaining}
+                    onEvenSplit={applyEvenExpenseSplitAction}
+                  />
                 )}
-              </>
+              </div>
             )}
           </div>
 
           {betweenUsPreview && betweenUsPreview.length > 0 && (
-            <GlassCard className="bg-[#af52de]/5 border border-[#af52de]/20 py-3 px-4">
-              <p className="text-xs font-semibold text-[#af52de] mb-1">Between Us preview</p>
+            <div className="rounded-xl bg-[#af52de]/5 border border-[#af52de]/20 px-3 py-2">
+              <p className="text-[10px] font-semibold text-[#af52de] mb-0.5">Between Us</p>
               {betweenUsPreview.map((line) => (
-                <p key={line} className="text-sm">
+                <p key={line} className="text-xs leading-snug">
                   {line}
                 </p>
               ))}
-            </GlassCard>
+            </div>
           )}
 
-          {/* Paid by */}
           <div>
-            <label className="text-sm font-medium text-muted px-1 mb-2 block">Paid by</label>
-            <div className="glass rounded-2xl p-1 flex gap-1">
+            <p className="text-[11px] text-muted px-1 mb-1">Who paid?</p>
+            <div className="glass rounded-xl p-0.5 flex gap-0.5">
               {(
                 [
                   { id: "kushvanth" as PaidByMode, label: PERSON_LABELS.kushvanth },
                   { id: "grishma" as PaidByMode, label: PERSON_LABELS.grishma },
-                  { id: "split" as PaidByMode, label: "Split Amount" },
+                  { id: "split" as PaidByMode, label: "Both paid" },
                 ]
               ).map(({ id, label }) => (
                 <button
@@ -833,8 +842,8 @@ export default function SpendPage() {
                   type="button"
                   onClick={() => handlePaidByChange(id)}
                   className={cn(
-                    "flex-1 py-2.5 px-2 rounded-xl text-sm font-medium transition-all",
-                    paidByMode === id ? "bg-[#007aff] text-white shadow-md" : "text-muted"
+                    "flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                    paidByMode === id ? "bg-[#007aff] text-white" : "text-muted"
                   )}
                 >
                   {label}
@@ -843,65 +852,41 @@ export default function SpendPage() {
             </div>
 
             {paidByMode === "split" && (
-              <div className="mt-3 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <GlassInput
-                    label={`${PERSON_LABELS.kushvanth}'s share`}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={kushShare}
-                    onChange={(e) => handleKushShareChange(e.target.value)}
-                    placeholder="0.00"
-                  />
-                  <GlassInput
-                    label={`${PERSON_LABELS.grishma}'s share`}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={grishShare}
-                    onChange={(e) => handleGrishShareChange(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                {parsedAmount > 0 && (
-                  <div className="flex items-center justify-between px-1 text-xs">
-                    <span className="text-muted">
-                      Total: {formatCurrency(kushAmount + grishAmount)} / {formatCurrency(parsedAmount)}
-                    </span>
-                    {!paymentSharesValid && (
-                      <span className="text-[#ff3b30] font-medium">
-                        {splitRemaining > 0
-                          ? `${formatCurrency(splitRemaining)} remaining`
-                          : `${formatCurrency(Math.abs(splitRemaining))} over`}
-                      </span>
-                    )}
-                    {paymentSharesValid && kushAmount + grishAmount > 0 && (
-                      <span className="text-[#34c759] font-medium">✓ Balanced</span>
-                    )}
-                  </div>
-                )}
-
-                {parsedAmount > 0 && (
-                  <button
-                    type="button"
-                    onClick={applyEvenSplit}
-                    className="text-xs text-[#007aff] font-medium px-1 hover:underline"
-                  >
-                    Reset to 50 / 50 ({formatCurrency(parsedAmount / 2)} each)
-                  </button>
-                )}
+              <div className="mt-2">
+                <CompactSplitInputs
+                  kushLabel={`${PERSON_LABELS.kushvanth} paid`}
+                  grishLabel={`${PERSON_LABELS.grishma} paid`}
+                  kushValue={kushShare}
+                  grishValue={grishShare}
+                  onKushChange={handleKushShareChange}
+                  onGrishChange={handleGrishShareChange}
+                  total={parsedAmount}
+                  kushAmt={kushAmount}
+                  grishAmt={grishAmount}
+                  valid={paymentSharesValid}
+                  remaining={splitRemaining}
+                  onEvenSplit={applyEvenSplit}
+                />
               </div>
             )}
           </div>
 
-          <GlassInput
-            label="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add a note..."
-          />
+          <button
+            type="button"
+            onClick={() => setShowNotes((v) => !v)}
+            className="flex items-center gap-1 text-[11px] text-[#007aff] font-medium px-1"
+          >
+            <ChevronDown className={cn("w-3 h-3 transition-transform", showNotes && "rotate-180")} />
+            {showNotes ? "Hide note" : "Add note (optional)"}
+          </button>
+          {showNotes && (
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional note..."
+              className="w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
+            />
+          )}
 
           <GlassButton
             size="lg"
@@ -909,20 +894,20 @@ export default function SpendPage() {
             disabled={!isCategoryValid || parsedAmount <= 0 || !sharesValid}
             onClick={handleDetailsNext}
           >
-            Continue <ArrowRight className="w-5 h-5" />
+            Continue <ArrowRight className="w-4 h-4" />
           </GlassButton>
         </GlassCard>
       )}
 
       {step === "payment" && (
-        <div className="space-y-4">
-          <GlassCard className="text-center py-3">
-            <p className="text-sm text-muted">{categoryLabel}</p>
-            <p className="text-3xl font-bold">{formatCurrency(parsedAmount)}</p>
-            <p className="text-xs text-muted mt-1">
+        <div className="space-y-3">
+          <GlassCard className="text-center py-2 px-3">
+            <p className="text-xs text-muted truncate">{categoryLabel}</p>
+            <p className="text-2xl font-bold">{formatCurrency(parsedAmount)}</p>
+            <p className="text-[11px] text-muted mt-0.5">
               {paidByMode === "split"
-                ? `Split · ${expenseOwnerLabel}'s ${payingDebt ? "debt" : "expense"}`
-                : `${PERSON_LABELS[paidByMode]} paying · ${expenseOwnerLabel}'s ${payingDebt ? "debt" : "expense"}`}
+                ? `Both paid · ${expenseOwnerLabel}`
+                : `${PERSON_LABELS[paidByMode]} paid · ${expenseOwnerLabel}`}
             </p>
           </GlassCard>
 
@@ -943,28 +928,28 @@ export default function SpendPage() {
       )}
 
       {step === "cash-source" && pendingCashFor && (
-        <div className="space-y-4">
-          <GlassCard className="text-center py-4">
-            <p className="text-lg font-semibold">Where did this cash come from?</p>
-            <p className="text-sm text-muted mt-1">{PERSON_LABELS[pendingCashFor]}</p>
+        <div className="space-y-2">
+          <GlassCard className="text-center py-3 px-3">
+            <p className="text-sm font-semibold">Cash from which account?</p>
+            <p className="text-xs text-muted">{PERSON_LABELS[pendingCashFor]}</p>
           </GlassCard>
 
           {getDebitAccounts(pendingCashFor).map((account) => (
             <GlassCard
               key={account.id}
               onClick={() => handleCashSource(account.id)}
-              className="flex justify-between py-4 cursor-pointer"
+              className="flex justify-between py-2.5 px-3 cursor-pointer"
             >
-              <span className="font-medium">{account.name}</span>
-              <span className="text-sm text-muted">{formatCurrency(account.balance)}</span>
+              <span className="text-sm font-medium">{account.name}</span>
+              <span className="text-xs text-muted">{formatCurrency(account.balance)}</span>
             </GlassCard>
           ))}
 
           <GlassCard
             onClick={() => handleCashSource(null)}
-            className="flex justify-between py-4 cursor-pointer"
+            className="flex justify-between py-2.5 px-3 cursor-pointer"
           >
-            <span className="font-medium">Existing Cash Wallet</span>
+            <span className="text-sm font-medium">Existing Cash Wallet</span>
           </GlassCard>
 
           <GlassButton variant="ghost" className="w-full" onClick={() => setStep("payment")}>
@@ -974,17 +959,17 @@ export default function SpendPage() {
       )}
 
       {step === "done" && (
-        <GlassCard strong className="text-center space-y-4 py-8">
-          <div className="w-16 h-16 rounded-full bg-[#34c759]/20 flex items-center justify-center mx-auto">
-            <span className="text-3xl">✓</span>
+        <GlassCard strong className="text-center space-y-3 py-6 px-4">
+          <div className="w-12 h-12 rounded-full bg-[#34c759]/20 flex items-center justify-center mx-auto">
+            <span className="text-2xl">✓</span>
           </div>
-          <h3 className="text-xl font-semibold">Payment Recorded</h3>
-          <p className="text-muted">
+          <h3 className="text-lg font-semibold">Payment Recorded</h3>
+          <p className="text-sm text-muted">
             {formatCurrency(parsedAmount)} · {categoryLabel}
           </p>
           {categoryProgress && (
-            <p className="text-sm">
-              {categoryProgress.isDebt ? "Still to pay" : "Remaining this month"}:{" "}
+            <p className="text-xs">
+              {categoryProgress.isDebt ? "Still to pay" : "Left this month"}:{" "}
               <span className="font-semibold text-[#34c759]">
                 {formatCurrency(categoryProgress.remaining)}
               </span>
@@ -999,15 +984,101 @@ export default function SpendPage() {
   );
 }
 
+function CompactSplitInputs({
+  kushLabel,
+  grishLabel,
+  kushValue,
+  grishValue,
+  onKushChange,
+  onGrishChange,
+  total,
+  kushAmt,
+  grishAmt,
+  valid,
+  remaining,
+  onEvenSplit,
+}: {
+  kushLabel: string;
+  grishLabel: string;
+  kushValue: string;
+  grishValue: string;
+  onKushChange: (val: string) => void;
+  onGrishChange: (val: string) => void;
+  total: number;
+  kushAmt: number;
+  grishAmt: number;
+  valid: boolean;
+  remaining: number;
+  onEvenSplit: () => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted px-0.5 truncate">{kushLabel}</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={kushValue}
+            onChange={(e) => onKushChange(e.target.value)}
+            placeholder="0"
+            className="glass rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted px-0.5 truncate">{grishLabel}</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={grishValue}
+            onChange={(e) => onGrishChange(e.target.value)}
+            placeholder="0"
+            className="glass rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
+          />
+        </label>
+      </div>
+      {total > 0 && (
+        <>
+          <div className="flex items-center justify-between px-0.5 text-[10px]">
+            <span className="text-muted">
+              {formatCurrency(kushAmt + grishAmt)} / {formatCurrency(total)}
+            </span>
+            {!valid ? (
+              <span className="text-[#ff3b30] font-medium">
+                {remaining > 0
+                  ? `${formatCurrency(remaining)} left`
+                  : `${formatCurrency(Math.abs(remaining))} over`}
+              </span>
+            ) : (
+              <span className="text-[#34c759] font-medium">✓</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onEvenSplit}
+            className="text-[10px] text-[#007aff] font-medium px-0.5"
+          >
+            50 / 50 ({formatCurrency(total / 2)} each)
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CategoryButton({
   label,
   sub,
+  tag,
   selected,
   onClick,
   variant = "expense",
 }: {
   label: string;
   sub: string;
+  tag?: string;
   selected: boolean;
   onClick: () => void;
   variant?: "expense" | "debt";
@@ -1017,15 +1088,34 @@ function CategoryButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl px-3 py-2.5 text-left text-sm transition-all border",
+        "rounded-xl px-2 py-2 text-left text-xs transition-all border min-h-[52px] flex flex-col justify-between",
         selected
-          ? "ring-2 ring-[#007aff] bg-[#007aff]/10 border-[#007aff]/30"
-          : "glass border-transparent hover:border-white/20",
+          ? "ring-2 ring-[#007aff] bg-[#007aff]/10 border-[#007aff]/40 shadow-sm"
+          : "glass border-transparent hover:border-white/20 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]",
         variant === "debt" && !selected && "border-[#ff3b30]/10"
       )}
     >
-      <p className="font-medium truncate">{label}</p>
-      <p className={cn("text-[10px]", variant === "debt" ? "text-[#ff3b30]" : "text-muted")}>
+      <div className="flex items-start justify-between gap-1 w-full">
+        <p className="font-medium leading-tight line-clamp-2 text-[11px]">{label}</p>
+        {tag ? (
+          <span
+            className={cn(
+              "text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0",
+              variant === "debt"
+                ? "bg-[#ff3b30]/15 text-[#ff3b30]"
+                : "bg-black/5 dark:bg-white/10 text-muted"
+            )}
+          >
+            {tag}
+          </span>
+        ) : null}
+      </div>
+      <p
+        className={cn(
+          "text-[10px] mt-1",
+          variant === "debt" ? "text-[#ff9500] font-medium" : "text-muted"
+        )}
+      >
         {sub}
       </p>
     </button>

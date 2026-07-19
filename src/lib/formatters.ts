@@ -76,3 +76,34 @@ export function compareByDateTime(
     parseAppDateTime(a.date, a.time, a.timestamp).getTime()
   );
 }
+
+/** Compare two stored records for sorting (oldest first) */
+export function compareByDateTimeAsc(
+  a: { date: string; time?: string; timestamp?: string },
+  b: { date: string; time?: string; timestamp?: string }
+): number {
+  return -compareByDateTime(a, b);
+}
+
+/** True when a record falls within optional yyyy-MM-dd bounds (inclusive, local time). */
+export function isWithinDateRange(
+  record: { date: string; time?: string; timestamp?: string },
+  startDate?: string,
+  endDate?: string
+): boolean {
+  if (!startDate && !endDate) return true;
+
+  const when = parseAppDateTime(record.date, record.time, record.timestamp);
+
+  if (startDate) {
+    const start = parseAppDateTime(startDate, "00:00:00");
+    if (when < start) return false;
+  }
+
+  if (endDate) {
+    const end = parseAppDateTime(endDate, "23:59:59");
+    if (when > end) return false;
+  }
+
+  return true;
+}

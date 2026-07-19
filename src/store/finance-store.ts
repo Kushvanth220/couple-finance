@@ -24,6 +24,7 @@ import {
   type ExpenseShares,
 } from "@/lib/transaction-reversal";
 import { buildDeletedHistoryRecord } from "@/lib/deleted-history";
+import { celebrateBetweenUsUpdate } from "@/lib/between-us-celebration";
 import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data";
 import { parseAppDateTime } from "@/lib/formatters";
 import { seedData } from "@/lib/seed-data";
@@ -115,7 +116,7 @@ interface FinanceActions {
   ) => void;
   updateInterCoupleBalance: (amount: number) => void;
 
-  deleteTransaction: (id: string) => void;
+  deleteTransaction: (id: string, deletedBy: Person) => void;
   resetToSeed: () => void;
 }
 
@@ -158,6 +159,10 @@ function createTransaction(
     timestamp,
     ...extra,
   };
+}
+
+function withRecalculatedInterCouple(history: InterCoupleEntry[]) {
+  return recalculateInterCoupleState(history);
 }
 
 function updateInterCoupleFromSpend(
@@ -507,7 +512,8 @@ export const useFinanceStore = create<FinanceStore>()(
           };
         }),
 
-      payDebtForOther: (options) =>
+      payDebtForOther: (options) => {
+        const newInterEntries: InterCoupleEntry[] = [];
         set((state) => {
           const { paidBy, debtId, amount, fromAccountId, cashSourceAccountId } = options;
           const debt = state.debts.find((d) => d.id === debtId);
@@ -585,20 +591,29 @@ export const useFinanceStore = create<FinanceStore>()(
             );
             interCoupleBalance = interUpdate.balance;
             if (interUpdate.entry) {
+              newInterEntries.push(interUpdate.entry);
               interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
             }
           }
+
+          const inter = withRecalculatedInterCouple(interCoupleHistory);
 
           return {
             accounts,
             debts,
             transactions: [transaction, ...state.transactions],
-            interCoupleBalance,
-            interCoupleHistory,
+            interCoupleBalance: inter.interCoupleBalance,
+            interCoupleHistory: inter.interCoupleHistory,
           };
-        }),
+        });
+        celebrateBetweenUsUpdate(
+          newInterEntries,
+          useFinanceStore.getState().interCoupleBalance
+        );
+      },
 
-      spend: (options) =>
+      spend: (options) => {
+        const newInterEntries: InterCoupleEntry[] = [];
         set((state) => {
           const {
             person,
@@ -721,6 +736,7 @@ export const useFinanceStore = create<FinanceStore>()(
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
+                newInterEntries.push(interUpdate.entry);
                 interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
               }
             }
@@ -745,21 +761,30 @@ export const useFinanceStore = create<FinanceStore>()(
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
+                newInterEntries.push(interUpdate.entry);
                 interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
               }
             }
           }
 
+          const inter = withRecalculatedInterCouple(interCoupleHistory);
+
           return {
             accounts: applied.accounts,
             debts: applied.debts,
             transactions: [...newTransactions, ...state.transactions],
-            interCoupleBalance,
-            interCoupleHistory,
+            interCoupleBalance: inter.interCoupleBalance,
+            interCoupleHistory: inter.interCoupleHistory,
           };
-        }),
+        });
+        celebrateBetweenUsUpdate(
+          newInterEntries,
+          useFinanceStore.getState().interCoupleBalance
+        );
+      },
 
-      spendSplit: (options) =>
+      spendSplit: (options) => {
+        const newInterEntries: InterCoupleEntry[] = [];
         set((state) => {
           const {
             category,
@@ -882,21 +907,30 @@ export const useFinanceStore = create<FinanceStore>()(
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
+                newInterEntries.push(interUpdate.entry);
                 interCoupleHistory = [interUpdate.entry, ...interCoupleHistory];
               }
             }
           }
 
+          const inter = withRecalculatedInterCouple(interCoupleHistory);
+
           return {
             accounts,
             debts,
             transactions: [...newTransactions, ...state.transactions],
-            interCoupleBalance,
-            interCoupleHistory,
+            interCoupleBalance: inter.interCoupleBalance,
+            interCoupleHistory: inter.interCoupleHistory,
           };
-        }),
+        });
+        celebrateBetweenUsUpdate(
+          newInterEntries,
+          useFinanceStore.getState().interCoupleBalance
+        );
+      },
 
-      recordInterCouple: (paidBy, benefited, amount, notes) =>
+      recordInterCouple: (paidBy, benefited, amount, notes) => {
+        const newInterEntries: InterCoupleEntry[] = [];
         set((state) => {
           const autoMessage =
             notes ?? buildInterCoupleAutoMessage({ paidBy, benefited, amount });
@@ -917,13 +951,20 @@ export const useFinanceStore = create<FinanceStore>()(
           if (!interUpdate.entry) return state;
 
           const entry = { ...interUpdate.entry, notes, autoMessage, sourceTransactionId: transaction.id };
+          newInterEntries.push(entry);
+          const inter = withRecalculatedInterCouple([entry, ...state.interCoupleHistory]);
 
           return {
-            interCoupleBalance: interUpdate.balance,
-            interCoupleHistory: [entry, ...state.interCoupleHistory],
+            interCoupleBalance: inter.interCoupleBalance,
+            interCoupleHistory: inter.interCoupleHistory,
             transactions: [transaction, ...state.transactions],
           };
-        }),
+        });
+        celebrateBetweenUsUpdate(
+          newInterEntries,
+          useFinanceStore.getState().interCoupleBalance
+        );
+      },
 
       updateInterCoupleBalance: (amount) =>
         set((state) => {
@@ -965,7 +1006,7 @@ export const useFinanceStore = create<FinanceStore>()(
           };
         }),
 
-      deleteTransaction: (id) =>
+      deleteTransaction: (id, deletedBy) =>
         set((state) => {
           const result = applyTransactionDeletion({
             accounts: state.accounts,
@@ -989,6 +1030,7 @@ export const useFinanceStore = create<FinanceStore>()(
             accounts: state.accounts,
             debts: state.debts,
             incomeSources: state.incomeSources,
+            deletedBy,
           });
 
           return {
@@ -1014,8 +1056,9 @@ export const useFinanceStore = create<FinanceStore>()(
           state.interCoupleHistory,
           state.interCoupleBalance
         );
-        state.interCoupleHistory = baseline.interCoupleHistory;
-        state.interCoupleBalance = baseline.interCoupleBalance;
+        const synced = recalculateInterCoupleState(baseline.interCoupleHistory);
+        state.interCoupleHistory = synced.interCoupleHistory;
+        state.interCoupleBalance = synced.interCoupleBalance;
       },
     }
   )

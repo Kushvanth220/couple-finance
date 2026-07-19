@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ExpenseReminderProvider } from "@/components/notifications/expense-reminder-provider";
+import { BetweenUsCelebrationOverlay } from "@/components/between-us/between-us-celebration";
 import { AppShell } from "@/components/layout/app-shell";
+import { GrikSplashProvider } from "@/components/layout/grik-splash";
 import { SyncProvider } from "@/components/sync/sync-provider";
 import { SyncBanner } from "@/components/sync/sync-banner";
 import "./globals.css";
@@ -17,12 +19,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Grik Finance",
-  description: "Personal finance for Kushvanth & Grishma — Grik Finance",
+  title: "KG Finance",
+  description: "Personal finance for Kushvanth & Grishma — KG Finance",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Grik Finance",
+    title: "KG Finance",
   },
 };
 
@@ -49,7 +51,9 @@ export default function RootLayout({
       <body className="min-h-full">
         <SyncProvider />
         <AppShell>
+          <GrikSplashProvider />
           <ExpenseReminderProvider />
+          <BetweenUsCelebrationOverlay />
           <SyncBanner />
           {children}
         </AppShell>

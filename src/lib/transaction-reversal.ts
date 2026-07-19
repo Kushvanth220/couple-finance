@@ -1,4 +1,4 @@
-import { compareByDateTime } from "@/lib/formatters";
+import { compareByDateTimeAsc } from "@/lib/formatters";
 import type {
   Account,
   Debt,
@@ -68,7 +68,7 @@ export function reverseDepositToAccount(
 }
 
 export function recalculateInterCoupleState(entries: InterCoupleEntry[]) {
-  const sorted = [...entries].sort((a, b) => compareByDateTime(a, b));
+  const sorted = [...entries].sort(compareByDateTimeAsc);
   let balance = 0;
 
   const withBalances = sorted.map((entry) => {

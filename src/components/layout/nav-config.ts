@@ -26,7 +26,7 @@ export const moreNavItems = [
 ] as const;
 
 export function isNavActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
+  if (href === "/") return pathname === "/" || pathname === "/dashboard";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

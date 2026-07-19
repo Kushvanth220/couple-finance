@@ -4,6 +4,7 @@ import type {
   Account,
   Debt,
   IncomeEntry,
+  InterCoupleEntry,
   MonthlyExpense,
   Person,
   Transaction,
@@ -194,4 +195,190 @@ export function groupExpensesByCategory(
 
 export function getMonthKey(date: Date = new Date()): string {
   return format(date, "yyyy-MM");
+}
+
+export function parseMonthKey(monthKey: string): Date {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
+export function getAvailableMonthKeys(
+  transactions: Transaction[],
+  incomeEntries: IncomeEntry[],
+  trailingMonths = 18
+): string[] {
+  const keys = new Set<string>();
+  const now = new Date();
+
+  for (let i = 0; i < trailingMonths; i++) {
+    keys.add(getMonthKey(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+  }
+
+  for (const transaction of transactions) {
+    keys.add(
+      format(
+        parseAppDateTime(transaction.date, transaction.time, transaction.timestamp),
+        "yyyy-MM"
+      )
+    );
+  }
+
+  for (const entry of incomeEntries) {
+    keys.add(entry.date.slice(0, 7));
+  }
+
+  return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
+
+export function getPersonDebtPaymentsInMonth(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): Transaction[] {
+  return getTransactionsForMonth(transactions, date).filter((transaction) => {
+    if (transaction.type !== "debt_payment" && transaction.type !== "credit_payment") {
+      return false;
+    }
+    const payer = transaction.paidByPerson ?? transaction.person;
+    return payer === person;
+  });
+}
+
+export function getPersonOtherExpensesInMonth(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): Transaction[] {
+  return getTransactionsForMonth(transactions, date).filter((transaction) => {
+    if (transaction.type !== "expense") return false;
+    return getTransactionExpenseShare(transaction, person) > 0;
+  });
+}
+
+export function getPersonInterCoupleTransactionsInMonth(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): Transaction[] {
+  return getTransactionsForMonth(transactions, date).filter((transaction) => {
+    if (transaction.type !== "inter_couple") return false;
+    const payer = transaction.paidByPerson ?? transaction.person;
+    const benefited = transaction.beneficiaryPerson;
+    return payer === person || benefited === person;
+  });
+}
+
+export function getPersonBetweenUsEntriesInMonth(
+  history: InterCoupleEntry[],
+  person: Person,
+  date: Date = new Date()
+): InterCoupleEntry[] {
+  return history.filter((entry) => {
+    if (entry.paidBy !== person && entry.benefited !== person) return false;
+    const entryDate = parseAppDateTime(entry.date, entry.time, entry.timestamp);
+    return isSameMonth(entryDate, date);
+  });
+}
+
+export interface DebtAndBetweenUsSummary {
+  debtPayments: Transaction[];
+  interCoupleTransactions: Transaction[];
+  betweenUsEntries: InterCoupleEntry[];
+  total: number;
+}
+
+export function getPersonDebtAndBetweenUsSummary(
+  transactions: Transaction[],
+  history: InterCoupleEntry[],
+  person: Person,
+  date: Date = new Date()
+): DebtAndBetweenUsSummary {
+  const debtPayments = getPersonDebtPaymentsInMonth(transactions, person, date);
+  const interCoupleTransactions = getPersonInterCoupleTransactionsInMonth(
+    transactions,
+    person,
+    date
+  );
+  const betweenUsEntries = getPersonBetweenUsEntriesInMonth(history, person, date);
+
+  const linkedTransactionIds = new Set([
+    ...debtPayments.map((transaction) => transaction.id),
+    ...interCoupleTransactions.map((transaction) => transaction.id),
+  ]);
+
+  let total = debtPayments.reduce((sum, transaction) => sum + transaction.amount, 0);
+  total += interCoupleTransactions
+    .filter((transaction) => (transaction.paidByPerson ?? transaction.person) === person)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+
+  for (const entry of betweenUsEntries) {
+    if (entry.paidBy !== person) continue;
+    if (entry.autoMessage === "Starting balance") continue;
+    if (entry.sourceTransactionId && linkedTransactionIds.has(entry.sourceTransactionId)) {
+      continue;
+    }
+    total += entry.amount;
+  }
+
+  return { debtPayments, interCoupleTransactions, betweenUsEntries, total };
+}
+
+export function getMonthlyDebtAndBetweenUsTotal(
+  transactions: Transaction[],
+  history: InterCoupleEntry[],
+  person: Person,
+  date: Date = new Date()
+): number {
+  return getPersonDebtAndBetweenUsSummary(transactions, history, person, date).total;
+}
+
+export function getMonthlyDebtPaymentsTotal(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): number {
+  return getPersonDebtPaymentsInMonth(transactions, person, date).reduce(
+    (sum, transaction) => sum + transaction.amount,
+    0
+  );
+}
+
+export function getMonthlyOtherExpensesTotal(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): number {
+  return getPersonOtherExpensesInMonth(transactions, person, date).reduce(
+    (sum, transaction) => sum + getTransactionExpenseShare(transaction, person),
+    0
+  );
+}
+
+export function getMonthlySpendTotal(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date(),
+  interCoupleHistory: InterCoupleEntry[] = []
+): number {
+  return (
+    getMonthlyDebtAndBetweenUsTotal(transactions, interCoupleHistory, person, date) +
+    getMonthlyOtherExpensesTotal(transactions, person, date)
+  );
+}
+
+export function getTrendMonths(
+  monthKey: string,
+  count = 6
+): { key: string; label: string; date: Date }[] {
+  const end = parseMonthKey(monthKey);
+  const months: { key: string; label: string; date: Date }[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const date = new Date(end.getFullYear(), end.getMonth() - i, 1);
+    months.push({
+      key: getMonthKey(date),
+      label: format(date, "MMM"),
+      date,
+    });
+  }
+  return months;
 }
