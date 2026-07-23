@@ -7,6 +7,7 @@ import {
   type SyncConfig,
 } from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
+import { pickRicherState, readLocalFinanceBackup, scoreFinanceState } from "@/lib/recover-finance-data";
 
 /** Bumped to reset stale per-device sync timestamps from older builds. */
 export const SYNC_META_KEY = "couple-finance-sync-meta-v5";
@@ -128,6 +129,53 @@ function lastSyncedTime(meta = readSyncMeta()) {
   return meta.lastSyncedAt ? new Date(meta.lastSyncedAt).getTime() : 0;
 }
 
+function countFinanceRecords(state: FinanceState): number {
+  return (
+    (state.transactions?.length ?? 0) +
+    (state.incomeEntries?.length ?? 0) +
+    (state.accounts?.length ?? 0) +
+    (state.debts?.length ?? 0) +
+    (state.incomeSources?.length ?? 0)
+  );
+}
+
+/** True when downloading remote state would erase meaningful local history. */
+export function wouldWipeLocalData(remote: FinanceState, local: FinanceState): boolean {
+  const remoteTx = remote.transactions?.length ?? 0;
+  const localTx = local.transactions?.length ?? 0;
+  const remoteRecords = countFinanceRecords(remote);
+  const localRecords = countFinanceRecords(local);
+
+  if (localTx > 0 && remoteTx === 0) return true;
+  if (localRecords > 10 && remoteRecords < localRecords * 0.25) return true;
+  if (localTx >= 5 && remoteTx < Math.ceil(localTx * 0.2)) return true;
+
+  return false;
+}
+
+/** True when uploading local state would erase meaningful cloud history. */
+export function wouldWipeRemoteData(remote: FinanceState, local: FinanceState): boolean {
+  const remoteTx = remote.transactions?.length ?? 0;
+  const localTx = local.transactions?.length ?? 0;
+  const remoteRecords = countFinanceRecords(remote);
+  const localRecords = countFinanceRecords(local);
+
+  if (remoteTx > 0 && localTx === 0) return true;
+  if (remoteRecords > 10 && localRecords < remoteRecords * 0.25) return true;
+  if (remoteTx >= 5 && localTx < Math.ceil(remoteTx * 0.2)) return true;
+
+  return false;
+}
+
+function assertSafeToPush(remote: FinanceState | null, local: FinanceState) {
+  if (!remote) return;
+  if (wouldWipeRemoteData(remote, local)) {
+    throw new Error(
+      "Blocked upload — your device data looks empty compared to the cloud. Restoring from cloud instead."
+    );
+  }
+}
+
 function helpfulErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown error";
 
@@ -171,11 +219,17 @@ export async function fetchRemoteFinance(
 
 export async function pushFinanceState(
   householdId: string,
-  state: FinanceState
+  state: FinanceState,
+  options?: { skipSafetyCheck?: boolean }
 ): Promise<RemoteFinanceRow> {
   const config = getConfigOrThrow();
   const supabase = createClient(config);
   if (!supabase) throw new Error("Supabase is not configured");
+
+  if (!options?.skipSafetyCheck) {
+    const existing = await fetchRemoteFinance(householdId);
+    assertSafeToPush(existing?.data ?? null, state);
+  }
 
   const { data, error } = await supabase
     .from("household_finance")
@@ -247,10 +301,37 @@ export function scheduleFinancePush(
     notifyStatus("syncing");
 
     try {
-      await pushFinanceState(householdId, getState());
+      const localState = getState();
+      const existing = await fetchRemoteFinance(householdId);
+
+      if (existing && wouldWipeLocalData(existing.data, localState)) {
+        await pushFinanceState(householdId, localState);
+        notifyStatus("synced");
+        return;
+      }
+
+      if (existing && wouldWipeRemoteData(existing.data, localState)) {
+        if (sessionPullConfig) {
+          applyRemoteRow(existing, sessionPullConfig.applyRemoteState);
+        }
+        notifyStatus("synced");
+        return;
+      }
+
+      await pushFinanceState(householdId, localState);
       notifyStatus("synced");
     } catch (err) {
-      notifyStatus("error", helpfulErrorMessage(err));
+      const message = helpfulErrorMessage(err);
+      if (message.includes("Blocked upload") && sessionPullConfig) {
+        try {
+          await forcePullNow(householdId, sessionPullConfig.applyRemoteState);
+          notifyStatus("synced");
+          return;
+        } catch {
+          // fall through
+        }
+      }
+      notifyStatus("error", message);
     }
   }, PUSH_DEBOUNCE_MS);
 }
@@ -288,12 +369,33 @@ function lastLocalEditTime(meta = readSyncMeta()) {
   return meta.lastLocalEditAt ? new Date(meta.lastLocalEditAt).getTime() : 0;
 }
 
+function ensureBestLocalState(
+  getLocalState: () => FinanceState,
+  applyRemoteState: (state: FinanceState) => void
+): FinanceState {
+  const backup = readLocalFinanceBackup();
+  const current = getLocalState();
+  if (!backup) return current;
+
+  const best = pickRicherState(backup, current);
+  if (scoreFinanceState(best) > scoreFinanceState(current)) {
+    applyingRemote = true;
+    applyRemoteState(best);
+    applyingRemote = false;
+    return best;
+  }
+
+  return current;
+}
+
 function shouldPullRemote(
   remote: RemoteFinanceRow,
-  _localState: FinanceState,
+  localState: FinanceState,
   meta = readSyncMeta()
 ) {
   if (pendingLocalChanges) return false;
+
+  if (wouldWipeLocalData(remote.data, localState)) return false;
 
   const remoteTime = new Date(remote.updated_at).getTime();
   const syncedTime = lastSyncedTime(meta);
@@ -310,8 +412,11 @@ function shouldPullRemote(
 
 function shouldPushLocalOverRemote(
   remote: RemoteFinanceRow,
+  localState: FinanceState,
   meta = readSyncMeta()
 ) {
+  if (wouldWipeRemoteData(remote.data, localState)) return false;
+
   const remoteTime = new Date(remote.updated_at).getTime();
   const localEditTime = lastLocalEditTime(meta);
   return localEditTime > remoteTime;
@@ -341,8 +446,8 @@ export async function resolveInitialSync(
 ): Promise<"local" | "remote" | "none"> {
   clearPendingLocalChanges();
 
+  const localState = ensureBestLocalState(getLocalState, applyRemoteState);
   const remote = await fetchRemoteFinance(householdId);
-  const localState = getLocalState();
   const meta = readSyncMeta();
 
   if (!remote) {
@@ -351,7 +456,18 @@ export async function resolveInitialSync(
     return "local";
   }
 
-  if (shouldPushLocalOverRemote(remote, meta)) {
+  if (wouldWipeLocalData(remote.data, localState)) {
+    await pushFinanceState(householdId, localState);
+    notifyStatus("synced");
+    return "local";
+  }
+
+  if (wouldWipeRemoteData(remote.data, localState)) {
+    applyRemoteRow(remote, applyRemoteState);
+    return "remote";
+  }
+
+  if (shouldPushLocalOverRemote(remote, localState, meta)) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
@@ -436,6 +552,17 @@ export async function runAutoSyncCycle(
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
+  const localState = ensureBestLocalState(getLocalState, applyRemoteState);
+  const remote = await fetchRemoteFinance(householdId);
+
+  if (remote && wouldWipeLocalData(remote.data, localState)) {
+    if (pendingLocalChanges || scoreFinanceState(localState) > scoreFinanceState(remote.data)) {
+      await pushFinanceState(householdId, localState);
+      notifyStatus("synced");
+      return;
+    }
+  }
+
   if (pendingLocalChanges) {
     await flushPendingPush();
   }
@@ -474,6 +601,15 @@ export async function forcePushNow(
   notifyStatus("syncing");
   await pushFinanceState(householdId, getState());
   notifyStatus("synced");
+}
+
+export async function restoreFinanceBackupToCloud(
+  householdId: string,
+  backup: FinanceState,
+  applyRemoteState: (state: FinanceState) => void
+): Promise<RemoteFinanceRow> {
+  applyRemoteState(backup);
+  return pushFinanceState(householdId, backup, { skipSafetyCheck: true });
 }
 
 export async function forcePullNow(
@@ -591,12 +727,21 @@ export async function diagnoseSync(
   }
 
   try {
-    await pushFinanceState(householdId, getLocalState());
-    steps.push({
-      name: "Write cloud",
-      ok: true,
-      message: "Upload test succeeded",
-    });
+    const localState = getLocalState();
+    if (remote && wouldWipeRemoteData(remote.data, localState)) {
+      steps.push({
+        name: "Write cloud",
+        ok: true,
+        message: "Skipped test upload — cloud has more data than this device",
+      });
+    } else {
+      await pushFinanceState(householdId, localState);
+      steps.push({
+        name: "Write cloud",
+        ok: true,
+        message: "Upload test succeeded",
+      });
+    }
   } catch (err) {
     steps.push({
       name: "Write cloud",

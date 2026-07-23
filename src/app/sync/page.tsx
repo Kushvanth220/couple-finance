@@ -4,11 +4,7 @@ import { useEffect, useState } from "react";
 import { Cloud, Loader2 } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { getHouseholdSyncKey, loadSyncConfig } from "@/lib/supabase/client";
-import {
-  getLastSyncError,
-  onSyncStatusChange,
-  type SyncStatus,
-} from "@/lib/supabase/sync";
+import { getLastSyncError, onSyncStatusChange, type SyncStatus } from "@/lib/supabase/sync";
 
 export default function SyncPage() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
@@ -31,14 +27,14 @@ export default function SyncPage() {
   }, []);
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
+    <div className="max-w-lg mx-auto space-y-6 pb-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Cloud className="w-7 h-7 text-[#007aff]" />
           Cloud Sync
         </h1>
         <p className="text-muted mt-1 text-sm">
-          Everything syncs automatically. No buttons, no login.
+          Everything syncs automatically. No buttons needed.
         </p>
       </div>
 
@@ -46,8 +42,7 @@ export default function SyncPage() {
         <GlassCard className="p-6 space-y-3">
           <p className="font-medium text-[#ff9500]">Not connected yet</p>
           <p className="text-sm text-muted">
-            Add Supabase keys to Vercel environment variables and redeploy. See
-            README.md for setup steps.
+            Add Supabase keys to Vercel environment variables and redeploy.
           </p>
         </GlassCard>
       ) : configured === true ? (
@@ -68,8 +63,8 @@ export default function SyncPage() {
           </div>
 
           <p className="text-sm text-muted">
-            Changes upload within a second and download on the other phone every
-            2 seconds. Just open the same website on both phones.
+            Changes upload within a second and download on your other phone automatically.
+            Just open the same app on both devices.
           </p>
 
           {syncError ? (
@@ -77,6 +72,8 @@ export default function SyncPage() {
               {syncError}
             </p>
           ) : null}
+
+          <p className="text-xs text-muted">Household: {householdId}</p>
         </GlassCard>
       ) : (
         <GlassCard className="p-6">
@@ -87,10 +84,9 @@ export default function SyncPage() {
       <GlassCard className="p-6 space-y-2">
         <p className="font-medium text-sm">How it works</p>
         <ul className="text-sm text-muted space-y-1 list-disc list-inside">
-          <li>Edit anything on phone 1 — it uploads automatically</li>
-          <li>Phone 2 picks it up within ~2 seconds</li>
-          <li>Works both ways — no manual steps</li>
-          <li>Both phones must use the same Vercel URL</li>
+          <li>Edit anything — it uploads automatically</li>
+          <li>Your other phone picks it up within ~2 seconds</li>
+          <li>Works both ways with no manual steps</li>
         </ul>
       </GlassCard>
     </div>

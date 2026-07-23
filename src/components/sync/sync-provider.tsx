@@ -76,10 +76,18 @@ export function SyncProvider() {
         );
       } catch {
         readyRef.current = true;
-        startStoreSubscription();
+        clearPendingLocalChanges();
         const householdId = householdIdRef.current;
         if (householdId) {
-          void flushPendingPush();
+          void runAutoSyncCycle(
+            householdId,
+            getFinanceState,
+            applyRemoteFinanceState
+          ).finally(() => {
+            startStoreSubscription();
+          });
+        } else {
+          startStoreSubscription();
         }
       }
     }
