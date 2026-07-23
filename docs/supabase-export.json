@@ -1,6 +1,6 @@
 {
   "household_id": "grik-finance-couple",
-  "updated_at": "2026-07-23T15:32:54.884679+00:00",
+  "updated_at": "2026-07-23T23:17:03.589144+00:00",
   "data": {
     "debts": [
       {
@@ -39,7 +39,7 @@
       {
         "id": "debt-g1",
         "name": "Zolve Credit Card",
-        "amount": 1193.4800000000002,
+        "amount": 1297.7300000000002,
         "person": "grishma",
         "linkedAccountId": "acc-g-zolve"
       },
@@ -113,7 +113,7 @@
         "name": "Zolve",
         "type": "credit",
         "person": "grishma",
-        "balance": 1193.4800000000002,
+        "balance": 1297.7300000000002,
         "creditLimit": 1500
       },
       {
@@ -167,6 +167,55 @@
       }
     ],
     "transactions": [
+      {
+        "id": "4cb32521-ed09-4382-959c-f0fb1ff92234",
+        "date": "2026-07-23",
+        "time": "15:43:26",
+        "type": "expense",
+        "amount": 50.51,
+        "person": "grishma",
+        "category": "Masala republic",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-23T20:43:26.295Z",
+        "autoMessage": "Grishma paid $50.51 for Masala republic via Zolve · Credit Card (shared: Kushvanth $25.26, Grishma $25.26)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 25.255,
+          "kushvanth": 25.255
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "7b47baad-1c54-4054-bae1-fae043759ce6",
+        "date": "2026-07-23",
+        "time": "15:42:56",
+        "type": "expense",
+        "amount": 10.74,
+        "person": "grishma",
+        "category": "Chickfilla",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-23T20:42:56.701Z",
+        "autoMessage": "Grishma paid $10.74 for Chickfilla via Zolve · Credit Card",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "0a857939-584d-4549-9040-3b428292d15d",
+        "date": "2026-07-23",
+        "time": "15:42:19",
+        "type": "expense",
+        "amount": 43,
+        "person": "grishma",
+        "category": "Gas",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-23T20:42:19.526Z",
+        "autoMessage": "Grishma paid $43 for Gas via Zolve · Credit Card",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "paymentMethod": "Zolve · Credit Card"
+      },
       {
         "id": "2dfbb868-f98d-4e9a-be1a-f171d422a98c",
         "date": "2026-07-23",
@@ -1833,8 +1882,119 @@
         "dueDayOfMonth": 5
       }
     ],
-    "interCoupleBalance": 9079.94,
+    "spendCategories": [
+      {
+        "id": "sc-gas",
+        "name": "Gas",
+        "keywords": [
+          "gas",
+          "fuel",
+          "petrol",
+          "shell",
+          "exxon"
+        ]
+      },
+      {
+        "id": "sc-food",
+        "name": "Food",
+        "keywords": [
+          "food",
+          "restaurant",
+          "lunch",
+          "dinner",
+          "uber eats",
+          "doordash",
+          "grubhub"
+        ]
+      },
+      {
+        "id": "sc-home-rent",
+        "name": "Home Rent",
+        "keywords": [
+          "home rent",
+          "rent",
+          "room rent",
+          "landlord",
+          "apartment"
+        ]
+      },
+      {
+        "id": "sc-car-loan",
+        "name": "Car Loan",
+        "keywords": [
+          "car loan",
+          "auto loan",
+          "vehicle loan"
+        ]
+      },
+      {
+        "id": "sc-car-maintain",
+        "name": "Car Maintain",
+        "keywords": [
+          "car maintain",
+          "car maintenance",
+          "oil change",
+          "repair",
+          "mechanic"
+        ]
+      },
+      {
+        "id": "sc-college-fee",
+        "name": "College Fee",
+        "keywords": [
+          "college fee",
+          "college",
+          "tuition",
+          "semester"
+        ]
+      },
+      {
+        "id": "sc-edu-loan",
+        "name": "Education Loan",
+        "keywords": [
+          "education loan",
+          "student loan"
+        ]
+      },
+      {
+        "id": "sc-groceries",
+        "name": "Groceries",
+        "keywords": [
+          "grocery",
+          "groceries",
+          "walmart",
+          "costco",
+          "target",
+          "aldi"
+        ]
+      },
+      {
+        "id": "sc-clothes",
+        "name": "Clothes",
+        "keywords": [
+          "clothes",
+          "clothing",
+          "apparel",
+          "shoes",
+          "fashion"
+        ]
+      }
+    ],
+    "interCoupleBalance": 9054.685000000001,
     "interCoupleHistory": [
+      {
+        "id": "486b1503-65b5-46c2-bacc-8760c6918357",
+        "date": "2026-07-23",
+        "time": "15:43:26",
+        "notes": "Grishma paid $25.26 for Kushvanth's share (Masala republic shared)",
+        "amount": 25.255,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-23T20:43:26.295Z",
+        "autoMessage": "Grishma paid $25.26 for Kushvanth's share (Masala republic shared)",
+        "runningBalance": 9054.685000000001,
+        "sourceTransactionId": "4cb32521-ed09-4382-959c-f0fb1ff92234"
+      },
       {
         "id": "cb19968d-2dd9-4c6e-84d1-db96b7d91738",
         "date": "2026-07-21",
