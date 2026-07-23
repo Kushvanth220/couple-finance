@@ -91,6 +91,27 @@ export function buildExpenseAutoMessage(opts: {
   return msg;
 }
 
+export function buildDebtNotePaymentMessage(opts: {
+  debtOwner: Person;
+  amountPaid: number;
+  debtName: string;
+  debtRemaining: number;
+  cleared?: boolean;
+  notes?: string;
+}): string {
+  const { debtOwner, amountPaid, debtName, debtRemaining, cleared, notes } = opts;
+
+  let msg = cleared
+    ? `${PERSON_LABELS[debtOwner]} cleared ${debtName} (${formatCurrency(amountPaid)} paid off)`
+    : `${PERSON_LABELS[debtOwner]} paid ${formatCurrency(amountPaid)} toward ${debtName} · ${formatCurrency(debtRemaining)} left`;
+
+  if (notes?.trim()) {
+    msg += ` — ${notes.trim()}`;
+  }
+
+  return msg;
+}
+
 export function buildDebtAutoMessage(opts: {
   paidBy: Person;
   amount: number;
@@ -131,6 +152,15 @@ export function buildInterCoupleAutoMessage(opts: {
   return `${PERSON_LABELS[opts.paidBy]} paid ${formatCurrency(opts.amount)} for ${PERSON_LABELS[opts.benefited]}'s share`;
 }
 
+/** Cash or transfers outside linked bank accounts (Between Us custom add). */
+export function buildExternalBetweenUsMessage(opts: {
+  paidBy: Person;
+  benefited: Person;
+  amount: number;
+}): string {
+  return `${PERSON_LABELS[opts.paidBy]} gave ${formatCurrency(opts.amount)} to ${PERSON_LABELS[opts.benefited]} (outside accounts)`;
+}
+
 export function buildCashWithdrawalMessage(opts: {
   person: Person;
   amount: number;
@@ -158,10 +188,20 @@ export function getTransactionDisplayMessage(transaction: Transaction): string {
   const actorLabel = PERSON_LABELS[actor];
 
   if (transaction.autoMessage) {
-    if (transaction.autoMessage.includes(actorLabel)) {
-      return transaction.autoMessage;
+    let message = transaction.autoMessage.includes(actorLabel)
+      ? transaction.autoMessage
+      : `${actorLabel} — ${transaction.autoMessage}`;
+
+    if (
+      transaction.type === "inter_couple" &&
+      transaction.category === "External" &&
+      transaction.notes &&
+      !message.includes(transaction.notes)
+    ) {
+      message = `${message} — ${transaction.notes}`;
     }
-    return `${actorLabel} — ${transaction.autoMessage}`;
+
+    return message;
   }
 
   const payment = transaction.paymentMethod ? ` via ${transaction.paymentMethod}` : "";
@@ -180,6 +220,13 @@ export function getTransactionDisplayMessage(transaction: Transaction): string {
     case "cash_deposit":
       return `${actorLabel} deposited ${formatCurrency(transaction.amount)} cash${payment}`;
     case "inter_couple":
+      if (transaction.notes && transaction.category === "External") {
+        return `${actorLabel} gave ${formatCurrency(transaction.amount)} to ${
+          transaction.beneficiaryPerson
+            ? PERSON_LABELS[transaction.beneficiaryPerson]
+            : "partner"
+        } — ${transaction.notes}`;
+      }
       return transaction.beneficiaryPerson
         ? `${actorLabel} paid ${formatCurrency(transaction.amount)} for ${PERSON_LABELS[transaction.beneficiaryPerson]}`
         : `${actorLabel} — between us transfer ${formatCurrency(transaction.amount)}`;

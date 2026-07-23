@@ -9,9 +9,11 @@ import {
   buildBalanceAdjustmentMessage,
   buildCashWithdrawalMessage,
   buildDebtAutoMessage,
+  buildDebtNotePaymentMessage,
   buildExpenseAutoMessage,
   buildIncomeAutoMessage,
   buildInterCoupleAutoMessage,
+  buildExternalBetweenUsMessage,
   getCategorySpentThisMonth,
   getPaymentMethodLabel,
 } from "@/lib/transaction-messages";
@@ -90,6 +92,10 @@ interface FinanceActions {
   updateIncome: (id: string, updates: Partial<IncomeEntry>) => void;
   deleteIncome: (id: string) => void;
 
+  addSpendCategory: (name: string, keywords?: string[]) => void;
+  updateSpendCategory: (id: string, updates: Partial<import("@/types").SpendCategory>) => void;
+  deleteSpendCategory: (id: string) => void;
+
   addMonthlyExpense: (expense: Omit<MonthlyExpense, "id">) => void;
   updateMonthlyExpense: (id: string, updates: Partial<MonthlyExpense>) => void;
   deleteMonthlyExpense: (id: string) => void;
@@ -105,6 +111,8 @@ interface FinanceActions {
   deleteDebt: (id: string) => void;
   payDebt: (debtId: string, amount: number, fromAccountId: string, notes?: string) => void;
   payDebtForOther: (options: PayDebtForOtherOptions) => void;
+  recordDebtPayment: (debtId: string, amountPaid: number, notes?: string) => void;
+  markDebtCleared: (debtId: string, notes?: string) => void;
 
   spend: (options: SpendOptions) => void;
   spendSplit: (options: SpendSplitOptions) => void;
@@ -114,6 +122,12 @@ interface FinanceActions {
     amount: number,
     notes?: string
   ) => void;
+  recordExternalBetweenUs: (options: {
+    paidBy: Person;
+    benefited: Person;
+    amount: number;
+    notes: string;
+  }) => void;
   updateInterCoupleBalance: (amount: number) => void;
 
   deleteTransaction: (id: string, deletedBy: Person) => void;
@@ -170,8 +184,9 @@ function updateInterCoupleFromSpend(
   beneficiary: Person | undefined,
   amount: number,
   currentBalance: number,
-  notes?: string,
-  sourceTransactionId?: string
+  autoMessage?: string,
+  sourceTransactionId?: string,
+  entryNotes?: string
 ): { balance: number; entry?: InterCoupleEntry } {
   if (!beneficiary || paidBy === beneficiary) {
     return { balance: currentBalance };
@@ -186,8 +201,8 @@ function updateInterCoupleFromSpend(
     newBalance -= amount;
   }
 
-  const autoMessage =
-    notes ??
+  const message =
+    autoMessage ??
     buildInterCoupleAutoMessage({ paidBy, benefited: beneficiary, amount });
 
   return {
@@ -200,8 +215,8 @@ function updateInterCoupleFromSpend(
       amount,
       paidBy,
       benefited: beneficiary,
-      notes,
-      autoMessage,
+      notes: entryNotes,
+      autoMessage: message,
       runningBalance: newBalance,
       sourceTransactionId,
     },
@@ -342,6 +357,26 @@ export const useFinanceStore = create<FinanceStore>()(
       deleteIncome: (id) =>
         set((state) => ({
           incomeEntries: state.incomeEntries.filter((entry) => entry.id !== id),
+        })),
+
+      addSpendCategory: (name, keywords) =>
+        set((state) => ({
+          spendCategories: [
+            ...state.spendCategories,
+            { id: uuidv4(), name: name.trim(), keywords: keywords?.filter(Boolean) },
+          ],
+        })),
+
+      updateSpendCategory: (id, updates) =>
+        set((state) => ({
+          spendCategories: state.spendCategories.map((category) =>
+            category.id === id ? { ...category, ...updates } : category
+          ),
+        })),
+
+      deleteSpendCategory: (id) =>
+        set((state) => ({
+          spendCategories: state.spendCategories.filter((category) => category.id !== id),
         })),
 
       addMonthlyExpense: (expense) =>
@@ -611,6 +646,75 @@ export const useFinanceStore = create<FinanceStore>()(
           useFinanceStore.getState().interCoupleBalance
         );
       },
+
+      recordDebtPayment: (debtId, amountPaid, notes) =>
+        set((state) => {
+          const debt = state.debts.find((d) => d.id === debtId);
+          if (!debt || amountPaid <= 0) return state;
+
+          const appliedAmount = Math.min(amountPaid, debt.amount);
+          const newDebtAmount = Math.max(0, debt.amount - appliedAmount);
+          const debts = state.debts.map((d) =>
+            d.id === debtId ? { ...d, amount: newDebtAmount } : d
+          );
+
+          const autoMessage = buildDebtNotePaymentMessage({
+            debtOwner: debt.person,
+            amountPaid: appliedAmount,
+            debtName: debt.name,
+            debtRemaining: newDebtAmount,
+            cleared: newDebtAmount <= 0,
+            notes,
+          });
+
+          const transaction = createTransaction("debt_payment", debt.person, appliedAmount, {
+            category: debt.name,
+            paymentMethod: "Debt note",
+            autoMessage,
+            notes,
+            debtRemaining: newDebtAmount,
+            paidByPerson: debt.person,
+          });
+
+          return {
+            debts,
+            transactions: [transaction, ...state.transactions],
+          };
+        }),
+
+      markDebtCleared: (debtId, notes) =>
+        set((state) => {
+          const debt = state.debts.find((d) => d.id === debtId);
+          if (!debt || debt.amount <= 0) return state;
+
+          const clearedAmount = debt.amount;
+          const debts = state.debts.map((d) =>
+            d.id === debtId ? { ...d, amount: 0 } : d
+          );
+
+          const autoMessage = buildDebtNotePaymentMessage({
+            debtOwner: debt.person,
+            amountPaid: clearedAmount,
+            debtName: debt.name,
+            debtRemaining: 0,
+            cleared: true,
+            notes,
+          });
+
+          const transaction = createTransaction("debt_payment", debt.person, clearedAmount, {
+            category: debt.name,
+            paymentMethod: "Debt note",
+            autoMessage,
+            notes,
+            debtRemaining: 0,
+            paidByPerson: debt.person,
+          });
+
+          return {
+            debts,
+            transactions: [transaction, ...state.transactions],
+          };
+        }),
 
       spend: (options) => {
         const newInterEntries: InterCoupleEntry[] = [];
@@ -932,8 +1036,7 @@ export const useFinanceStore = create<FinanceStore>()(
       recordInterCouple: (paidBy, benefited, amount, notes) => {
         const newInterEntries: InterCoupleEntry[] = [];
         set((state) => {
-          const autoMessage =
-            notes ?? buildInterCoupleAutoMessage({ paidBy, benefited, amount });
+          const autoMessage = buildInterCoupleAutoMessage({ paidBy, benefited, amount });
           const transaction = createTransaction("inter_couple", paidBy, amount, {
             beneficiaryPerson: benefited,
             paidByPerson: paidBy,
@@ -946,11 +1049,54 @@ export const useFinanceStore = create<FinanceStore>()(
             amount,
             state.interCoupleBalance,
             autoMessage,
-            transaction.id
+            transaction.id,
+            notes
           );
           if (!interUpdate.entry) return state;
 
-          const entry = { ...interUpdate.entry, notes, autoMessage, sourceTransactionId: transaction.id };
+          const entry = { ...interUpdate.entry, sourceTransactionId: transaction.id };
+          newInterEntries.push(entry);
+          const inter = withRecalculatedInterCouple([entry, ...state.interCoupleHistory]);
+
+          return {
+            interCoupleBalance: inter.interCoupleBalance,
+            interCoupleHistory: inter.interCoupleHistory,
+            transactions: [transaction, ...state.transactions],
+          };
+        });
+        celebrateBetweenUsUpdate(
+          newInterEntries,
+          useFinanceStore.getState().interCoupleBalance
+        );
+      },
+
+      recordExternalBetweenUs: ({ paidBy, benefited, amount, notes }) => {
+        const trimmedNotes = notes.trim();
+        if (!trimmedNotes || paidBy === benefited || amount <= 0) return;
+
+        const newInterEntries: InterCoupleEntry[] = [];
+        set((state) => {
+          const autoMessage = buildExternalBetweenUsMessage({ paidBy, benefited, amount });
+          const transaction = createTransaction("inter_couple", paidBy, amount, {
+            beneficiaryPerson: benefited,
+            paidByPerson: paidBy,
+            autoMessage,
+            notes: trimmedNotes,
+            category: "External",
+            paymentMethod: "Outside accounts",
+          });
+          const interUpdate = updateInterCoupleFromSpend(
+            paidBy,
+            benefited,
+            amount,
+            state.interCoupleBalance,
+            autoMessage,
+            transaction.id,
+            trimmedNotes
+          );
+          if (!interUpdate.entry) return state;
+
+          const entry = { ...interUpdate.entry, sourceTransactionId: transaction.id };
           newInterEntries.push(entry);
           const inter = withRecalculatedInterCouple([entry, ...state.interCoupleHistory]);
 
@@ -1052,6 +1198,9 @@ export const useFinanceStore = create<FinanceStore>()(
         if (!state.deletedHistory) {
           state.deletedHistory = [];
         }
+        if (!state.spendCategories?.length) {
+          state.spendCategories = seedData.spendCategories;
+        }
         const baseline = ensureInterCoupleBaseline(
           state.interCoupleHistory,
           state.interCoupleBalance
@@ -1080,6 +1229,7 @@ export function getFinanceState(): FinanceState {
   return {
     incomeSources: state.incomeSources,
     incomeEntries: state.incomeEntries,
+    spendCategories: state.spendCategories,
     monthlyExpenses: state.monthlyExpenses,
     accounts: state.accounts,
     debts: state.debts,
@@ -1091,9 +1241,20 @@ export function getFinanceState(): FinanceState {
 }
 
 export function applyRemoteFinanceState(state: FinanceState) {
+  const baseline = ensureInterCoupleBaseline(
+    state.interCoupleHistory,
+    state.interCoupleBalance
+  );
+  const synced = recalculateInterCoupleState(baseline.interCoupleHistory);
+
   useFinanceStore.setState({
     ...state,
+    spendCategories: state.spendCategories?.length
+      ? state.spendCategories
+      : seedData.spendCategories,
     deletedHistory: state.deletedHistory ?? [],
+    interCoupleHistory: synced.interCoupleHistory,
+    interCoupleBalance: synced.interCoupleBalance,
   });
 }
 

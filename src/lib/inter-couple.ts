@@ -1,6 +1,6 @@
 import { formatCurrency } from "./formatters";
 import { recalculateInterCoupleState } from "./transaction-reversal";
-import { PERSON_LABELS, type Person, type InterCoupleEntry, type Transaction } from "@/types";
+import { PERSON_LABELS, type InterCoupleEntry, type Person, type Transaction } from "@/types";
 
 /** Plain-language summary for the Between Us balance card. */
 export function getInterCoupleSummary(balance: number) {
@@ -43,6 +43,10 @@ export function getDisplayInterCoupleHistory(history: InterCoupleEntry[]) {
 }
 
 /** Find the main History transaction linked to a Between Us entry. */
+export function isExternalBetweenUsTransaction(transaction: Transaction): boolean {
+  return transaction.type === "inter_couple" && transaction.category === "External";
+}
+
 export function resolveLinkedTransactionId(
   entry: InterCoupleEntry,
   transactions: Transaction[]

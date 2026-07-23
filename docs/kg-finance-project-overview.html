@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KG Finance — Project Overview & Workflows</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --text: #1c1c1e;
+      --muted: #636366;
+      --accent: #007aff;
+      --border: #e5e5ea;
+      --bg: #ffffff;
+      --code-bg: #f2f2f7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.55;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 48px 64px;
+      font-size: 11pt;
+    }
+
+    h1 {
+      font-size: 26pt;
+      margin: 0 0 8px;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 12pt;
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-size: 16pt;
+      margin: 36px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--accent);
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-size: 12pt;
+      margin: 20px 0 8px;
+      page-break-after: avoid;
+    }
+
+    p { margin: 0 0 10px; }
+
+    ul, ol { margin: 0 0 14px; padding-left: 22px; }
+    li { margin-bottom: 4px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.5pt;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      overflow-x: auto;
+      margin: 10px 0 16px;
+      page-break-inside: avoid;
+    }
+
+    .note {
+      background: #f0f7ff;
+      border-left: 4px solid var(--accent);
+      padding: 12px 14px;
+      margin: 14px 0;
+      border-radius: 0 8px 8px 0;
+      page-break-inside: avoid;
+    }
+
+    .diagram {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin: 16px 0 24px;
+      page-break-inside: avoid;
+      overflow-x: auto;
+    }
+
+    .diagram .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .cover-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 24px;
+      margin: 24px 0 32px;
+      font-size: 10pt;
+      color: var(--muted);
+    }
+
+    .page-break { page-break-before: always; }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 9pt;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media print {
+      body { padding: 24px 32px; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1>KG Finance</h1>
+  <p class="subtitle">Project Overview, Technology Stack, Calculations &amp; Workflows</p>
+
+  <div class="cover-meta">
+    <div><strong>App name:</strong> KG Finance (formerly Grik Finance)</div>
+    <div><strong>Users:</strong> Kushvanth &amp; Grishma</div>
+    <div><strong>Stack:</strong> Next.js 16, React 19, TypeScript, Zustand, Supabase</div>
+    <div><strong>Document date:</strong> July 2026</div>
+  </div>
+
+  <h2>1. What Is This Project?</h2>
+  <p>
+    <strong>KG Finance</strong> is a personal finance web app built for a couple. It tracks income,
+    spending, bank/credit accounts, debts, and a shared <strong>Between Us</strong> balance when one
+    person pays for the other.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Feature</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Dashboard</td><td>Monthly KPIs, bar/donut/line charts, tap-to-see payment lists</td></tr>
+      <tr><td>Spend</td><td>Record bills, debt payments, and custom expenses</td></tr>
+      <tr><td>Between Us</td><td>Shared ledger — who paid for whom and who owes back</td></tr>
+      <tr><td>Income</td><td>Paychecks and income by source</td></tr>
+      <tr><td>Expenses</td><td>Recurring monthly bill templates</td></tr>
+      <tr><td>Accounts</td><td>Cash, debit, and credit card balances</td></tr>
+      <tr><td>Debts</td><td>Loans and credit card debt tracking</td></tr>
+      <tr><td>History</td><td>Full transaction log + deleted audit trail</td></tr>
+      <tr><td>Cloud Sync</td><td>Sync data between devices via Supabase</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>Important:</strong> This app does not use a traditional server-side database for calculations.
+    Almost all logic runs <strong>in the browser</strong>. Supabase stores and syncs a JSON snapshot of
+    the full finance state.
+  </div>
+
+  <h2>2. Technology Stack</h2>
+
+  <h3>Frontend</h3>
+  <table>
+    <thead><tr><th>Technology</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>Next.js 16</td><td>App framework (App Router, pages, API route)</td></tr>
+      <tr><td>React 19</td><td>UI components</td></tr>
+      <tr><td>TypeScript</td><td>Type safety across the codebase</td></tr>
+      <tr><td>Tailwind CSS 4</td><td>Styling (glass UI, dark/light mode)</td></tr>
+      <tr><td>Zustand</td><td>Global state management (finance-store)</td></tr>
+      <tr><td>Recharts</td><td>Dashboard charts</td></tr>
+      <tr><td>date-fns</td><td>Date/month handling</td></tr>
+      <tr><td>lucide-react</td><td>Icons</td></tr>
+      <tr><td>uuid</td><td>Unique IDs for records</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Data &amp; Sync</h3>
+  <table>
+    <thead><tr><th>Technology</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>localStorage</td><td>Primary persistence on each device (Zustand persist)</td></tr>
+      <tr><td>Supabase</td><td>Cloud JSON blob + realtime sync between devices</td></tr>
+      <tr><td>/api/sync-config</td><td>Returns Supabase URL and anon key to the client</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Core Data Model</h2>
+  <p>Everything is stored in one <code>FinanceState</code> object:</p>
+  <pre>accounts[]           → cash / debit / credit balances
+debts[]              → loan &amp; credit card amounts
+incomeSources[]      → e.g. "Salary", "Freelance"
+incomeEntries[]      → actual paycheck deposits
+monthlyExpenses[]    → bill templates (rent, subscriptions, etc.)
+transactions[]       → every money movement (history)
+interCoupleHistory[] → Between Us ledger entries
+interCoupleBalance   → current who-owes-who number
+deletedHistory[]     → audit log when transactions are deleted</pre>
+  <p>Two people only: <code>kushvanth</code> | <code>grishma</code></p>
+
+  <div class="page-break"></div>
+
+  <h2>4. Calculations Reference</h2>
+
+  <h3>4.1 Income</h3>
+  <pre>Monthly Income = SUM(income entries where person = X and date in that month)
+Yearly Income  = SUM(income entries in calendar year)
+By source      = GROUP BY income source name</pre>
+
+  <h3>4.2 Expense Share (Split Bills)</h3>
+  <pre>if expenseShares[person] exists     → use that share
+else if expenseOwner/beneficiary = person → full amount
+else                                → 0</pre>
+
+  <h3>4.3 Monthly Spending (Dashboard)</h3>
+  <pre>Debt &amp; Between Us =
+  SUM(debt_payment + credit_payment where person paid)
+  + SUM(inter_couple where person paid)
+  + Between Us history entries (avoid double-count with linked transactions)
+
+Other spending = SUM(expense share for person this month)
+
+Total spending = Debt &amp; Between Us + Other spending</pre>
+
+  <h3>4.4 Cash Flow &amp; Savings</h3>
+  <pre>Cash flow = Monthly Income − Total Spending
+Saved     = max(0, Cash flow)
+Over budget = abs(Cash flow) when negative</pre>
+
+  <h3>4.5 Between Us Balance</h3>
+  <pre>If Kushvanth paid for Grishma → balance += amount
+If Grishma paid for Kushvanth → balance -= amount
+
+balance &gt; 0  → Grishma owes Kushvanth
+balance &lt; 0  → Kushvanth owes Grishma
+balance = 0  → even</pre>
+
+  <h3>4.6 Accounts &amp; Net Worth</h3>
+  <pre>Account assets = SUM(debit + cash balances)   // credit excluded as asset
+Total debt     = SUM(debt.amount)
+Net worth      = assets − liabilities
+
+Credit utilization = (balance / creditLimit) × 100
+Available credit   = creditLimit − balance</pre>
+
+  <h3>4.7 Bill Progress (Spend Page)</h3>
+  <pre>paidThisMonth = SUM(expenses linked to that bill this month)
+remaining     = max(0, plannedAmount − paidThisMonth)</pre>
+
+  <h3>4.8 Month-over-Month Trend</h3>
+  <pre>spendChange% = ((thisMonthSpend − lastMonthSpend) / lastMonthSpend) × 100</pre>
+
+  <h3>4.9 Payment from Account (When Spending)</h3>
+  <pre>Debit/Cash  → subtract from balance
+Credit      → add to card balance (debt increases)
+Cash from debit → subtract from both accounts</pre>
+
+  <div class="page-break"></div>
+
+  <h2>5. Workflow Diagrams</h2>
+
+  <h3>5.1 Overall App Architecture</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+    subgraph UI["Browser UI"]
+        Pages["Pages: Dashboard, Spend, Income, History..."]
+        Charts["Recharts visualizations"]
+    end
+
+    subgraph Logic["Client-side logic"]
+        Store["Zustand finance-store"]
+        Calc["calculations.ts"]
+        Reversal["transaction-reversal.ts"]
+        Tracker["monthly-expense-tracker.ts"]
+    end
+
+    subgraph Storage["Persistence"]
+        LS["localStorage\ngrik-finance-couple"]
+        SB["Supabase cloud row\nJSON FinanceState"]
+    end
+
+    Pages -->|"user action"| Store
+    Store -->|"update state"| LS
+    Store -->|"debounced push"| SB
+    SB -->|"realtime / poll pull"| Store
+
+    Pages -->|"read totals"| Calc
+    Calc --> Store
+    Charts --> Calc
+
+    Store --> Reversal
+    Store --> Tracker
+
+    API["/api/sync-config"] -->|"Supabase config"| SB
+    </pre>
+  </div>
+
+  <h3>5.2 Recording a Spend Transaction</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TD
+    A[User opens Spend page] --> B[Pick: Bill / Debt / Custom]
+    B --> C[Enter amount + payer + account]
+    C --> D{Split expense?}
+
+    D -->|Yes| E[Set expenseShares per person]
+    D -->|No| F[Single owner/beneficiary]
+
+    E --> G[finance-store.spend / spendSplit]
+    F --> G
+
+    G --> H[applyPaymentFromAccount]
+    H --> I{Account type?}
+    I -->|Debit/Cash| J[Subtract from balance]
+    I -->|Credit| K[Add to card balance\nSync linked debt]
+
+    J --> L[Create expense transaction]
+    K --> L
+
+    L --> M{Paid for other person?}
+    M -->|Yes| N[Create inter_couple entry\nUpdate Between Us balance]
+    M -->|No| O[Skip Between Us]
+
+    N --> P[Save to transactions array]
+    O --> P
+    P --> Q[Persist to localStorage]
+    Q --> R[Push to Supabase sync]
+    R --> S[Dashboard recalculates on view]
+    </pre>
+  </div>
+
+  <div class="page-break"></div>
+
+  <h3>5.3 Dashboard Calculation Pipeline</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TD
+    Start[User selects Person + Month] --> Load[Load from Zustand store]
+
+    Load --> Inc[getMonthlyIncome]
+    Load --> Debt[getPersonDebtAndBetweenUsSummary]
+    Load --> Other[getMonthlyOtherExpensesTotal]
+
+    Inc --> IncSum["Income = sum of entries in month"]
+    Debt --> DebtSum["Debt and Us = payments + Between Us\nminus duplicates"]
+    Other --> OtherSum["Other = sum of expense shares"]
+
+    DebtSum --> Spend["Total Spending = Debt and Us + Other"]
+    OtherSum --> Spend
+    IncSum --> Flow["Cash flow = Income - Spending"]
+    Spend --> Flow
+
+    Flow --> Saved["Saved = max(0, Cash flow)"]
+    Flow --> KPI[Show KPI cards]
+
+    Spend --> Donut[Spending donut chart]
+    IncSum --> IncDonut[Income sources donut]
+    Load --> Trend[getTrendMonths x 6]
+    Trend --> Bar[Bar chart: income vs spend]
+    Trend --> Line[Line chart: money left trend]
+
+    KPI --> Click{User taps chart?}
+    Click -->|Yes| List[Show payment list]
+    Click -->|No| Done[Display charts only]
+    </pre>
+  </div>
+
+  <h3>5.4 Cloud Sync Flow</h3>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+    A[Change on Device A] --> B[Zustand store updates]
+    B --> C[localStorage save]
+    B --> D[Debounce 250ms]
+    D --> E[Push JSON to Supabase]
+    E --> F[household_id row updated]
+
+    F --> G[Realtime or poll on Device B]
+    G --> H[Pull newer JSON]
+    H --> I[Replace local store]
+    I --> J[UI refreshes]
+    </pre>
+  </div>
+
+  <h2>6. Key Source Files</h2>
+  <table>
+    <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>src/store/finance-store.ts</td><td>All write operations: spend, income, pay debt, delete</td></tr>
+      <tr><td>src/lib/calculations.ts</td><td>Read-only math for dashboard and reports</td></tr>
+      <tr><td>src/lib/transaction-reversal.ts</td><td>Undo deletes, recalculate Between Us</td></tr>
+      <tr><td>src/lib/monthly-expense-tracker.ts</td><td>Bill paid / remaining this month</td></tr>
+      <tr><td>src/lib/inter-couple.ts</td><td>Between Us labels and transaction linking</td></tr>
+      <tr><td>src/lib/supabase/sync.ts</td><td>Push/pull cloud state</td></tr>
+      <tr><td>src/components/dashboard/</td><td>Charts and click-to-list UI</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Summary</h2>
+  <p>
+    <strong>KG Finance</strong> is a Next.js couple budgeting app that stores all financial data locally
+    (and optionally in Supabase), runs every calculation in the browser when you view or change data,
+    and keeps a shared Between Us ledger so split and cross-person payments stay fair.
+  </p>
+
+  <footer>
+    KG Finance — Project Documentation · Generated July 2026
+  </footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "neutral",
+      flowchart: { curve: "basis", padding: 12 },
+      securityLevel: "loose",
+    });
+  </script>
+</body>
+</html>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { loadSyncConfig } from "@/lib/supabase/client";
 import {
+  clearPendingLocalChanges,
   flushPendingPush,
   isApplyingRemoteSync,
   markLocalChangePending,
@@ -22,9 +23,25 @@ import {
 export function SyncProvider() {
   const readyRef = useRef(false);
   const householdIdRef = useRef<string | null>(null);
+  const unsubscribeStoreRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    function startStoreSubscription() {
+      if (unsubscribeStoreRef.current) return;
+
+      unsubscribeStoreRef.current = useFinanceStore.subscribe(() => {
+        if (isApplyingRemoteSync()) return;
+
+        markLocalChangePending();
+
+        const householdId = householdIdRef.current;
+        if (!householdId || !readyRef.current) return;
+
+        scheduleFinancePush(householdId, getFinanceState);
+      });
+    }
 
     async function startSync() {
       const config = await loadSyncConfig();
@@ -39,6 +56,8 @@ export function SyncProvider() {
         await waitForStoreHydration();
         if (cancelled) return;
 
+        clearPendingLocalChanges();
+
         await runInitialSyncSession(
           config,
           getFinanceState,
@@ -48,8 +67,8 @@ export function SyncProvider() {
         if (cancelled) return;
 
         readyRef.current = true;
+        startStoreSubscription();
 
-        // Upload anything that changed while sync was starting, then refresh.
         await runAutoSyncCycle(
           config.householdKey,
           getFinanceState,
@@ -57,6 +76,7 @@ export function SyncProvider() {
         );
       } catch {
         readyRef.current = true;
+        startStoreSubscription();
         const householdId = householdIdRef.current;
         if (householdId) {
           void flushPendingPush();
@@ -65,17 +85,6 @@ export function SyncProvider() {
     }
 
     void startSync();
-
-    const unsubscribeStore = useFinanceStore.subscribe(() => {
-      if (isApplyingRemoteSync()) return;
-
-      markLocalChangePending();
-
-      const householdId = householdIdRef.current;
-      if (!householdId || !readyRef.current) return;
-
-      scheduleFinancePush(householdId, getFinanceState);
-    });
 
     function runBackgroundSync() {
       const householdId = householdIdRef.current;
@@ -110,7 +119,8 @@ export function SyncProvider() {
 
     return () => {
       cancelled = true;
-      unsubscribeStore();
+      unsubscribeStoreRef.current?.();
+      unsubscribeStoreRef.current = null;
       unsubscribeStatus();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", runBackgroundSync);

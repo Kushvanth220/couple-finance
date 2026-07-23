@@ -1,0 +1,15 @@
+{
+  "household_id": "grik-finance-couple",
+  "updated_at": "2026-07-23T15:32:54.884679+00:00",
+  "counts": {
+    "incomeSources": 7,
+    "incomeEntries": 23,
+    "monthlyExpenses": 4,
+    "accounts": 14,
+    "debts": 9,
+    "transactions": 65,
+    "interCoupleHistory": 13,
+    "deletedHistory": 2
+  },
+  "interCoupleBalance": 9079.94
+}

@@ -16,6 +16,7 @@ export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 export interface SyncMeta {
   lastSyncedAt: string | null;
   lastPushedAt: string | null;
+  lastLocalEditAt: string | null;
 }
 
 export interface RemoteFinanceRow {
@@ -54,7 +55,13 @@ let pushHouseholdId: string | null = null;
 const listeners = new Set<SyncListener>();
 
 const PUSH_DEBOUNCE_MS = 250;
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 1_500;
+
+let sessionPullConfig: {
+  householdId: string;
+  getLocalState: () => FinanceState;
+  applyRemoteState: (state: FinanceState) => void;
+} | null = null;
 
 function getConfigOrThrow() {
   const config = activeConfig ?? getCachedSyncConfig();
@@ -95,15 +102,20 @@ function notifyStatus(status: SyncStatus, error?: string) {
 
 export function readSyncMeta(): SyncMeta {
   if (typeof window === "undefined") {
-    return { lastSyncedAt: null, lastPushedAt: null };
+    return { lastSyncedAt: null, lastPushedAt: null, lastLocalEditAt: null };
   }
 
   try {
     const raw = localStorage.getItem(SYNC_META_KEY);
-    if (!raw) return { lastSyncedAt: null, lastPushedAt: null };
-    return JSON.parse(raw) as SyncMeta;
+    if (!raw) return { lastSyncedAt: null, lastPushedAt: null, lastLocalEditAt: null };
+    const parsed = JSON.parse(raw) as Partial<SyncMeta>;
+    return {
+      lastSyncedAt: parsed.lastSyncedAt ?? null,
+      lastPushedAt: parsed.lastPushedAt ?? null,
+      lastLocalEditAt: parsed.lastLocalEditAt ?? null,
+    };
   } catch {
-    return { lastSyncedAt: null, lastPushedAt: null };
+    return { lastSyncedAt: null, lastPushedAt: null, lastLocalEditAt: null };
   }
 }
 
@@ -181,19 +193,41 @@ export async function pushFinanceState(
 
   pendingLocalChanges = false;
   writeSyncMeta({
+    ...readSyncMeta(),
     lastSyncedAt: data.updated_at,
     lastPushedAt: data.updated_at,
+    lastLocalEditAt: null,
   });
 
-  return {
+  const row = {
     household_id: data.household_id,
     data: data.data as FinanceState,
     updated_at: data.updated_at,
   };
+
+  if (sessionPullConfig?.householdId === householdId) {
+    void pullRemoteIfNewer(
+      householdId,
+      sessionPullConfig.getLocalState,
+      sessionPullConfig.applyRemoteState
+    );
+  }
+
+  return row;
 }
 
 export function markLocalChangePending() {
   pendingLocalChanges = true;
+  const meta = readSyncMeta();
+  writeSyncMeta({
+    ...meta,
+    lastLocalEditAt: new Date().toISOString(),
+  });
+}
+
+/** Clear false-positive pending flag from store rehydration (not a user edit). */
+export function clearPendingLocalChanges() {
+  pendingLocalChanges = false;
 }
 
 export function scheduleFinancePush(
@@ -245,8 +279,13 @@ function applyRemoteRow(
   writeSyncMeta({
     lastSyncedAt: row.updated_at,
     lastPushedAt: readSyncMeta().lastPushedAt,
+    lastLocalEditAt: null,
   });
   notifyStatus("synced");
+}
+
+function lastLocalEditTime(meta = readSyncMeta()) {
+  return meta.lastLocalEditAt ? new Date(meta.lastLocalEditAt).getTime() : 0;
 }
 
 function shouldPullRemote(
@@ -258,12 +297,24 @@ function shouldPullRemote(
 
   const remoteTime = new Date(remote.updated_at).getTime();
   const syncedTime = lastSyncedTime(meta);
+  const localEditTime = lastLocalEditTime(meta);
+
+  if (localEditTime > remoteTime) return false;
 
   if (remoteTime > syncedTime) return true;
 
   if (!meta.lastSyncedAt) return true;
 
   return false;
+}
+
+function shouldPushLocalOverRemote(
+  remote: RemoteFinanceRow,
+  meta = readSyncMeta()
+) {
+  const remoteTime = new Date(remote.updated_at).getTime();
+  const localEditTime = lastLocalEditTime(meta);
+  return localEditTime > remoteTime;
 }
 
 export function pullRemoteIfNewer(
@@ -288,6 +339,8 @@ export async function resolveInitialSync(
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ): Promise<"local" | "remote" | "none"> {
+  clearPendingLocalChanges();
+
   const remote = await fetchRemoteFinance(householdId);
   const localState = getLocalState();
   const meta = readSyncMeta();
@@ -298,7 +351,7 @@ export async function resolveInitialSync(
     return "local";
   }
 
-  if (pendingLocalChanges) {
+  if (shouldPushLocalOverRemote(remote, meta)) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
@@ -338,12 +391,16 @@ export function subscribeToFinanceChanges(
       (payload) => {
         if (payload.eventType === "DELETE") return;
 
-        const row = payload.new as RemoteFinanceRow | null;
-        if (!row?.data) return;
-
-        if (!shouldPullRemote(row, getLocalState())) return;
-
-        applyRemoteRow(row, applyRemoteState);
+        void (async () => {
+          try {
+            const remote = await fetchRemoteFinance(householdId);
+            if (!remote?.data) return;
+            if (!shouldPullRemote(remote, getLocalState())) return;
+            applyRemoteRow(remote, applyRemoteState);
+          } catch (err) {
+            notifyStatus("error", helpfulErrorMessage(err));
+          }
+        })();
       }
     )
     .subscribe((status) => {
@@ -452,6 +509,8 @@ export async function runInitialSyncSession(
     notifyStatus("syncing");
 
     try {
+      sessionPullConfig = { householdId, getLocalState, applyRemoteState };
+      clearPendingLocalChanges();
       await resolveInitialSync(householdId, getLocalState, applyRemoteState);
       subscribeToFinanceChanges(householdId, getLocalState, applyRemoteState);
       startPollingSync(householdId, getLocalState, applyRemoteState);
@@ -474,6 +533,7 @@ export function stopSyncSession() {
   syncInProgress = null;
   pushHouseholdId = null;
   pushStateGetter = null;
+  sessionPullConfig = null;
 }
 
 export function getActiveHouseholdId() {

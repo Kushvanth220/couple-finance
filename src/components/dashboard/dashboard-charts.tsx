@@ -185,118 +185,46 @@ export function IncomeVsSpendChart({
   );
 }
 
-export function SpendDonutChart({
-  debt,
-  other,
-  onSliceClick,
-  onCenterClick,
-  activeSlice,
-}: {
-  debt: number;
-  other: number;
-  onSliceClick?: (slice: "debt" | "other") => void;
-  onCenterClick?: () => void;
-  activeSlice?: "debt" | "other" | null;
-}) {
-  const total = debt + other;
-  if (total <= 0) return <EmptyChart message="No spending this month" />;
+export const INCOME_SOURCE_PALETTE = [
+  "#34c759",
+  "#30d158",
+  "#007aff",
+  "#5856d6",
+  "#ff9500",
+  "#64d2ff",
+  "#af52de",
+  "#ff2d55",
+  "#ffd60a",
+  "#5ac8fa",
+  "#bf5af2",
+  "#ac8e68",
+];
 
-  const segments: Segment[] = [
-    { name: "Debt & Us", value: debt, color: DEBT_COLOR, id: "debt" },
-    { name: "Other", value: other, color: OTHER_COLOR, id: "other" },
-  ].filter((s) => s.value > 0);
-
-  const legend = segments.map((s) => ({
-    ...s,
-    pct: Math.round((s.value / total) * 100),
-  }));
-
-  return (
-    <div>
-      <div className="relative h-[130px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={segments}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={38}
-              outerRadius={54}
-              paddingAngle={3}
-              stroke="none"
-              className="cursor-pointer"
-              onClick={(row) => {
-                const id = (row as { payload?: Segment }).payload?.id;
-                if (id === "debt" || id === "other") onSliceClick?.(id);
-              }}
-            >
-              {segments.map((entry) => (
-                <Cell
-                  key={entry.name}
-                  fill={entry.color}
-                  opacity={activeSlice && activeSlice !== entry.id ? 0.35 : 1}
-                />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => (
-                <ChartTooltip
-                  active={active}
-                  payload={payload?.map((entry) => ({
-                    name: String(entry.name),
-                    value: Number(entry.value),
-                    color: (entry.payload as Segment).color,
-                  }))}
-                />
-              )}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <button
-          type="button"
-          onClick={onCenterClick}
-          className="absolute inset-0 flex flex-col items-center justify-center"
-          aria-label="Show all spending"
-        >
-          <p className="text-[10px] text-muted">Total out</p>
-          <p className="text-sm font-bold tabular-nums">{formatCurrency(total)}</p>
-        </button>
-      </div>
-      <LegendRow
-        items={legend}
-        activeName={activeSlice}
-        onItemClick={(id) => onSliceClick?.(id as "debt" | "other")}
-      />
-    </div>
-  );
+export function getIncomeSourceColor(index: number): string {
+  return INCOME_SOURCE_PALETTE[index % INCOME_SOURCE_PALETTE.length]!;
 }
 
 export function IncomeDonutChart({
   segments,
   onSliceClick,
+  onCenterClick,
   activeSlice,
 }: {
   segments: { name: string; amount: number }[];
   onSliceClick?: (sourceName: string) => void;
+  onCenterClick?: () => void;
   activeSlice?: string | null;
 }) {
   const total = segments.reduce((sum, s) => sum + s.amount, 0);
-  if (total <= 0) return <EmptyChart message="No income this month" />;
+  if (total <= 0) return <EmptyChart message="No income in this period" />;
 
-  const palette = ["#34c759", "#30d158", "#007aff", "#5856d6", "#ff9500"];
-  const top = segments.slice(0, 4);
-  const rest = segments.slice(4).reduce((sum, s) => sum + s.amount, 0);
-  const chartData: Segment[] = top.map((s, i) => ({
+  const sorted = [...segments].sort((a, b) => b.amount - a.amount);
+  const chartData: Segment[] = sorted.map((s, i) => ({
     name: s.name,
     value: s.amount,
-    color: palette[i % palette.length]!,
+    color: getIncomeSourceColor(i),
     id: s.name,
   }));
-  if (rest > 0) {
-    chartData.push({ name: "Other", value: rest, color: "#8e8e93", id: "__other__" });
-  }
 
   const legend = chartData.map((s) => ({
     ...s,
@@ -305,7 +233,7 @@ export function IncomeDonutChart({
 
   return (
     <div>
-      <div className="relative h-[130px]">
+      <div className="relative h-[160px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -314,9 +242,9 @@ export function IncomeDonutChart({
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius={38}
-              outerRadius={54}
-              paddingAngle={2}
+              innerRadius={42}
+              outerRadius={62}
+              paddingAngle={chartData.length > 12 ? 1 : 2}
               stroke="none"
               className="cursor-pointer"
               onClick={(row) => {
@@ -348,12 +276,12 @@ export function IncomeDonutChart({
         </ResponsiveContainer>
         <button
           type="button"
-          onClick={() => onSliceClick?.("__all__")}
-          className="absolute inset-0 flex flex-col items-center justify-center"
+          onClick={onCenterClick}
+          className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
           aria-label="Show all income"
         >
           <p className="text-[10px] text-muted">Total in</p>
-          <p className="text-sm font-bold tabular-nums">{formatCurrency(total)}</p>
+          <p className="text-base font-bold tabular-nums">{formatCurrency(total)}</p>
         </button>
       </div>
       <LegendRow
@@ -361,6 +289,123 @@ export function IncomeDonutChart({
         activeName={activeSlice}
         onItemClick={(id) => onSliceClick?.(id)}
       />
+    </div>
+  );
+}
+
+export const EXPENSE_CATEGORY_PALETTE = [
+  "#ff3b30",
+  "#ff9500",
+  "#ffcc00",
+  "#34c759",
+  "#30d158",
+  "#007aff",
+  "#5856d6",
+  "#af52de",
+  "#ff2d55",
+  "#64d2ff",
+  "#ac8e68",
+  "#5ac8fa",
+  "#bf5af2",
+  "#ffd60a",
+];
+
+export function getExpenseCategoryColor(index: number): string {
+  return EXPENSE_CATEGORY_PALETTE[index % EXPENSE_CATEGORY_PALETTE.length]!;
+}
+
+export function ExpenseCategoryDonutChart({
+  segments,
+  onSliceClick,
+  onCenterClick,
+  activeSlice,
+  compact = false,
+}: {
+  segments: { name: string; amount: number }[];
+  onSliceClick?: (categoryName: string) => void;
+  onCenterClick?: () => void;
+  activeSlice?: string | null;
+  compact?: boolean;
+}) {
+  const total = segments.reduce((sum, s) => sum + s.amount, 0);
+  if (total <= 0) return <EmptyChart message="No spending in this period" />;
+
+  const sorted = [...segments].sort((a, b) => b.amount - a.amount);
+  const chartData: Segment[] = sorted.map((s, i) => ({
+    name: s.name,
+    value: s.amount,
+    color: getExpenseCategoryColor(i),
+    id: s.name,
+  }));
+
+  const legend = chartData.map((s) => ({
+    ...s,
+    pct: Math.round((s.value / total) * 100),
+  }));
+
+  return (
+    <div>
+      <div className="relative h-[160px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={42}
+              outerRadius={62}
+              paddingAngle={chartData.length > 12 ? 1 : 2}
+              stroke="none"
+              className="cursor-pointer"
+              onClick={(row) => {
+                const id = (row as { payload?: Segment }).payload?.id;
+                if (id) onSliceClick?.(id);
+              }}
+            >
+              {chartData.map((entry) => (
+                <Cell
+                  key={entry.name}
+                  fill={entry.color}
+                  opacity={activeSlice && activeSlice !== entry.id ? 0.35 : 1}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => (
+                <ChartTooltip
+                  active={active}
+                  payload={payload?.map((entry) => ({
+                    name: String(entry.name),
+                    value: Number(entry.value),
+                    color: (entry.payload as Segment).color,
+                  }))}
+                />
+              )}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <button
+          type="button"
+          onClick={onCenterClick}
+          className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+          aria-label="Show all spending"
+        >
+          <p className="text-[10px] text-muted">Total spent</p>
+          <p className="text-base font-bold tabular-nums">{formatCurrency(total)}</p>
+        </button>
+      </div>
+      {!compact && (
+        <>
+          <LegendRow
+            items={legend}
+            activeName={activeSlice}
+            onItemClick={(id) => onSliceClick?.(id)}
+          />
+          <p className="text-[10px] text-muted mt-1">Tap a slice or row below for details</p>
+        </>
+      )}
     </div>
   );
 }

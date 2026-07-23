@@ -9,6 +9,17 @@ export const seedData: FinanceState = {
     { id: "is-g1", person: "grishma", name: "Grubhub" },
   ],
   incomeEntries: [],
+  spendCategories: [
+    { id: "sc-gas", name: "Gas", keywords: ["gas", "fuel", "petrol", "shell", "exxon"] },
+    { id: "sc-food", name: "Food", keywords: ["food", "restaurant", "lunch", "dinner", "uber eats", "doordash", "grubhub"] },
+    { id: "sc-home-rent", name: "Home Rent", keywords: ["home rent", "rent", "room rent", "landlord", "apartment"] },
+    { id: "sc-car-loan", name: "Car Loan", keywords: ["car loan", "auto loan", "vehicle loan"] },
+    { id: "sc-car-maintain", name: "Car Maintain", keywords: ["car maintain", "car maintenance", "oil change", "repair", "mechanic"] },
+    { id: "sc-college-fee", name: "College Fee", keywords: ["college fee", "college", "tuition", "semester"] },
+    { id: "sc-edu-loan", name: "Education Loan", keywords: ["education loan", "student loan"] },
+    { id: "sc-groceries", name: "Groceries", keywords: ["grocery", "groceries", "walmart", "costco", "target", "aldi"] },
+    { id: "sc-clothes", name: "Clothes", keywords: ["clothes", "clothing", "apparel", "shoes", "fashion"] },
+  ],
   monthlyExpenses: [
     { id: "me-k1", person: "kushvanth", name: "Education Loan", amount: 420, isVariable: false, isRecurring: true, dueDayOfMonth: 5 },
     { id: "me-k2", person: "kushvanth", name: "Car Loan", amount: 300, isVariable: false, isRecurring: true, dueDayOfMonth: 10 },

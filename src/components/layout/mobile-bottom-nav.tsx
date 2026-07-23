@@ -119,7 +119,7 @@ export function MobileBottomNav() {
               </Link>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {moreNavItems
                 .filter((link) => link.href !== "/sync")
                 .map((link) => {
@@ -130,19 +130,19 @@ export function MobileBottomNav() {
                       key={link.href}
                       href={link.href}
                       className={cn(
-                        "flex items-center gap-3 rounded-2xl px-3 py-3 transition-all",
+                        "flex flex-col items-center gap-1.5 rounded-xl px-2 py-2.5 transition-all text-center",
                         active
                           ? "bg-[#007aff]/12 ring-1 ring-[#007aff]/25"
                           : "glass hover:bg-black/5 dark:hover:bg-white/5"
                       )}
                     >
                       <span
-                        className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${link.tint}18`, color: link.tint }}
                       >
-                        <Icon className="w-5 h-5" />
+                        <Icon className="w-4 h-4" />
                       </span>
-                      <span className="text-sm font-medium">{link.label}</span>
+                      <span className="text-[10px] font-medium leading-tight">{link.label}</span>
                     </Link>
                   );
                 })}

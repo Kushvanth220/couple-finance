@@ -4,30 +4,33 @@ import { useState, useMemo } from "react";
 import {
   ArrowRight,
   Banknote,
-  ChevronDown,
   CreditCard,
   Wallet,
 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { PersonTabs } from "@/components/ui/person-tabs";
+import { GlassModal } from "@/components/ui/glass-modal";
+import { SpendCategoryManager } from "@/components/spend/spend-category-manager";
 import { useFinanceStore } from "@/store/finance-store";
-import { getMonthExpenses } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/formatters";
-import { getMonthlyExpensePaid, getMonthlyExpenseProgress } from "@/lib/monthly-expense-tracker";
+import {
+  matchSpendCategoryFromNote,
+  resolveSpendCategoryLabel,
+} from "@/lib/spend-categories";
 import { getInterCoupleUpdatesFromShares } from "@/lib/transaction-reversal";
 import { describeInterCoupleFromSpend } from "@/lib/inter-couple";
-import { PERSON_LABELS, type Account, type Debt, type MonthlyExpense, type Person } from "@/types";
+import { PERSON_LABELS, type Account, type Person, type SpendCategory } from "@/types";
 import { cn } from "@/lib/utils";
 
 type Step = "details" | "payment" | "cash-source" | "done";
 type PaidByMode = "kushvanth" | "grishma" | "split";
-type CategoryMode = "bills" | "debts" | "custom";
 
-type CategorySelection =
-  | { type: "expense"; item: MonthlyExpense }
-  | { type: "debt"; item: Debt }
-  | { type: "custom"; name: string; owner: Person | "both" };
+type CategorySelection = {
+  type: "category";
+  categoryId: string;
+  name: string;
+  owner: Person | "both";
+};
 
 type ExpenseOwner = Person | "both";
 
@@ -38,89 +41,57 @@ interface PaymentSelection {
   cashSourceAccountId?: string;
 }
 
-function expenseSubLine(expense: MonthlyExpense, transactions: ReturnType<typeof useFinanceStore.getState>["transactions"]) {
-  if (expense.isVariable) return "Variable";
-  const progress = getMonthlyExpenseProgress(expense, transactions);
-  if (!progress) {
-    return expense.amount != null ? formatCurrency(expense.amount) : "—";
-  }
-  return `${formatCurrency(progress.remainingThisMonth)} left`;
+function isSharedExpense(owner: ExpenseOwner): boolean {
+  return owner === "both";
 }
 
-function getOwner(selection: CategorySelection | null): ExpenseOwner {
-  if (!selection) return "kushvanth";
-  if (selection.type === "custom") return selection.owner;
-  return selection.item.person;
-}
-
-function isSharedExpense(selection: CategorySelection | null): boolean {
-  return selection?.type === "custom" && selection.owner === "both";
-}
-
-function getLabel(selection: CategorySelection | null): string {
-  if (!selection) return "";
-  if (selection.type === "custom") return selection.name;
-  return selection.item.name;
-}
-
-function isDebt(selection: CategorySelection | null): boolean {
-  return selection?.type === "debt";
+function keywordsSubLine(category: SpendCategory): string {
+  const keywords = category.keywords?.filter(Boolean) ?? [];
+  if (keywords.length === 0) return "No keywords";
+  if (keywords.length <= 2) return keywords.join(", ");
+  return `${keywords.slice(0, 2).join(", ")} +${keywords.length - 2}`;
 }
 
 export default function SpendPage() {
   const {
     accounts,
-    debts,
-    monthlyExpenses,
-    transactions,
+    spendCategories,
     spend,
     spendSplit,
-    payDebt,
-    payDebtForOther,
   } = useFinanceStore();
 
   const [step, setStep] = useState<Step>("details");
   const [amount, setAmount] = useState("");
   const [selection, setSelection] = useState<CategorySelection | null>(null);
-  const [customName, setCustomName] = useState("");
-  const [customOwner, setCustomOwner] = useState<ExpenseOwner>("kushvanth");
+  const [expenseOwner, setExpenseOwner] = useState<ExpenseOwner>("kushvanth");
+  const [manualCategoryPick, setManualCategoryPick] = useState(false);
   const [paidByMode, setPaidByMode] = useState<PaidByMode>("kushvanth");
   const [kushShare, setKushShare] = useState("");
   const [grishShare, setGrishShare] = useState("");
   const [expenseShareKush, setExpenseShareKush] = useState("");
   const [expenseShareGrish, setExpenseShareGrish] = useState("");
   const [notes, setNotes] = useState("");
-  const [categoryPerson, setCategoryPerson] = useState<Person>("kushvanth");
-  const [categoryMode, setCategoryMode] = useState<CategoryMode>("bills");
-  const [showNotes, setShowNotes] = useState(false);
 
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [pendingCashFor, setPendingCashFor] = useState<Person | null>(null);
   const [splitPayments, setSplitPayments] = useState<Partial<Record<Person, PaymentSelection>>>({});
 
+  const [manageOpen, setManageOpen] = useState(false);
+
   const parsedAmount = parseFloat(amount) || 0;
-  const expenseOwner = getOwner(selection);
-  const sharedExpense = isSharedExpense(selection);
-  const categoryLabel = getLabel(selection);
-  const payingDebt = isDebt(selection);
+  const sharedExpense = isSharedExpense(expenseOwner);
 
-  const expenseCategories = useMemo(() => {
-    const kush = getMonthExpenses(monthlyExpenses, "kushvanth");
-    const grish = getMonthExpenses(monthlyExpenses, "grishma");
-    return { kush, grish };
-  }, [monthlyExpenses]);
-
-  const debtCategories = useMemo(() => ({
-    kush: debts.filter((d) => d.person === "kushvanth"),
-    grish: debts.filter((d) => d.person === "grishma"),
-  }), [debts]);
+  const categoryLabel = useMemo(
+    () => resolveSpendCategoryLabel(spendCategories, selection?.categoryId ?? null, notes),
+    [spendCategories, selection?.categoryId, notes]
+  );
 
   const reset = () => {
     setStep("details");
     setAmount("");
     setSelection(null);
-    setCustomName("");
-    setCustomOwner("kushvanth");
+    setExpenseOwner("kushvanth");
+    setManualCategoryPick(false);
     setPaidByMode("kushvanth");
     setKushShare("");
     setGrishShare("");
@@ -130,77 +101,7 @@ export default function SpendPage() {
     setSelectedAccount(null);
     setPendingCashFor(null);
     setSplitPayments({});
-    setCategoryPerson("kushvanth");
-    setCategoryMode("bills");
-    setShowNotes(false);
-  };
-
-  const handleCategoryModeChange = (mode: CategoryMode) => {
-    setCategoryMode(mode);
-    if (mode === "custom") {
-      setSelection({ type: "custom", name: customName, owner: customOwner });
-    } else if (selection?.type === "custom") {
-      setSelection(null);
-      setCustomName("");
-    }
-  };
-
-  const handleCategoryPersonChange = (person: Person) => {
-    setCategoryPerson(person);
-    if (
-      selection &&
-      selection.type !== "custom" &&
-      selection.item.person !== person
-    ) {
-      setSelection(null);
-    }
-  };
-
-  const selectionSummary = useMemo(() => {
-    if (!selection) return null;
-    if (selection.type === "custom") {
-      return customName.trim() ? customName.trim() : "Something else";
-    }
-    return selection.item.name;
-  }, [selection, customName]);
-
-  const selectionMeta = useMemo(() => {
-    if (!selection) return null;
-    if (selection.type === "custom") {
-      return customOwner === "both"
-        ? "Custom · both of you"
-        : `Custom · ${PERSON_LABELS[customOwner]}`;
-    }
-    if (selection.type === "debt") {
-      return `Debt · ${PERSON_LABELS[selection.item.person]}`;
-    }
-    return `Monthly bill · ${PERSON_LABELS[selection.item.person]}`;
-  }, [selection, customOwner]);
-
-  const selectExpense = (expense: MonthlyExpense) => {
-    setCategoryPerson(expense.person);
-    setCategoryMode("bills");
-    setSelection({ type: "expense", item: expense });
-    setCustomName("");
-    if (!amount.trim() && expense.amount != null) {
-      setAmount(String(expense.amount));
-      if (paidByMode !== "split") {
-        applySplitAmounts(expense.amount, paidByMode);
-      }
-    }
-  };
-
-  const selectDebt = (debt: Debt) => {
-    setCategoryPerson(debt.person);
-    setCategoryMode("debts");
-    setSelection({ type: "debt", item: debt });
-    setCustomName("");
-    if (!amount.trim()) {
-      setAmount(String(debt.amount));
-      if (paidByMode !== "split") {
-        applySplitAmounts(debt.amount, paidByMode);
-      }
-    }
+    setManageOpen(false);
   };
 
   const applySplitAmounts = (total: number, mode: PaidByMode, resetSplit = false) => {
@@ -232,6 +133,45 @@ export default function SpendPage() {
       applySplitAmounts(num, paidByMode);
     } else if (paidByMode === "split") {
       applySplitAmounts(num, "split", kushShare === "" && grishShare === "");
+    }
+  };
+
+  const handleNotesChange = (val: string) => {
+    setNotes(val);
+    if (manualCategoryPick) return;
+
+    const matched = matchSpendCategoryFromNote(val, spendCategories);
+    if (matched) {
+      setSelection({
+        type: "category",
+        categoryId: matched.id,
+        name: matched.name,
+        owner: expenseOwner,
+      });
+    }
+  };
+
+  const selectCategory = (category: SpendCategory) => {
+    setManualCategoryPick(true);
+    setSelection({
+      type: "category",
+      categoryId: category.id,
+      name: category.name,
+      owner: expenseOwner,
+    });
+  };
+
+  const handleOwnerChange = (owner: ExpenseOwner) => {
+    setExpenseOwner(owner);
+    if (selection) {
+      setSelection({ ...selection, owner });
+    }
+
+    if (owner === "both" && parsedAmount > 0) {
+      applyEvenExpenseSplit(parsedAmount);
+    } else if (owner !== "both") {
+      setExpenseShareKush("");
+      setExpenseShareGrish("");
     }
   };
 
@@ -275,10 +215,7 @@ export default function SpendPage() {
     applyEvenExpenseSplit(parsedAmount);
   };
 
-  const isCategoryValid =
-    selection?.type === "expense" ||
-    selection?.type === "debt" ||
-    (selection?.type === "custom" && customName.trim().length > 0);
+  const isCategoryValid = !!selection?.categoryId;
 
   const kushAmount = parseFloat(kushShare) || 0;
   const grishAmount = parseFloat(grishShare) || 0;
@@ -300,55 +237,15 @@ export default function SpendPage() {
   const splitRemaining = parsedAmount - kushAmount - grishAmount;
   const expenseSplitRemaining = parsedAmount - expenseShareKushAmt - expenseShareGrishAmt;
 
-  const categoryProgress = useMemo(() => {
-    if (selection?.type === "expense" && selection.item.amount != null && !selection.item.isVariable) {
-      const expense = selection.item;
-      const spent = getMonthlyExpensePaid(transactions, expense);
-      const planned = expense.amount!;
-      const remaining = Math.max(0, planned - spent - parsedAmount);
-      return {
-        label: expense.name,
-        planned,
-        spent,
-        thisPayment: parsedAmount,
-        remaining,
-        isDebt: false,
-      };
-    }
-    if (selection?.type === "debt") {
-      const debt = selection.item;
-      const remaining = Math.max(0, debt.amount - parsedAmount);
-      return {
-        label: debt.name,
-        planned: debt.amount,
-        spent: 0,
-        thisPayment: parsedAmount,
-        remaining,
-        isDebt: true,
-      };
-    }
-    return null;
-  }, [selection, transactions, parsedAmount]);
-
   const spendMeta = useMemo(() => {
-    if (selection?.type === "expense" && selection.item.amount != null) {
-      return {
-        monthlyExpenseId: selection.item.id,
-        plannedAmount: selection.item.amount,
-        expenseOwner: selection.item.person as Person,
-      };
-    }
     if (sharedExpense) {
       return { expenseOwner: undefined as Person | undefined };
     }
     return { expenseOwner: expenseOwner === "both" ? undefined : expenseOwner };
-  }, [selection, expenseOwner, sharedExpense]);
+  }, [expenseOwner, sharedExpense]);
 
   const handleDetailsNext = () => {
     if (!isCategoryValid || parsedAmount <= 0 || !sharesValid) return;
-    if (selection?.type === "custom") {
-      setSelection({ type: "custom", name: customName.trim(), owner: customOwner });
-    }
     setSplitPayments({});
     setStep("payment");
   };
@@ -417,49 +314,34 @@ export default function SpendPage() {
     }
   };
 
-  const confirmSplit = () => {
-    const label = categoryLabel || customName.trim();
-    const payments = (["kushvanth", "grishma"] as Person[])
-      .map((p) => splitPayments[p])
-      .filter((p): p is PaymentSelection => !!p && p.amount > 0);
-
-    if (payments.length === 0) return;
-
-    if (payingDebt && selection?.type === "debt") {
-      const debt = selection.item;
-      for (const payment of payments) {
-        if (payment.person !== debt.person) {
-          payDebtForOther({
-            paidBy: payment.person,
-            debtId: debt.id,
-            amount: payment.amount,
-            fromAccountId: payment.accountId,
-            cashSourceAccountId: payment.cashSourceAccountId,
-          });
-        } else {
-          payDebt(debt.id, payment.amount, payment.accountId);
-        }
-      }
-    } else {
-      spendSplit({
-        category: label,
-        expenseOwner: sharedExpense ? undefined : (expenseOwner as Person),
-        expenseShares: getExpenseShares(),
-        notes: notes || undefined,
-        payments,
-        monthlyExpenseId: spendMeta.monthlyExpenseId,
-        plannedAmount: spendMeta.plannedAmount ?? undefined,
-      });
-    }
-    setStep("done");
-  };
-
   const getExpenseShares = () => {
     if (!sharedExpense) return undefined;
     return {
       kushvanth: expenseShareKushAmt,
       grishma: expenseShareGrishAmt,
     };
+  };
+
+  const confirmSplit = () => {
+    const label = resolveSpendCategoryLabel(
+      spendCategories,
+      selection?.categoryId ?? null,
+      notes
+    );
+    const payments = (["kushvanth", "grishma"] as Person[])
+      .map((p) => splitPayments[p])
+      .filter((p): p is PaymentSelection => !!p && p.amount > 0);
+
+    if (payments.length === 0) return;
+
+    spendSplit({
+      category: label,
+      expenseOwner: sharedExpense ? undefined : (expenseOwner as Person),
+      expenseShares: getExpenseShares(),
+      notes: notes || undefined,
+      payments,
+    });
+    setStep("done");
   };
 
   const betweenUsPreview = useMemo(() => {
@@ -506,41 +388,28 @@ export default function SpendPage() {
     accountId: string,
     cashSourceAccountId?: string
   ) => {
-    const label = categoryLabel || customName.trim();
+    const label = resolveSpendCategoryLabel(
+      spendCategories,
+      selection?.categoryId ?? null,
+      notes
+    );
 
-    if (payingDebt && selection?.type === "debt") {
-      const debt = selection.item;
-      if (payer !== debt.person) {
-        payDebtForOther({
-          paidBy: payer,
-          debtId: debt.id,
-          amount: parsedAmount,
-          fromAccountId: accountId,
-          cashSourceAccountId,
-        });
-      } else {
-        payDebt(debt.id, parsedAmount, accountId);
-      }
-    } else {
-      spend({
-        person: payer,
-        amount: parsedAmount,
-        accountId,
-        cashSourceAccountId,
-        category: label,
-        notes: notes || undefined,
-        beneficiaryPerson:
-          sharedExpense
-            ? undefined
-            : payer !== expenseOwner && expenseOwner !== "both"
-              ? (expenseOwner as Person)
-              : undefined,
-        expenseShares: getExpenseShares(),
-        monthlyExpenseId: spendMeta.monthlyExpenseId,
-        plannedAmount: spendMeta.plannedAmount ?? undefined,
-        expenseOwner: spendMeta.expenseOwner,
-      });
-    }
+    spend({
+      person: payer,
+      amount: parsedAmount,
+      accountId,
+      cashSourceAccountId,
+      category: label,
+      notes: notes || undefined,
+      beneficiaryPerson:
+        sharedExpense
+          ? undefined
+          : payer !== expenseOwner && expenseOwner !== "both"
+            ? (expenseOwner as Person)
+            : undefined,
+      expenseShares: getExpenseShares(),
+      expenseOwner: spendMeta.expenseOwner,
+    });
     setStep("done");
   };
 
@@ -553,6 +422,13 @@ export default function SpendPage() {
     });
 
   const singlePayer = paidByMode !== "split" ? paidByMode : null;
+
+  const handleCategoryDeleted = (id: string) => {
+    if (selection?.categoryId === id) {
+      setSelection(null);
+      setManualCategoryPick(false);
+    }
+  };
 
   const renderAccountPicker = (person: Person) => {
     const share = getShareForPerson(person);
@@ -615,65 +491,83 @@ export default function SpendPage() {
     );
   };
 
+  const stepLabel =
+    step === "details" ? "1 · Details" : step === "payment" ? "2 · Pay" : step === "cash-source" ? "2 · Cash" : "Done";
+  const currentStep = step === "details" ? 1 : 2;
+
+  const selectionMeta =
+    expenseOwner === "both"
+      ? "Both of you"
+      : PERSON_LABELS[expenseOwner as Person];
+
   return (
-    <div className="space-y-4 animate-fade-in-up max-w-lg mx-auto pb-2">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Spend</h2>
-        <p className="text-muted text-sm mt-0.5">Record a payment</p>
+    <div className="space-y-3 animate-fade-in-up max-w-lg mx-auto pb-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-lg font-bold leading-tight">Spend</h1>
+          <p className="text-[10px] text-muted">{stepLabel}</p>
+        </div>
+        {step !== "details" && step !== "done" && (
+          <button
+            type="button"
+            onClick={reset}
+            className="text-[10px] text-[#007aff] font-medium px-2 py-1"
+          >
+            Cancel
+          </button>
+        )}
       </div>
 
+      {step !== "done" && (
+        <div className="flex gap-1">
+          {[1, 2].map((n) => (
+            <div
+              key={n}
+              className={cn(
+                "h-1 flex-1 rounded-full",
+                currentStep >= n ? "bg-[#007aff]" : "bg-black/10 dark:bg-white/10"
+              )}
+            />
+          ))}
+        </div>
+      )}
+
       {step === "details" && (
-        <GlassCard strong className="space-y-3 p-4">
-          <div className="flex items-center justify-center gap-1 py-1">
-            <span className="text-2xl font-light text-muted">$</span>
+        <GlassCard strong className="space-y-3 !p-3">
+          <div className="flex items-center justify-center gap-1 py-0.5">
+            <span className="text-xl font-light text-muted">$</span>
             <input
               type="number"
               value={amount}
               onChange={(e) => handleAmountChange(e.target.value)}
               placeholder="0"
-              className="text-4xl font-bold bg-transparent outline-none w-36 text-center"
+              className="text-3xl font-bold bg-transparent outline-none w-32 text-center"
               autoFocus
             />
           </div>
 
-          {categoryProgress && parsedAmount > 0 && (
-            <div className="rounded-xl bg-[#007aff]/5 border border-[#007aff]/20 px-3 py-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold truncate">{categoryProgress.label}</span>
-                <span className="text-[#34c759] font-semibold shrink-0">
-                  {formatCurrency(categoryProgress.remaining)} left
-                </span>
-              </div>
-              {!categoryProgress.isDebt && (
-                <div className="mt-1.5 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-[#007aff] rounded-full"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        ((categoryProgress.spent + categoryProgress.thisPayment) /
-                          categoryProgress.planned) *
-                          100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+          <div>
+            <p className="text-[11px] text-muted px-1 mb-1">Note</p>
+            <input
+              value={notes}
+              onChange={(e) => handleNotesChange(e.target.value)}
+              placeholder="What was it? e.g. Groceries at Costco"
+              className="w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
+            />
+          </div>
 
           <div className="space-y-2">
-            {selectionSummary && (
+            {selection?.categoryId && (
               <div className="rounded-xl border border-[#34c759]/30 bg-[#34c759]/10 px-3 py-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{selectionSummary}</p>
-                  {selectionMeta && <p className="text-[11px] text-muted truncate">{selectionMeta}</p>}
+                  <p className="text-sm font-semibold truncate">{categoryLabel}</p>
+                  <p className="text-[11px] text-muted truncate">{selectionMeta}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     setSelection(null);
-                    setCustomName("");
+                    setManualCategoryPick(false);
                   }}
                   className="text-[11px] text-[#007aff] font-medium shrink-0"
                 >
@@ -682,137 +576,69 @@ export default function SpendPage() {
               </div>
             )}
 
-            <PersonTabs value={categoryPerson} onChange={handleCategoryPersonChange} />
+            <div className="flex items-center justify-between px-1">
+              <p className="text-[11px] text-muted">Category</p>
+              <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="text-[11px] text-[#007aff] font-medium"
+              >
+                Manage categories
+              </button>
+            </div>
 
-            <div className="glass rounded-xl p-0.5 flex gap-0.5">
-              {(
-                [
-                  { id: "bills" as CategoryMode, label: "Bills" },
-                  { id: "debts" as CategoryMode, label: "Debt" },
-                  { id: "custom" as CategoryMode, label: "Custom" },
-                ]
-              ).map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => handleCategoryModeChange(id)}
-                  className={cn(
-                    "flex-1 py-1.5 rounded-lg text-xs font-medium transition-all",
-                    categoryMode === id ? "bg-[#007aff] text-white" : "text-muted"
-                  )}
-                >
-                  {label}
-                </button>
+            <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+              {spendCategories.map((category) => (
+                <CategoryButton
+                  key={category.id}
+                  label={category.name}
+                  sub={keywordsSubLine(category)}
+                  selected={selection?.categoryId === category.id}
+                  onClick={() => selectCategory(category)}
+                />
               ))}
             </div>
 
-            {categoryMode === "bills" && (
-              <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
-                {(categoryPerson === "kushvanth"
-                  ? expenseCategories.kush
-                  : expenseCategories.grish
-                ).map((expense) => (
-                  <CategoryButton
-                    key={expense.id}
-                    label={expense.name}
-                    sub={expenseSubLine(expense, transactions)}
-                    tag="Bill"
-                    selected={selection?.type === "expense" && selection.item.id === expense.id}
-                    onClick={() => selectExpense(expense)}
-                  />
+            <div>
+              <p className="text-[11px] text-muted px-1 mb-1">Who is this for?</p>
+              <div className="glass rounded-xl p-0.5 flex gap-0.5">
+                {(
+                  [
+                    { id: "kushvanth" as ExpenseOwner, label: PERSON_LABELS.kushvanth },
+                    { id: "grishma" as ExpenseOwner, label: PERSON_LABELS.grishma },
+                    { id: "both" as ExpenseOwner, label: "Both" },
+                  ]
+                ).map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleOwnerChange(id)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                      expenseOwner === id ? "bg-[#007aff] text-white" : "text-muted"
+                    )}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            )}
+            </div>
 
-            {categoryMode === "debts" && (
-              <>
-                {(categoryPerson === "kushvanth" ? debtCategories.kush : debtCategories.grish)
-                  .length === 0 ? (
-                  <p className="text-xs text-muted px-1 py-2 text-center">No debts listed.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
-                    {(categoryPerson === "kushvanth"
-                      ? debtCategories.kush
-                      : debtCategories.grish
-                    ).map((debt) => (
-                      <CategoryButton
-                        key={debt.id}
-                        label={debt.name}
-                        sub={`${formatCurrency(debt.amount)} owed`}
-                        tag="Debt"
-                        selected={selection?.type === "debt" && selection.item.id === debt.id}
-                        onClick={() => selectDebt(debt)}
-                        variant="debt"
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {categoryMode === "custom" && (
-              <div className="space-y-2 rounded-xl border border-[#007aff]/20 bg-[#007aff]/5 p-3">
-                <input
-                  value={customName}
-                  onChange={(e) => {
-                    setCustomName(e.target.value);
-                    setSelection({ type: "custom", name: e.target.value, owner: customOwner });
-                  }}
-                  placeholder="What was it? e.g. Groceries"
-                  className="w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
-                />
-
-                <div>
-                  <p className="text-[11px] text-muted px-1 mb-1">Who is this for?</p>
-                  <div className="glass rounded-xl p-0.5 flex gap-0.5">
-                    {(
-                      [
-                        { id: "kushvanth" as ExpenseOwner, label: PERSON_LABELS.kushvanth },
-                        { id: "grishma" as ExpenseOwner, label: PERSON_LABELS.grishma },
-                        { id: "both" as ExpenseOwner, label: "Both" },
-                      ]
-                    ).map(({ id, label }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => {
-                          setCustomOwner(id);
-                          setSelection({ type: "custom", name: customName, owner: id });
-                          if (id === "both" && parsedAmount > 0) {
-                            applyEvenExpenseSplit(parsedAmount);
-                          } else if (id !== "both") {
-                            setExpenseShareKush("");
-                            setExpenseShareGrish("");
-                          }
-                        }}
-                        className={cn(
-                          "flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all",
-                          customOwner === id ? "bg-[#007aff] text-white" : "text-muted"
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {sharedExpense && (
-                  <CompactSplitInputs
-                    kushLabel={`${PERSON_LABELS.kushvanth}'s part`}
-                    grishLabel={`${PERSON_LABELS.grishma}'s part`}
-                    kushValue={expenseShareKush}
-                    grishValue={expenseShareGrish}
-                    onKushChange={handleExpenseShareKushChange}
-                    onGrishChange={handleExpenseShareGrishChange}
-                    total={parsedAmount}
-                    kushAmt={expenseShareKushAmt}
-                    grishAmt={expenseShareGrishAmt}
-                    valid={expenseSharesValid}
-                    remaining={expenseSplitRemaining}
-                    onEvenSplit={applyEvenExpenseSplitAction}
-                  />
-                )}
-              </div>
+            {sharedExpense && (
+              <CompactSplitInputs
+                kushLabel={`${PERSON_LABELS.kushvanth}'s part`}
+                grishLabel={`${PERSON_LABELS.grishma}'s part`}
+                kushValue={expenseShareKush}
+                grishValue={expenseShareGrish}
+                onKushChange={handleExpenseShareKushChange}
+                onGrishChange={handleExpenseShareGrishChange}
+                total={parsedAmount}
+                kushAmt={expenseShareKushAmt}
+                grishAmt={expenseShareGrishAmt}
+                valid={expenseSharesValid}
+                remaining={expenseSplitRemaining}
+                onEvenSplit={applyEvenExpenseSplitAction}
+              />
             )}
           </div>
 
@@ -870,23 +696,6 @@ export default function SpendPage() {
               </div>
             )}
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowNotes((v) => !v)}
-            className="flex items-center gap-1 text-[11px] text-[#007aff] font-medium px-1"
-          >
-            <ChevronDown className={cn("w-3 h-3 transition-transform", showNotes && "rotate-180")} />
-            {showNotes ? "Hide note" : "Add note (optional)"}
-          </button>
-          {showNotes && (
-            <input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional note..."
-              className="w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
-            />
-          )}
 
           <GlassButton
             size="lg"
@@ -967,19 +776,17 @@ export default function SpendPage() {
           <p className="text-sm text-muted">
             {formatCurrency(parsedAmount)} · {categoryLabel}
           </p>
-          {categoryProgress && (
-            <p className="text-xs">
-              {categoryProgress.isDebt ? "Still to pay" : "Left this month"}:{" "}
-              <span className="font-semibold text-[#34c759]">
-                {formatCurrency(categoryProgress.remaining)}
-              </span>
-            </p>
-          )}
           <GlassButton size="lg" className="w-full" onClick={reset}>
             New Payment
           </GlassButton>
         </GlassCard>
       )}
+
+      <SpendCategoryManager
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+        onCategoryDeleted={handleCategoryDeleted}
+      />
     </div>
   );
 }
@@ -1074,14 +881,12 @@ function CategoryButton({
   tag,
   selected,
   onClick,
-  variant = "expense",
 }: {
   label: string;
   sub: string;
   tag?: string;
   selected: boolean;
   onClick: () => void;
-  variant?: "expense" | "debt";
 }) {
   return (
     <button
@@ -1091,33 +896,18 @@ function CategoryButton({
         "rounded-xl px-2 py-2 text-left text-xs transition-all border min-h-[52px] flex flex-col justify-between",
         selected
           ? "ring-2 ring-[#007aff] bg-[#007aff]/10 border-[#007aff]/40 shadow-sm"
-          : "glass border-transparent hover:border-white/20 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]",
-        variant === "debt" && !selected && "border-[#ff3b30]/10"
+          : "glass border-transparent hover:border-white/20 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
       )}
     >
       <div className="flex items-start justify-between gap-1 w-full">
         <p className="font-medium leading-tight line-clamp-2 text-[11px]">{label}</p>
         {tag ? (
-          <span
-            className={cn(
-              "text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0",
-              variant === "debt"
-                ? "bg-[#ff3b30]/15 text-[#ff3b30]"
-                : "bg-black/5 dark:bg-white/10 text-muted"
-            )}
-          >
+          <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0 bg-black/5 dark:bg-white/10 text-muted">
             {tag}
           </span>
         ) : null}
       </div>
-      <p
-        className={cn(
-          "text-[10px] mt-1",
-          variant === "debt" ? "text-[#ff9500] font-medium" : "text-muted"
-        )}
-      >
-        {sub}
-      </p>
+      <p className="text-[10px] mt-1 text-muted">{sub}</p>
     </button>
   );
 }

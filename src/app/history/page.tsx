@@ -1,29 +1,37 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Filter, RotateCcw, Calendar } from "lucide-react";
+import { Filter, RotateCcw } from "lucide-react";
 import { DeletedHistoryCard } from "@/components/history/deleted-history-card";
+import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { GlassModal } from "@/components/ui/glass-modal";
-import { PersonTabs } from "@/components/ui/person-tabs";
+import {
+  MonthRangeFilter,
+  defaultMonthRangeValue,
+  getMonthRangeBounds,
+  type MonthRangeValue,
+} from "@/components/ui/month-range-filter";
 import { useFinanceStore } from "@/store/finance-store";
+import { getAvailableMonthKeys } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, compareByDateTime, isWithinDateRange } from "@/lib/formatters";
 import { getTransactionDisplayMessage, getTransactionActor } from "@/lib/transaction-messages";
 import { PERSON_LABELS, type Person, type Transaction, type TransactionType } from "@/types";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 const typeLabels: Record<TransactionType, string> = {
   income: "Income",
   expense: "Expense",
   transfer: "Transfer",
-  cash_withdrawal: "Cash Withdrawal",
-  cash_deposit: "Cash Deposit",
-  debt_payment: "Debt Payment",
-  credit_payment: "Credit Payment",
+  cash_withdrawal: "Cash",
+  cash_deposit: "Cash",
+  debt_payment: "Debt",
+  credit_payment: "Credit",
   inter_couple: "Between Us",
-  balance_adjustment: "Balance Update",
+  balance_adjustment: "Adjust",
 };
 
 const typeColors: Record<TransactionType, string> = {
@@ -40,7 +48,7 @@ const typeColors: Record<TransactionType, string> = {
 
 export default function HistoryPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-muted p-6">Loading history…</div>}>
+    <Suspense fallback={<div className="text-xs text-muted p-4">Loading history…</div>}>
       <HistoryPageContent />
     </Suspense>
   );
@@ -49,13 +57,22 @@ export default function HistoryPage() {
 function HistoryPageContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get("txn");
+  const typeParam = searchParams.get("type");
+  const categoryParam = searchParams.get("category");
+  const personParam = searchParams.get("person");
 
-  const { transactions, deletedHistory, deleteTransaction, resetToSeed } = useFinanceStore();
+  const { transactions, incomeEntries, deletedHistory, deleteTransaction, resetToSeed } =
+    useFinanceStore();
   const [view, setView] = useState<"active" | "deleted">("active");
   const [person, setPerson] = useState<Person | "overall">("overall");
   const [typeFilter, setTypeFilter] = useState<TransactionType | "all">("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const monthOptions = useMemo(
+    () => getAvailableMonthKeys(transactions, incomeEntries),
+    [transactions, incomeEntries]
+  );
+  const [dateRange, setDateRange] = useState<MonthRangeValue>(() =>
+    defaultMonthRangeValue(monthOptions[0] ?? format(new Date(), "yyyy-MM"))
+  );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [linkedHighlightId, setLinkedHighlightId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
@@ -64,7 +81,8 @@ function HistoryPageContent() {
   } | null>(null);
   const [deletedByChoice, setDeletedByChoice] = useState<Person>("kushvanth");
 
-  const hasDateFilter = Boolean(startDate || endDate);
+  const bounds = getMonthRangeBounds(dateRange);
+  const hasDateFilter = dateRange.mode !== "all";
 
   const openDeleteConfirm = (transaction: Transaction) => {
     setDeletedByChoice(person !== "overall" ? person : "kushvanth");
@@ -88,16 +106,12 @@ function HistoryPageContent() {
       record.transactions.some((t) => t.id === highlightId)
     );
 
-    if (inActive) {
-      setView("active");
-    } else if (inDeleted) {
-      setView("deleted");
-    }
+    if (inActive) setView("active");
+    else if (inDeleted) setView("deleted");
 
     setPerson("overall");
     setTypeFilter("all");
-    setStartDate("");
-    setEndDate("");
+    setDateRange(defaultMonthRangeValue(monthOptions[0] ?? format(new Date(), "yyyy-MM")));
     setLinkedHighlightId(highlightId);
 
     const timer = window.setTimeout(() => {
@@ -112,12 +126,20 @@ function HistoryPageContent() {
       window.clearTimeout(timer);
       window.clearTimeout(clearTimer);
     };
-  }, [highlightId, transactions, deletedHistory]);
+  }, [highlightId, transactions, deletedHistory, monthOptions]);
 
-  const clearDateFilter = () => {
-    setStartDate("");
-    setEndDate("");
-  };
+  useEffect(() => {
+    if (typeParam === "income") {
+      setView("active");
+      setTypeFilter("income");
+    } else if (typeParam === "expense") {
+      setView("active");
+      setTypeFilter("expense");
+    }
+    if (personParam === "kushvanth" || personParam === "grishma") {
+      setPerson(personParam);
+    }
+  }, [typeParam, personParam]);
 
   const handleReset = () => {
     resetToSeed();
@@ -135,7 +157,8 @@ function HistoryPageContent() {
         (t.expenseShares?.[person] ?? 0) > 0
     )
     .filter((t) => typeFilter === "all" || t.type === typeFilter)
-    .filter((t) => isWithinDateRange(t, startDate || undefined, endDate || undefined))
+    .filter((t) => !categoryParam || (t.category ?? "Other") === categoryParam)
+    .filter((t) => isWithinDateRange(t, bounds.start, bounds.end))
     .sort(compareByDateTime);
 
   const filteredDeleted = (deletedHistory ?? [])
@@ -157,42 +180,39 @@ function HistoryPageContent() {
     .filter((record) =>
       isWithinDateRange(
         { date: record.deletedAt.slice(0, 10), timestamp: record.deletedAt },
-        startDate || undefined,
-        endDate || undefined
+        bounds.start,
+        bounds.end
       )
     )
     .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">History</h2>
-          <p className="text-muted mt-1">
-            {view === "active"
-              ? "Complete transaction log with auto-generated details"
-              : "Permanent record of everything removed from History"}
-          </p>
-        </div>
-        <GlassButton
-          variant="danger"
-          size="sm"
-          onClick={() => setShowResetConfirm(true)}
-        >
-          <RotateCcw className="w-4 h-4" />
-          Reset all data
+    <CompactPageShell
+      title="History"
+      subtitle={
+        view === "active"
+          ? categoryParam
+            ? `${filtered.length} · ${categoryParam}`
+            : `${filtered.length} of ${transactions.length} transactions`
+          : `${filteredDeleted.length} deleted records`
+      }
+      personOverall
+      personFilter={person}
+      onPersonFilterChange={setPerson}
+      action={
+        <GlassButton variant="danger" size="sm" onClick={() => setShowResetConfirm(true)}>
+          <RotateCcw className="w-3.5 h-3.5" />
+          Reset
         </GlassButton>
-      </div>
-
-      <div className="glass rounded-2xl p-1 flex gap-1">
+      }
+    >
+      <div className="glass rounded-xl p-0.5 flex gap-0.5">
         <button
           type="button"
           onClick={() => setView("active")}
           className={cn(
-            "flex-1 rounded-xl py-2 text-sm font-medium transition-colors",
-            view === "active"
-              ? "bg-[#007aff] text-white"
-              : "text-muted hover:text-foreground"
+            "flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors",
+            view === "active" ? "bg-[#007aff] text-white" : "text-muted"
           )}
         >
           Active
@@ -201,94 +221,50 @@ function HistoryPageContent() {
           type="button"
           onClick={() => setView("deleted")}
           className={cn(
-            "flex-1 rounded-xl py-2 text-sm font-medium transition-colors",
+            "flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors",
             view === "deleted"
               ? "bg-[#ff3b30] text-white"
-              : "text-muted hover:text-foreground"
+              : "text-muted"
           )}
         >
           Deleted ({filteredDeleted.length})
         </button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <PersonTabs
-            value={person}
-            onChange={setPerson}
-            includeOverall
-            className="flex-1"
-          />
-          <div className="glass rounded-2xl px-4 py-2 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-muted" />
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TransactionType | "all")}
-              className="bg-transparent outline-none text-sm flex-1"
-            >
-              <option value="all">All Types</option>
-              {Object.entries(typeLabels).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+      <MonthRangeFilter
+        value={dateRange}
+        onChange={setDateRange}
+        monthOptions={monthOptions}
+      />
 
-        <div className="glass rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-end gap-3">
-          <div className="flex items-center gap-2 text-sm text-muted shrink-0">
-            <Calendar className="w-4 h-4" />
-            <span>Date range</span>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3 flex-1">
-            <label className="flex-1 flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted px-1">From</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40 w-full"
-              />
-            </label>
-            <label className="flex-1 flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted px-1">To</span>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40 w-full"
-              />
-            </label>
-          </div>
-          {hasDateFilter ? (
-            <button
-              type="button"
-              onClick={clearDateFilter}
-              className="text-xs text-[#007aff] font-medium px-2 py-2 shrink-0"
-            >
-              Clear dates
-            </button>
-          ) : null}
-        </div>
+      <div className="glass rounded-xl px-3 py-2 flex items-center gap-2">
+        <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as TransactionType | "all")}
+          className="bg-transparent outline-none text-xs flex-1"
+        >
+          <option value="all">All types</option>
+          {Object.entries(typeLabels).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <p className="text-xs text-muted px-1">
-        {view === "active"
-          ? `${filtered.length} of ${transactions.length} transactions`
-          : `${filteredDeleted.length} of ${(deletedHistory ?? []).length} deleted records`}
-        {hasDateFilter ? " in selected date range" : ""}
-      </p>
-
-      {linkedHighlightId ? (
-        <p className="text-xs text-[#007aff] px-1">
-          Showing linked transaction from Between Us
-        </p>
+      {hasDateFilter ? (
+        <p className="text-[10px] text-muted px-1">Filtered: {bounds.label}</p>
       ) : null}
 
-      <GlassCard className="p-0 divide-y divide-white/5">
+      {linkedHighlightId ? (
+        <p className="text-[10px] text-[#007aff] px-1">Linked from Between Us</p>
+      ) : null}
+
+      <GlassCard className="!p-0 divide-y divide-black/5 dark:divide-white/10">
         {view === "deleted" ? (
           filteredDeleted.length === 0 ? (
-            <p className="text-sm text-muted p-5">No deleted transactions yet</p>
+            <p className="text-xs text-muted p-4 text-center">No deleted records</p>
           ) : (
             filteredDeleted.map((record) => (
               <div
@@ -304,7 +280,7 @@ function HistoryPageContent() {
             ))
           )
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-muted p-5">No transactions yet</p>
+          <p className="text-xs text-muted p-4 text-center">No transactions</p>
         ) : (
           filtered.map((transaction) => {
             const isPositive =
@@ -317,48 +293,34 @@ function HistoryPageContent() {
                 key={transaction.id}
                 id={`history-txn-${transaction.id}`}
                 className={cn(
-                  "flex items-start justify-between p-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors gap-3",
+                  "flex items-start justify-between px-3 py-2.5 gap-2 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]",
                   linkedHighlightId === transaction.id &&
                     "bg-[#007aff]/10 ring-2 ring-inset ring-[#007aff]/40"
                 )}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#007aff]/15 text-[#007aff]">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-[#007aff]/15 text-[#007aff]">
                       {PERSON_LABELS[actor]}
                     </span>
                     <span
                       className={cn(
-                        "text-xs font-medium px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5",
+                        "text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/5",
                         typeColors[transaction.type]
                       )}
                     >
                       {typeLabels[transaction.type]}
                     </span>
-                    <span className="text-xs text-muted">
+                    <span className="text-[10px] text-muted">
                       {formatDateTime(transaction.date, transaction.time, transaction.timestamp)}
                     </span>
                   </div>
-                  <p className="font-medium mt-2 text-sm leading-snug">{message}</p>
-                  {transaction.categoryRemaining != null && transaction.plannedAmount != null && (
-                    <p className="text-xs text-[#34c759] mt-1">
-                      {formatCurrency(transaction.categoryRemaining)} remaining of{" "}
-                      {formatCurrency(transaction.plannedAmount)} budget
-                    </p>
-                  )}
-                  {transaction.debtRemaining != null && (
-                    <p className="text-xs text-[#ff9500] mt-1">
-                      {formatCurrency(transaction.debtRemaining)} still to pay
-                    </p>
-                  )}
-                  {transaction.notes && transaction.notes !== message && (
-                    <p className="text-xs text-muted mt-1">Note: {transaction.notes}</p>
-                  )}
+                  <p className="font-medium mt-1 text-xs leading-snug line-clamp-2">{message}</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <span
                     className={cn(
-                      "font-semibold whitespace-nowrap",
+                      "text-xs font-semibold tabular-nums whitespace-nowrap",
                       isPositive ? "text-[#34c759]" : "text-foreground"
                     )}
                   >
@@ -368,7 +330,7 @@ function HistoryPageContent() {
                   <button
                     type="button"
                     onClick={() => openDeleteConfirm(transaction)}
-                    className="text-xs text-muted hover:text-[#ff3b30] px-2 py-1"
+                    className="text-muted hover:text-[#ff3b30] px-1.5 py-0.5 text-sm"
                     aria-label="Delete transaction"
                   >
                     ×
@@ -386,22 +348,35 @@ function HistoryPageContent() {
         title="Delete transaction?"
       >
         <p className="text-sm text-muted leading-relaxed">
-          This removes it from active History and saves a permanent deleted record with full
-          details — including who deleted it.
+          Removed from active History and saved in the deleted log.
         </p>
         {pendingDelete ? (
           <p className="text-sm font-medium mt-3 leading-snug">{pendingDelete.message}</p>
         ) : null}
         <div className="mt-4">
           <p className="text-sm font-medium mb-2">Who deleted this?</p>
-          <PersonTabs value={deletedByChoice} onChange={setDeletedByChoice} />
+          <div className="glass rounded-xl p-0.5 flex gap-0.5">
+            {(["kushvanth", "grishma"] as Person[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setDeletedByChoice(p)}
+                className={cn(
+                  "flex-1 py-2 rounded-lg text-xs font-medium",
+                  deletedByChoice === p ? "bg-[#007aff] text-white" : "text-muted"
+                )}
+              >
+                {PERSON_LABELS[p]}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex gap-3 mt-5">
           <GlassButton className="flex-1" onClick={() => setPendingDelete(null)}>
             Cancel
           </GlassButton>
           <GlassButton variant="danger" className="flex-1" onClick={confirmDelete}>
-            Delete permanently
+            Delete
           </GlassButton>
         </div>
       </GlassModal>
@@ -412,19 +387,17 @@ function HistoryPageContent() {
         title="Reset all data?"
       >
         <p className="text-sm text-muted leading-relaxed">
-          This clears all active transaction history, income entries, and resets account balances,
-          debts, and Between Us back to the original starting values. Your permanent deleted
-          record is kept.
+          Clears active data and resets balances. Deleted audit log is kept.
         </p>
         <div className="flex gap-3 mt-5">
           <GlassButton className="flex-1" onClick={() => setShowResetConfirm(false)}>
             Cancel
           </GlassButton>
           <GlassButton variant="danger" className="flex-1" onClick={handleReset}>
-            Reset everything
+            Reset
           </GlassButton>
         </div>
       </GlassModal>
-    </div>
+    </CompactPageShell>
   );
 }

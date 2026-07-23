@@ -34,6 +34,12 @@ export interface IncomeEntry {
   depositAccountId: string;
 }
 
+export interface SpendCategory {
+  id: string;
+  name: string;
+  keywords?: string[];
+}
+
 export interface MonthlyExpense {
   id: string;
   person: Person;
@@ -65,6 +71,7 @@ export interface Debt {
   name: string;
   amount: number;
   linkedAccountId?: string;
+  notes?: string;
 }
 
 export interface Transaction {
@@ -139,6 +146,7 @@ export interface DeletedHistoryRecord {
 export interface FinanceState {
   incomeSources: IncomeSource[];
   incomeEntries: IncomeEntry[];
+  spendCategories: SpendCategory[];
   monthlyExpenses: MonthlyExpense[];
   accounts: Account[];
   debts: Debt[];

@@ -1,4 +1,4 @@
-import { endOfMonth, format, isSameMonth, startOfMonth } from "date-fns";
+import { endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import { parseAppDateTime } from "@/lib/formatters";
 import type {
   Account,
@@ -62,6 +62,20 @@ export function getMonthlyIncome(
   return sumIncome(filtered);
 }
 
+export function getWeeklyIncome(
+  entries: IncomeEntry[],
+  person: Person | null,
+  date: Date = new Date()
+): number {
+  const filtered = getIncomeForPeriod(
+    entries,
+    person,
+    startOfWeek(date, { weekStartsOn: 1 }),
+    endOfWeek(date, { weekStartsOn: 1 })
+  );
+  return sumIncome(filtered);
+}
+
 export function getYearlyIncome(
   entries: IncomeEntry[],
   person: Person | null,
@@ -87,6 +101,20 @@ export function getTotalDebt(debts: Debt[], person: Person | null): number {
   return debts
     .filter((debt) => !person || debt.person === person)
     .reduce((sum, debt) => sum + debt.amount, 0);
+}
+
+export function getPersonDebtOutstandingSummary(debts: Debt[], person: Person) {
+  const personDebts = debts.filter((debt) => debt.person === person);
+  const activeDebts = personDebts.filter((debt) => debt.amount > 0);
+  const clearedDebts = personDebts.filter((debt) => debt.amount <= 0);
+
+  return {
+    total: activeDebts.reduce((sum, debt) => sum + debt.amount, 0),
+    activeCount: activeDebts.length,
+    creditCardBills: activeDebts.filter((debt) => !!debt.linkedAccountId).length,
+    activeDebts,
+    clearedDebts,
+  };
 }
 
 export function getAccountBalances(
@@ -123,6 +151,53 @@ export function getTransactionsForMonth(
   return transactions.filter((transaction) =>
     isSameMonth(parseAppDateTime(transaction.date, transaction.time, transaction.timestamp), date)
   );
+}
+
+export function groupExpensesByCategory(
+  transactions: Transaction[],
+  person: Person | null
+): { name: string; amount: number }[] {
+  const grouped = new Map<string, number>();
+
+  for (const transaction of transactions) {
+    if (transaction.type !== "expense") continue;
+    const share = person ? getTransactionExpenseShare(transaction, person) : transaction.amount;
+    if (share <= 0) continue;
+    const name = transaction.category?.trim() || "Other";
+    grouped.set(name, (grouped.get(name) ?? 0) + share);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+export function getPersonExpensesForPeriod(
+  transactions: Transaction[],
+  person: Person,
+  start: Date,
+  end: Date
+): Transaction[] {
+  return transactions.filter((transaction) => {
+    if (transaction.type !== "expense") return false;
+    if (getTransactionExpenseShare(transaction, person) <= 0) return false;
+    const txDate = parseAppDateTime(transaction.date, transaction.time, transaction.timestamp);
+    return txDate >= start && txDate <= end;
+  });
+}
+
+export function getWeeklyExpenseTotal(
+  transactions: Transaction[],
+  person: Person,
+  date: Date = new Date()
+): number {
+  const items = getPersonExpensesForPeriod(
+    transactions,
+    person,
+    startOfWeek(date, { weekStartsOn: 1 }),
+    endOfWeek(date, { weekStartsOn: 1 })
+  );
+  return items.reduce((sum, tx) => sum + getTransactionExpenseShare(tx, person), 0);
 }
 
 export function groupIncomeBySource(
@@ -174,23 +249,6 @@ export function getMonthlyExpensesTotal(
     (sum, transaction) => sum + getTransactionExpenseShare(transaction, person),
     0
   );
-}
-
-export function groupExpensesByCategory(
-  transactions: Transaction[],
-  person: Person | null = null
-): { name: string; amount: number }[] {
-  const grouped = new Map<string, number>();
-  for (const transaction of transactions) {
-    if (transaction.type !== "expense") continue;
-    const category = transaction.category ?? "Other";
-    const amount = person
-      ? getTransactionExpenseShare(transaction, person)
-      : transaction.amount;
-    if (amount <= 0) continue;
-    grouped.set(category, (grouped.get(category) ?? 0) + amount);
-  }
-  return Array.from(grouped.entries()).map(([name, amount]) => ({ name, amount }));
 }
 
 export function getMonthKey(date: Date = new Date()): string {
