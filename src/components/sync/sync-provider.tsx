@@ -6,6 +6,7 @@ import {
   clearPendingLocalChanges,
   flushPendingPush,
   isApplyingRemoteSync,
+  markInitialSyncComplete,
   markLocalChangePending,
   onSyncStatusChange,
   runAutoSyncCycle,
@@ -46,6 +47,7 @@ export function SyncProvider() {
     async function startSync() {
       const config = await loadSyncConfig();
       if (cancelled || !config) {
+        markInitialSyncComplete();
         return;
       }
 
@@ -89,6 +91,8 @@ export function SyncProvider() {
         } else {
           startStoreSubscription();
         }
+      } finally {
+        markInitialSyncComplete();
       }
     }
 

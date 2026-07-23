@@ -28,40 +28,65 @@ function configFromEnv(): SyncConfig | null {
   };
 }
 
-export async function loadSyncConfig(): Promise<SyncConfig | null> {
-  const envConfig = configFromEnv();
-  if (envConfig) {
-    cachedConfig = envConfig;
-    return envConfig;
+async function fetchConfigFromApi(): Promise<SyncConfig | null> {
+  try {
+    const response = await fetch("/api/sync-config", { cache: "no-store" });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as {
+      configured?: boolean;
+      supabaseUrl?: string | null;
+      supabaseAnonKey?: string | null;
+      householdKey?: string;
+    };
+
+    if (!data.configured || !data.supabaseUrl || !data.supabaseAnonKey) {
+      return null;
+    }
+
+    return {
+      supabaseUrl: data.supabaseUrl,
+      supabaseAnonKey: data.supabaseAnonKey,
+      householdKey: data.householdKey ?? DEFAULT_HOUSEHOLD_KEY,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cacheSyncConfig(config: SyncConfig) {
+  if (
+    cachedConfig &&
+    (cachedConfig.supabaseUrl !== config.supabaseUrl ||
+      cachedConfig.supabaseAnonKey !== config.supabaseAnonKey)
+  ) {
+    cachedClient = null;
   }
 
+  cachedConfig = config;
+  return config;
+}
+
+export async function loadSyncConfig(): Promise<SyncConfig | null> {
   if (cachedConfig) return cachedConfig;
   if (configPromise) return configPromise;
 
   configPromise = (async () => {
     try {
-      const response = await fetch("/api/sync-config", { cache: "no-store" });
-      if (!response.ok) return null;
+      // In the browser, always load from the server route so production
+      // picks up the current Vercel env instead of a stale client bundle.
+      if (typeof window !== "undefined") {
+        const apiConfig = await fetchConfigFromApi();
+        if (apiConfig) return cacheSyncConfig(apiConfig);
+      }
 
-      const data = (await response.json()) as {
-        configured?: boolean;
-        supabaseUrl?: string | null;
-        supabaseAnonKey?: string | null;
-        householdKey?: string;
-      };
+      const envConfig = configFromEnv();
+      if (envConfig) return cacheSyncConfig(envConfig);
 
-      if (!data.configured || !data.supabaseUrl || !data.supabaseAnonKey) {
+      if (typeof window === "undefined") {
         return null;
       }
 
-      cachedConfig = {
-        supabaseUrl: data.supabaseUrl,
-        supabaseAnonKey: data.supabaseAnonKey,
-        householdKey: data.householdKey ?? DEFAULT_HOUSEHOLD_KEY,
-      };
-
-      return cachedConfig;
-    } catch {
       return null;
     } finally {
       configPromise = null;

@@ -11,6 +11,7 @@ import { pickRicherState, readLocalFinanceBackup, scoreFinanceState } from "@/li
 
 /** Bumped to reset stale per-device sync timestamps from older builds. */
 export const SYNC_META_KEY = "couple-finance-sync-meta-v5";
+const SYNC_PROJECT_KEY = "couple-finance-sync-project-url";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 
@@ -54,6 +55,9 @@ let syncInProgress: Promise<void> | null = null;
 let pushStateGetter: (() => FinanceState) | null = null;
 let pushHouseholdId: string | null = null;
 const listeners = new Set<SyncListener>();
+const initialSyncListeners = new Set<() => void>();
+
+let initialSyncComplete = typeof window === "undefined";
 
 const PUSH_DEBOUNCE_MS = 250;
 const POLL_INTERVAL_MS = 1_500;
@@ -87,6 +91,43 @@ export function onSyncStatusChange(listener: SyncListener) {
   return () => {
     listeners.delete(listener);
   };
+}
+
+export function isInitialSyncComplete() {
+  return initialSyncComplete;
+}
+
+export function onInitialSyncComplete(listener: () => void) {
+  if (initialSyncComplete) {
+    listener();
+    return () => {};
+  }
+
+  initialSyncListeners.add(listener);
+  return () => {
+    initialSyncListeners.delete(listener);
+  };
+}
+
+export function markInitialSyncComplete() {
+  if (initialSyncComplete) return;
+  initialSyncComplete = true;
+  for (const listener of initialSyncListeners) {
+    listener();
+  }
+  initialSyncListeners.clear();
+}
+
+/** Clear stale sync timestamps when switching Supabase projects. */
+export function ensureSyncProjectForConfig(config: SyncConfig) {
+  if (typeof window === "undefined") return;
+
+  const previousUrl = localStorage.getItem(SYNC_PROJECT_KEY);
+  if (previousUrl && previousUrl !== config.supabaseUrl) {
+    localStorage.removeItem(SYNC_META_KEY);
+  }
+
+  localStorage.setItem(SYNC_PROJECT_KEY, config.supabaseUrl);
 }
 
 function notifyStatus(status: SyncStatus, error?: string) {
@@ -456,6 +497,11 @@ export async function resolveInitialSync(
     return "local";
   }
 
+  if (scoreFinanceState(remote.data) > scoreFinanceState(localState) + 50) {
+    applyRemoteRow(remote, applyRemoteState);
+    return "remote";
+  }
+
   if (wouldWipeLocalData(remote.data, localState)) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
@@ -645,6 +691,7 @@ export async function runInitialSyncSession(
     notifyStatus("syncing");
 
     try {
+      ensureSyncProjectForConfig(config);
       sessionPullConfig = { householdId, getLocalState, applyRemoteState };
       clearPendingLocalChanges();
       await resolveInitialSync(householdId, getLocalState, applyRemoteState);

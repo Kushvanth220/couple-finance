@@ -4,18 +4,38 @@ import { useEffect, useState } from "react";
 import { Cloud, Loader2 } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { getHouseholdSyncKey, loadSyncConfig } from "@/lib/supabase/client";
-import { getLastSyncError, onSyncStatusChange, type SyncStatus } from "@/lib/supabase/sync";
+import {
+  fetchRemoteFinance,
+  getLastSyncError,
+  onSyncStatusChange,
+  type SyncStatus,
+} from "@/lib/supabase/sync";
+import { useFinanceStore } from "@/store/finance-store";
 
 export default function SyncPage() {
+  const transactions = useFinanceStore((state) => state.transactions);
+  const incomeEntries = useFinanceStore((state) => state.incomeEntries);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [householdId, setHouseholdId] = useState(getHouseholdSyncKey());
+  const [cloudTransactions, setCloudTransactions] = useState<number | null>(null);
+  const [supabaseUrl, setSupabaseUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadSyncConfig().then((config) => {
+    void loadSyncConfig().then(async (config) => {
       setConfigured(Boolean(config));
-      if (config) setHouseholdId(config.householdKey);
+      if (!config) return;
+
+      setHouseholdId(config.householdKey);
+      setSupabaseUrl(config.supabaseUrl);
+
+      try {
+        const remote = await fetchRemoteFinance(config.householdKey);
+        setCloudTransactions(remote?.data.transactions?.length ?? 0);
+      } catch {
+        setCloudTransactions(null);
+      }
     });
 
     const unsubscribe = onSyncStatusChange((next, err) => {
@@ -72,6 +92,20 @@ export default function SyncPage() {
               {syncError}
             </p>
           ) : null}
+
+          <div className="rounded-2xl bg-black/5 dark:bg-white/10 px-4 py-3 text-xs text-muted space-y-1">
+            <p>
+              This phone: {transactions.length} transactions, {incomeEntries.length} income
+              entries
+            </p>
+            <p>
+              Cloud:{" "}
+              {cloudTransactions === null
+                ? "could not read"
+                : `${cloudTransactions} transactions`}
+            </p>
+            {supabaseUrl ? <p className="truncate">Project: {supabaseUrl}</p> : null}
+          </div>
 
           <p className="text-xs text-muted">Household: {householdId}</p>
         </GlassCard>

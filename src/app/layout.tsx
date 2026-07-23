@@ -5,6 +5,7 @@ import { BetweenUsCelebrationOverlay } from "@/components/between-us/between-us-
 import { AppShell } from "@/components/layout/app-shell";
 import { GrikSplashProvider } from "@/components/layout/grik-splash";
 import { SyncProvider } from "@/components/sync/sync-provider";
+import { SyncReadyGate } from "@/components/sync/sync-ready-gate";
 import { SyncBanner } from "@/components/sync/sync-banner";
 import "./globals.css";
 
@@ -55,7 +56,7 @@ export default function RootLayout({
           <ExpenseReminderProvider />
           <BetweenUsCelebrationOverlay />
           <SyncBanner />
-          {children}
+          <SyncReadyGate>{children}</SyncReadyGate>
         </AppShell>
       </body>
     </html>
