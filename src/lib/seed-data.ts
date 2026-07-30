@@ -9,11 +9,12 @@ type HouseholdFinanceExport = {
 
 const exportPayload = householdFinance as HouseholdFinanceExport;
 
-function normalizeFinanceState(state: FinanceState): FinanceState {
+export function normalizeFinanceState(state: FinanceState): FinanceState {
   return {
     ...state,
     deletedHistory: state.deletedHistory ?? [],
     spendCategories: state.spendCategories ?? [],
+    greenDotTrackingStartDate: state.greenDotTrackingStartDate,
   };
 }
 

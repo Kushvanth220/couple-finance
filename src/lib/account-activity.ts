@@ -1,5 +1,9 @@
-import { endOfMonth, startOfMonth } from "date-fns";
 import { compareByDateTime, parseAppDateTime } from "@/lib/formatters";
+import {
+  getGreenDotMonthRange,
+  getGreenDotTrackingRange,
+  isOnOrAfterGreenDotTracking,
+} from "@/lib/greendot-tracking";
 import { SHARED_GREEN_DOT_ID } from "@/lib/accounts";
 import type { Account, IncomeEntry, Person, Transaction, TransactionType } from "@/types";
 
@@ -147,10 +151,12 @@ export function getGreenDotIncomeTotal(
   transactions: Transaction[],
   accountIds: Set<string>,
   range?: { start: Date; end: Date },
-  person?: Person
+  person?: Person,
+  trackingStartDate?: string
 ): number {
   return transactions.reduce((sum, transaction) => {
     if (!isGreenDotIncomeTransaction(transaction, accountIds)) return sum;
+    if (!isOnOrAfterGreenDotTracking(transaction, trackingStartDate)) return sum;
     if (person && transaction.person !== person) return sum;
     if (
       range &&
@@ -172,10 +178,12 @@ export function getAccountSpentTotal(
   transactions: Transaction[],
   accountIds: Set<string>,
   range?: { start: Date; end: Date },
-  person?: Person
+  person?: Person,
+  trackingStartDate?: string
 ): number {
   return transactions.reduce((sum, transaction) => {
     if (!isOutflow(transaction, accountIds)) return sum;
+    if (!isOnOrAfterGreenDotTracking(transaction, trackingStartDate)) return sum;
     if (person && getTransactionPayer(transaction) !== person) return sum;
     if (
       range &&
@@ -198,12 +206,14 @@ export function getAccountAdjustmentsTotal(
   accountIds: Set<string>,
   adjustmentDeltas: Map<string, number>,
   range?: { start: Date; end: Date },
-  person?: Person
+  person?: Person,
+  trackingStartDate?: string
 ): number {
   return transactions.reduce((sum, transaction) => {
     if (transaction.type !== "balance_adjustment") return sum;
     if (!transaction.accountId || !accountIds.has(transaction.accountId)) return sum;
     if (person && transaction.person !== person) return sum;
+    if (!isOnOrAfterGreenDotTracking(transaction, trackingStartDate)) return sum;
     if (
       range &&
       !inDateRange(
@@ -238,62 +248,91 @@ export interface GreenDotActivitySummary {
   combinedNetAllTime: number;
   currentBalance: number;
   startingBalance: number;
+  trackingStartDate?: string;
 }
 
 export function getGreenDotActivitySummary(
   accounts: Account[],
   transactions: Transaction[],
-  date: Date = new Date()
+  date: Date = new Date(),
+  trackingStartDate?: string
 ): GreenDotActivitySummary {
   const accountIds = collectGreenDotAccountIds(accounts, transactions, []);
   const adjustmentDeltas = computeBalanceAdjustmentDeltas(accounts, transactions);
   const currentBalance = getGreenDotCombinedBalance(accounts);
 
-  const monthRange = {
-    start: startOfMonth(date),
-    end: endOfMonth(date),
-  };
+  const monthRange = getGreenDotMonthRange(date, trackingStartDate);
+  const trackingRange = getGreenDotTrackingRange(date, trackingStartDate);
 
-  const greenDotAdjustmentsThisMonth = getAccountAdjustmentsTotal(
-    transactions,
-    accountIds,
-    adjustmentDeltas,
-    monthRange
-  );
+  const greenDotAdjustmentsThisMonth = monthRange
+    ? getAccountAdjustmentsTotal(
+        transactions,
+        accountIds,
+        adjustmentDeltas,
+        monthRange,
+        undefined,
+        trackingStartDate
+      )
+    : 0;
   const greenDotAdjustmentsAllTime = getAccountAdjustmentsTotal(
     transactions,
     accountIds,
-    adjustmentDeltas
+    adjustmentDeltas,
+    trackingRange,
+    undefined,
+    trackingStartDate
   );
 
   const build = (person: Person): PersonAccountActivity => {
-    const earnedThisMonth = getGreenDotIncomeTotal(
+    const earnedThisMonth = monthRange
+      ? getGreenDotIncomeTotal(
+          transactions,
+          accountIds,
+          monthRange,
+          person,
+          trackingStartDate
+        )
+      : 0;
+    const spentThisMonth = monthRange
+      ? getAccountSpentTotal(
+          transactions,
+          accountIds,
+          monthRange,
+          person,
+          trackingStartDate
+        )
+      : 0;
+    const earnedAllTime = getGreenDotIncomeTotal(
       transactions,
       accountIds,
-      monthRange,
-      person
+      trackingRange,
+      person,
+      trackingStartDate
     );
-    const spentThisMonth = getAccountSpentTotal(
+    const spentAllTime = getAccountSpentTotal(
       transactions,
       accountIds,
-      monthRange,
-      person
+      trackingRange,
+      person,
+      trackingStartDate
     );
-    const earnedAllTime = getGreenDotIncomeTotal(transactions, accountIds, undefined, person);
-    const spentAllTime = getAccountSpentTotal(transactions, accountIds, undefined, person);
-    const adjustmentsThisMonth = getAccountAdjustmentsTotal(
-      transactions,
-      accountIds,
-      adjustmentDeltas,
-      monthRange,
-      person
-    );
+    const adjustmentsThisMonth = monthRange
+      ? getAccountAdjustmentsTotal(
+          transactions,
+          accountIds,
+          adjustmentDeltas,
+          monthRange,
+          person,
+          trackingStartDate
+        )
+      : 0;
     const adjustmentsAllTime = getAccountAdjustmentsTotal(
       transactions,
       accountIds,
       adjustmentDeltas,
-      undefined,
-      person
+      trackingRange,
+      person,
+      trackingStartDate
     );
 
     return {
@@ -311,7 +350,9 @@ export function getGreenDotActivitySummary(
 
   const combinedNetThisMonth = kushvanth.netThisMonth + grishma.netThisMonth;
   const combinedNetAllTime = kushvanth.netAllTime + grishma.netAllTime;
-  const startingBalance = currentBalance - combinedNetAllTime;
+  const startingBalance = trackingStartDate
+    ? 0
+    : currentBalance - combinedNetAllTime;
 
   return {
     kushvanth,
@@ -322,6 +363,7 @@ export function getGreenDotActivitySummary(
     combinedNetAllTime,
     currentBalance,
     startingBalance,
+    trackingStartDate,
   };
 }
 
@@ -343,7 +385,8 @@ export function getGreenDotLedgerEntries(
   accounts: Account[],
   transactions: Transaction[],
   range?: { start: Date; end: Date },
-  person?: Person
+  person?: Person,
+  trackingStartDate?: string
 ): AccountLedgerEntry[] {
   const accountIds = collectGreenDotAccountIds(accounts, transactions, []);
   const adjustmentDeltas = computeBalanceAdjustmentDeltas(accounts, transactions);
@@ -352,6 +395,7 @@ export function getGreenDotLedgerEntries(
 
   for (const transaction of transactions) {
     if (!transactionTouchesAccount(transaction, accountIds)) continue;
+    if (!isOnOrAfterGreenDotTracking(transaction, trackingStartDate)) continue;
     if (
       range &&
       !inDateRange(

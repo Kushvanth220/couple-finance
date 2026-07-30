@@ -1,6 +1,6 @@
 {
   "household_id": "grik-finance-couple",
-  "updated_at": "2026-07-30T20:46:33.069244+00:00",
+  "updated_at": "2026-07-30T22:43:21.53613+00:00",
   "data": {
     "debts": [
       {
@@ -135,14 +135,16 @@
         "name": "GreenDot",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 107.57
+        "shared": true,
+        "balance": 0
       },
       {
         "id": "17e71636-dbad-4360-bc72-276167193be7",
         "name": "GreenDot",
         "type": "debit",
         "person": "grishma",
-        "balance": 163.29000000000002
+        "shared": true,
+        "balance": 0
       },
       {
         "id": "ea3cf880-4862-4a39-9e2e-398462b19343",
@@ -3816,6 +3818,7 @@
         "autoMessage": "Starting balance",
         "runningBalance": 9080
       }
-    ]
+    ],
+    "greenDotTrackingStartDate": "2026-08-01"
   }
 }

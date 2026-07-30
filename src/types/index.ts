@@ -158,6 +158,8 @@ export interface FinanceState {
   interCoupleBalance: number;
   /** Append-only log of deleted transactions — never removed by delete or reset. */
   deletedHistory: DeletedHistoryRecord[];
+  /** Accounts-page GreenDot panel only counts activity on/after this date (yyyy-MM-dd). */
+  greenDotTrackingStartDate?: string;
 }
 
 export const PERSON_LABELS: Record<Person, string> = {

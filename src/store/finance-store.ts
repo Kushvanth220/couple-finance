@@ -1276,6 +1276,7 @@ export function getFinanceState(): FinanceState {
     interCoupleHistory: state.interCoupleHistory,
     interCoupleBalance: state.interCoupleBalance,
     deletedHistory: state.deletedHistory ?? [],
+    greenDotTrackingStartDate: state.greenDotTrackingStartDate,
   };
 }
 

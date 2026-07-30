@@ -17,6 +17,7 @@ function normalizeFinanceState(state: FinanceState): FinanceState {
     ...state,
     deletedHistory: state.deletedHistory ?? [],
     spendCategories: state.spendCategories ?? [],
+    greenDotTrackingStartDate: state.greenDotTrackingStartDate,
   };
 }
 

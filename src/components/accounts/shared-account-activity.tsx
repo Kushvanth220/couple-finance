@@ -6,6 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, ChevronRight, SlidersHorizontal } from "lu
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { getGreenDotActivitySummary, getGreenDotLedgerEntries } from "@/lib/account-activity";
+import { formatGreenDotTrackingLabel } from "@/lib/greendot-tracking";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { useFinanceStore } from "@/store/finance-store";
 import { PERSON_LABELS, type Person } from "@/types";
@@ -76,43 +77,60 @@ function PersonActivityRow({
 export function SharedAccountActivity({ accountName }: SharedAccountActivityProps) {
   const accounts = useFinanceStore((state) => state.accounts);
   const transactions = useFinanceStore((state) => state.transactions);
+  const greenDotTrackingStartDate = useFinanceStore((state) => state.greenDotTrackingStartDate);
 
   const [historyPerson, setHistoryPerson] = useState<Person | "all" | null>(null);
 
   const activity = useMemo(
-    () => getGreenDotActivitySummary(accounts, transactions),
-    [accounts, transactions]
+    () => getGreenDotActivitySummary(accounts, transactions, new Date(), greenDotTrackingStartDate),
+    [accounts, transactions, greenDotTrackingStartDate]
   );
 
   const monthLabel = format(new Date(), "MMMM");
-  const monthRange = useMemo(
-    () => ({
-      start: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-      end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999),
-    }),
-    []
-  );
+  const trackingLabel = formatGreenDotTrackingLabel(greenDotTrackingStartDate);
+  const monthRange = useMemo(() => {
+    const now = new Date();
+    const trackingStart = greenDotTrackingStartDate
+      ? new Date(`${greenDotTrackingStartDate}T00:00:00`)
+      : null;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    if (trackingStart && trackingStart > monthEnd) return null;
+
+    return {
+      start: trackingStart && trackingStart > monthStart ? trackingStart : monthStart,
+      end: monthEnd,
+    };
+  }, [greenDotTrackingStartDate]);
 
   const ledgerEntries = useMemo(() => {
-    if (!historyPerson) return [];
+    if (!historyPerson || !monthRange) return [];
     return getGreenDotLedgerEntries(
       accounts,
       transactions,
       monthRange,
-      historyPerson === "all" ? undefined : historyPerson
+      historyPerson === "all" ? undefined : historyPerson,
+      greenDotTrackingStartDate
     );
-  }, [historyPerson, accounts, transactions, monthRange]);
+  }, [historyPerson, accounts, transactions, monthRange, greenDotTrackingStartDate]);
 
   const ledgerNet = ledgerEntries.reduce((sum, entry) => sum + entry.signedAmount, 0);
-  const showStartingBalance = Math.abs(activity.startingBalance) > 0.009;
 
   return (
     <>
       <div className="rounded-xl border border-[#af52de]/20 bg-[#af52de]/5 px-3 py-2.5 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#af52de]">
-            GreenDot only · {monthLabel}
-          </p>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#af52de]">
+              GreenDot · {monthLabel}
+            </p>
+            {trackingLabel ? (
+              <p className="text-[10px] text-muted mt-0.5">
+                New tracking since {trackingLabel} · started at $0
+              </p>
+            ) : null}
+          </div>
           <GlassButton
             type="button"
             variant="ghost"
@@ -153,14 +171,6 @@ export function SharedAccountActivity({ accountName }: SharedAccountActivityProp
         )}
 
         <div className="rounded-lg border border-[#af52de]/15 px-2.5 py-2 text-[10px] space-y-1">
-          {showStartingBalance && (
-            <div className="flex items-center justify-between">
-              <span className="text-muted">Starting balance (before tracking)</span>
-              <span className="font-semibold tabular-nums">
-                {formatCurrency(activity.startingBalance)}
-              </span>
-            </div>
-          )}
           <div className="flex items-center justify-between">
             <span className="text-muted">Combined net · {monthLabel}</span>
             <span
@@ -181,8 +191,8 @@ export function SharedAccountActivity({ accountName }: SharedAccountActivityProp
         </div>
 
         <p className="text-[10px] text-muted px-0.5">
-          Tap a name for GreenDot-only lines this month. Totals match the same transactions as
-          History.
+          Tap a name for GreenDot activity since{" "}
+          {trackingLabel ?? "tracking started"}. Main History still keeps older lines.
         </p>
       </div>
 
@@ -195,9 +205,10 @@ export function SharedAccountActivity({ accountName }: SharedAccountActivityProp
             : `${PERSON_LABELS[historyPerson as Person]} · GreenDot · ${monthLabel}`
         }
       >
-        {ledgerEntries.length === 0 ? (
+        {!monthRange || ledgerEntries.length === 0 ? (
           <p className="text-sm text-muted py-4 text-center">
-            No GreenDot activity this month
+            No GreenDot activity yet
+            {trackingLabel ? ` since ${trackingLabel}` : ""}
             {historyPerson && historyPerson !== "all"
               ? ` for ${PERSON_LABELS[historyPerson]}`
               : ""}
