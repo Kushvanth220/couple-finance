@@ -12,6 +12,7 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { SpendCategoryManager } from "@/components/spend/spend-category-manager";
 import { useFinanceStore } from "@/store/finance-store";
+import { getAccountsForPerson, isSharedAccount } from "@/lib/accounts";
 import { formatCurrency } from "@/lib/formatters";
 import {
   matchSpendCategoryFromNote,
@@ -250,7 +251,7 @@ export default function SpendPage() {
     setStep("payment");
   };
 
-  const getPersonAccounts = (person: Person) => accounts.filter((a) => a.person === person);
+  const getPersonAccounts = (person: Person) => getAccountsForPerson(accounts, person);
   const getDebitAccounts = (person: Person) => getPersonAccounts(person).filter((a) => a.type === "debit");
   const getCashAccount = (person: Person) => getPersonAccounts(person).find((a) => a.type === "cash");
 
@@ -467,6 +468,9 @@ export default function SpendPage() {
                 <span className="text-sm font-medium">
                   <Wallet className="w-3.5 h-3.5 inline mr-1.5" />
                   {a.name}
+                  {isSharedAccount(a) ? (
+                    <span className="ml-1 text-[10px] text-[#af52de]">· Shared</span>
+                  ) : null}
                 </span>
                 <span className="text-[11px] text-muted">{formatCurrency(a.balance)}</span>
               </GlassCard>

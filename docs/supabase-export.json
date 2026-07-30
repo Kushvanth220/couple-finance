@@ -1,12 +1,12 @@
 {
   "household_id": "grik-finance-couple",
-  "updated_at": "2026-07-23T23:17:03.589144+00:00",
+  "updated_at": "2026-07-30T20:46:33.069244+00:00",
   "data": {
     "debts": [
       {
         "id": "debt-k1",
         "name": "Zolve Credit Card",
-        "amount": 3214.02,
+        "amount": 4000.0000000000005,
         "person": "kushvanth",
         "linkedAccountId": "acc-k-zolve"
       },
@@ -20,7 +20,7 @@
       {
         "id": "debt-k3",
         "name": "Credit One Amex",
-        "amount": 100.01,
+        "amount": 242.88,
         "person": "kushvanth",
         "linkedAccountId": "acc-k-amex"
       },
@@ -39,7 +39,7 @@
       {
         "id": "debt-g1",
         "name": "Zolve Credit Card",
-        "amount": 1297.7300000000002,
+        "amount": 1531.33,
         "person": "grishma",
         "linkedAccountId": "acc-g-zolve"
       },
@@ -68,7 +68,7 @@
         "name": "Zolve",
         "type": "credit",
         "person": "kushvanth",
-        "balance": 3214.02,
+        "balance": 4000.0000000000005,
         "creditLimit": 4000
       },
       {
@@ -84,7 +84,7 @@
         "name": "Credit One Amex",
         "type": "credit",
         "person": "kushvanth",
-        "balance": 100.01,
+        "balance": 242.88,
         "creditLimit": 300
       },
       {
@@ -92,28 +92,28 @@
         "name": "Bank of America",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 1.810000000000013
+        "balance": 0
       },
       {
         "id": "acc-k-chime",
         "name": "Chime",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 1118.03
+        "balance": 18
       },
       {
         "id": "acc-k-cash",
         "name": "Cash Wallet",
         "type": "cash",
         "person": "kushvanth",
-        "balance": 11
+        "balance": 7.105427357601002e-15
       },
       {
         "id": "acc-g-zolve",
         "name": "Zolve",
         "type": "credit",
         "person": "grishma",
-        "balance": 1297.7300000000002,
+        "balance": 1531.33,
         "creditLimit": 1500
       },
       {
@@ -128,45 +128,1181 @@
         "name": "Cash Wallet",
         "type": "cash",
         "person": "grishma",
-        "balance": 0
+        "balance": 108
       },
       {
         "id": "269948d2-ab9c-4303-8fb0-cab9277438df",
         "name": "GreenDot",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 125.47
+        "balance": 107.57
       },
       {
         "id": "17e71636-dbad-4360-bc72-276167193be7",
         "name": "GreenDot",
         "type": "debit",
         "person": "grishma",
-        "balance": 1300.8500000000001
+        "balance": 163.29000000000002
       },
       {
         "id": "ea3cf880-4862-4a39-9e2e-398462b19343",
         "name": "Cash App",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 101.58999999999997
+        "balance": 86.87
       },
       {
         "id": "00c31453-dcce-4ecf-9f37-1d3175f79db5",
         "name": "Zolve",
         "type": "debit",
         "person": "kushvanth",
-        "balance": 127.7
+        "balance": 18.7
       },
       {
         "id": "f7130dd4-5281-476c-9b22-483b75e23fb1",
         "name": "Cash App",
         "type": "debit",
         "person": "grishma",
-        "balance": 0.13
+        "balance": 50
       }
     ],
     "transactions": [
+      {
+        "id": "9c3d336b-d611-4a8c-a240-86df16f5cd45",
+        "date": "2026-07-30",
+        "time": "15:46:32",
+        "type": "expense",
+        "notes": "Gas ",
+        "amount": 50.13,
+        "person": "kushvanth",
+        "category": "Gas",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:46:32.287Z",
+        "autoMessage": "Kushvanth paid $50.13 for Gas via Zolve · Credit Card",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "bd441265-3726-499a-b076-60e281fc2f46",
+        "date": "2026-07-30",
+        "time": "15:45:21",
+        "type": "expense",
+        "notes": "Car maintenance Grishma for kia",
+        "amount": 96.37,
+        "person": "kushvanth",
+        "category": "Car maintenance",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:45:21.129Z",
+        "autoMessage": "Kushvanth paid $96.37 for Car maintenance via Zolve · Credit Card (Grishma's expense)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Zolve · Credit Card",
+        "beneficiaryPerson": "grishma"
+      },
+      {
+        "id": "8dd839ab-97e3-434f-b873-6d3a18810587",
+        "date": "2026-07-30",
+        "time": "15:44:21",
+        "type": "expense",
+        "notes": "Snucks ",
+        "amount": 19.94,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:44:21.473Z",
+        "autoMessage": "Kushvanth paid $19.94 for Groceries via Zolve · Credit Card (shared: Kushvanth $9.97, Grishma $9.97)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 9.97,
+          "kushvanth": 9.97
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "a2317886-b037-42d8-984c-5448b304a234",
+        "date": "2026-07-30",
+        "time": "15:43:55",
+        "type": "expense",
+        "notes": "Silk rd market",
+        "amount": 25.71,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:43:55.953Z",
+        "autoMessage": "Kushvanth paid $25.71 for Groceries via Zolve · Credit Card (shared: Kushvanth $12.86, Grishma $12.86)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 12.855,
+          "kushvanth": 12.855
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "eaa10ef6-f8f5-4e89-89e2-6706e1bc7662",
+        "date": "2026-07-30",
+        "time": "15:43:37",
+        "type": "expense",
+        "notes": "Groceries ",
+        "amount": 67.5,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:43:37.500Z",
+        "autoMessage": "Kushvanth paid $67.5 for Groceries via Zolve · Credit Card (shared: Kushvanth $33.75, Grishma $33.75)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 33.75,
+          "kushvanth": 33.75
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "aad0802d-1c50-4a05-ad61-ffe2e2a64db4",
+        "date": "2026-07-30",
+        "time": "15:43:21",
+        "type": "expense",
+        "notes": "Temu",
+        "amount": 24.17,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:43:21.317Z",
+        "autoMessage": "Kushvanth paid $24.17 for Groceries via Zolve · Credit Card (shared: Kushvanth $12.09, Grishma $12.09)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 12.085,
+          "kushvanth": 12.085
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "5e428288-2d78-43b0-886f-02e6def8816a",
+        "date": "2026-07-30",
+        "time": "15:43:03",
+        "type": "expense",
+        "notes": "Cutting glare ",
+        "amount": 6,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:43:03.481Z",
+        "autoMessage": "Kushvanth paid $6 for Groceries via Zolve · Credit Card (shared: Kushvanth $3, Grishma $3)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 3,
+          "kushvanth": 3
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "b9c2dd65-b6b6-4ad5-acc6-8edad49ffa94",
+        "date": "2026-07-30",
+        "time": "15:42:30",
+        "type": "expense",
+        "notes": "Bed",
+        "amount": 174.39,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-30T20:42:30.713Z",
+        "autoMessage": "Kushvanth paid $174.39 for Groceries via Zolve · Credit Card (shared: Kushvanth $87.2, Grishma $87.2)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 87.195,
+          "kushvanth": 87.195
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "3fe5fed9-95c8-4cef-8cbe-0f33e3f71a47",
+        "date": "2026-07-30",
+        "time": "11:11:21",
+        "type": "income",
+        "amount": 51.73,
+        "person": "kushvanth",
+        "category": "Amazon Flex",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-30T16:11:21.000Z",
+        "autoMessage": "Kushvanth received $51.73 from Amazon Flex → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "f1683d72-19ed-4221-b789-dcb92e1f6db2",
+        "date": "2026-07-30",
+        "time": "11:10:54",
+        "type": "income",
+        "amount": 5.64,
+        "person": "kushvanth",
+        "category": "Amazon Flex",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-30T16:10:54.000Z",
+        "autoMessage": "Kushvanth received $5.64 from Amazon Flex → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "7ed3ba1b-26f9-4b49-9f57-359a80894eee",
+        "date": "2026-07-30",
+        "time": "11:10:35",
+        "type": "income",
+        "amount": 50,
+        "person": "kushvanth",
+        "category": "Amazon Flex",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-30T16:10:35.000Z",
+        "autoMessage": "Kushvanth received $50 from Amazon Flex → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "22ed2254-6b2a-4a6e-a79f-b06dcade27be",
+        "date": "2026-07-30",
+        "time": "11:10:00",
+        "type": "income",
+        "amount": 88.29,
+        "person": "grishma",
+        "category": "Grubhub",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-30T16:10:00.000Z",
+        "autoMessage": "Grishma received $88.29 from Grubhub → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "b1de6ec4-0110-4b3a-a08c-2ef9d8b0d2e9",
+        "date": "2026-07-28",
+        "time": "18:08:16",
+        "type": "expense",
+        "amount": 4.85,
+        "person": "kushvanth",
+        "category": "Food",
+        "accountId": "ea3cf880-4862-4a39-9e2e-398462b19343",
+        "timestamp": "2026-07-28T23:08:16.837Z",
+        "autoMessage": "Kushvanth paid $4.85 for Food via Cash App · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Cash App · Debit Account"
+      },
+      {
+        "id": "cc7ea568-cdf1-4df7-8316-a275595eeb0f",
+        "date": "2026-07-28",
+        "time": "13:10:43",
+        "type": "expense",
+        "notes": "Gas for grishma ",
+        "amount": 40.38,
+        "person": "kushvanth",
+        "category": "Gas",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-28T18:10:43.690Z",
+        "autoMessage": "Kushvanth paid $40.38 for Gas via Zolve · Credit Card (Grishma's expense)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Zolve · Credit Card",
+        "beneficiaryPerson": "grishma"
+      },
+      {
+        "id": "1e14324d-9002-4a31-9df7-7a7fc4642038",
+        "date": "2026-07-28",
+        "time": "09:09:39",
+        "type": "expense",
+        "notes": "Suhuncks",
+        "amount": 7.67,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-28T14:09:39.590Z",
+        "autoMessage": "Kushvanth paid $7.67 for Groceries via Zolve · Credit Card (shared: Kushvanth $3.84, Grishma $3.84)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 3.835,
+          "kushvanth": 3.835
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "6cfc6187-6ee3-4bcf-a145-605f0d0050ef",
+        "date": "2026-07-28",
+        "time": "09:09:17",
+        "type": "expense",
+        "notes": "Thirupathi",
+        "amount": 7.36,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-28T14:09:17.031Z",
+        "autoMessage": "Kushvanth paid $7.36 for Groceries via Zolve · Credit Card (shared: Kushvanth $3.68, Grishma $3.68)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 3.68,
+          "kushvanth": 3.68
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "ebd8a587-e823-4dcd-ac08-3fdde7b680bc",
+        "date": "2026-07-28",
+        "time": "09:07:23",
+        "type": "expense",
+        "notes": "Thirupathi",
+        "amount": 119.07,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-28T14:07:23.522Z",
+        "autoMessage": "Kushvanth paid $119.07 for Groceries via Zolve · Credit Card (shared: Kushvanth $59.54, Grishma $59.54)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 59.535,
+          "kushvanth": 59.535
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "6a985dc2-3895-4f16-b582-053adba76b75",
+        "date": "2026-07-28",
+        "time": "09:06:58",
+        "type": "expense",
+        "notes": "Near tirupathi",
+        "amount": 32.05,
+        "person": "kushvanth",
+        "category": "Dollar tree",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-28T14:06:58.821Z",
+        "autoMessage": "Kushvanth paid $32.05 for Dollar tree via Zolve · Credit Card (shared: Kushvanth $16.03, Grishma $16.03)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 16.025,
+          "kushvanth": 16.025
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "4abba789-f72a-41cd-8a97-c6aad6933ccb",
+        "date": "2026-07-27",
+        "time": "16:45:47",
+        "type": "balance_adjustment",
+        "notes": "Kushvanth unfortunately withdraw and send in Cash App 50",
+        "amount": 58.40000000000009,
+        "person": "grishma",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-27T21:45:47.977Z",
+        "autoMessage": "Grishma updated GreenDot balance: Kushvanth unfortunately withdraw and send in Cash App 50",
+        "paymentMethod": "GreenDot",
+        "previousBalance": 133.4000000000001
+      },
+      {
+        "id": "0189c54c-332a-49f3-bfbb-c23b8a5ce1d4",
+        "date": "2026-07-27",
+        "time": "16:43:20",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 96,
+        "person": "grishma",
+        "accountId": "acc-g-cash",
+        "timestamp": "2026-07-27T21:43:20.571Z",
+        "autoMessage": "Grishma updated Cash Wallet balance: Credit balance update",
+        "paymentMethod": "Cash Wallet",
+        "previousBalance": 204
+      },
+      {
+        "id": "12ab874e-2f05-4aa9-be12-c789ccb542c9",
+        "date": "2026-07-27",
+        "time": "16:43:02",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 49.87,
+        "person": "grishma",
+        "accountId": "f7130dd4-5281-476c-9b22-483b75e23fb1",
+        "timestamp": "2026-07-27T21:43:02.424Z",
+        "autoMessage": "Grishma updated Cash App balance: Credit balance update",
+        "paymentMethod": "Cash App",
+        "previousBalance": 0.13
+      },
+      {
+        "id": "54357e83-9d85-46a0-b7b3-5164ac32b187",
+        "date": "2026-07-27",
+        "time": "16:42:42",
+        "type": "expense",
+        "amount": 1000,
+        "person": "grishma",
+        "category": "Mama debt",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-27T21:42:42.320Z",
+        "autoMessage": "Grishma paid $1,000 for Mama debt via GreenDot · Debit Account (Kushvanth's expense)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "grishma",
+        "paymentMethod": "GreenDot · Debit Account",
+        "beneficiaryPerson": "kushvanth"
+      },
+      {
+        "id": "5e574151-a235-455f-b5fc-65fa9da61df9",
+        "date": "2026-07-27",
+        "time": "16:41:15",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 9.000000000000004,
+        "person": "kushvanth",
+        "accountId": "00c31453-dcce-4ecf-9f37-1d3175f79db5",
+        "timestamp": "2026-07-27T21:41:15.794Z",
+        "autoMessage": "Kushvanth updated Zolve balance: Credit balance update",
+        "paymentMethod": "Zolve",
+        "previousBalance": 27.700000000000003
+      },
+      {
+        "id": "7bc11ff7-3c94-44c2-a30d-90bbbd821fc1",
+        "date": "2026-07-27",
+        "time": "16:40:27",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 90,
+        "person": "kushvanth",
+        "accountId": "ea3cf880-4862-4a39-9e2e-398462b19343",
+        "timestamp": "2026-07-27T21:40:27.812Z",
+        "autoMessage": "Kushvanth updated Cash App balance: Credit balance update",
+        "paymentMethod": "Cash App",
+        "previousBalance": 1.72
+      },
+      {
+        "id": "0b816d5e-0c01-486d-b319-859fdcc42d95",
+        "date": "2026-07-27",
+        "time": "16:40:02",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 143.8499999999999,
+        "person": "kushvanth",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-27T21:40:02.767Z",
+        "autoMessage": "Kushvanth updated Bank of America balance: Credit balance update",
+        "paymentMethod": "Bank of America",
+        "previousBalance": 143.8499999999999
+      },
+      {
+        "id": "4e483f3d-b91c-4e31-9906-e3f1ac6e95c1",
+        "date": "2026-07-27",
+        "time": "16:36:32",
+        "type": "expense",
+        "amount": 580.13,
+        "person": "kushvanth",
+        "category": "Car loan",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-27T21:36:32.259Z",
+        "autoMessage": "Kushvanth paid $580.13 for Car loan via Bank of America · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "2574b003-12b4-43c5-8bc7-6011dd3bf18a",
+        "date": "2026-07-27",
+        "time": "16:32:46",
+        "type": "expense",
+        "notes": "Harsha debt",
+        "amount": 180,
+        "person": "kushvanth",
+        "category": "Debts",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-27T21:32:46.010Z",
+        "autoMessage": "Kushvanth paid $180 for Debts via Bank of America · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "08954ec6-8db5-4b9c-b9b8-27a16e972a94",
+        "date": "2026-07-27",
+        "time": "16:32:11",
+        "type": "expense",
+        "notes": "Paid harsha",
+        "amount": 220,
+        "person": "kushvanth",
+        "category": "Debts",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-27T21:32:11.308Z",
+        "autoMessage": "Kushvanth paid $220 for Debts via GreenDot · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "053298f6-ebe5-4951-aec9-e820c3c85662",
+        "date": "2026-07-27",
+        "time": "13:36:04",
+        "type": "income",
+        "amount": 205.06,
+        "person": "grishma",
+        "category": "Grubhub",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-27T18:36:04.000Z",
+        "autoMessage": "Grishma received $205.06 from Grubhub → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "72ed8a55-1283-4bf7-9a5c-5052e183cfa2",
+        "date": "2026-07-27",
+        "time": "10:53:17",
+        "type": "expense",
+        "notes": "Gurung bazzar split amount dd and zolve",
+        "amount": 69.24,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-27T15:53:17.878Z",
+        "autoMessage": "Kushvanth paid $69.24 for Groceries via Zolve · Credit Card (shared: Kushvanth $34.62, Grishma $34.62)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 34.62,
+          "kushvanth": 34.62
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "0ae193da-ce7a-498a-bc0e-ec30c607fc7e",
+        "date": "2026-07-27",
+        "time": "10:52:22",
+        "type": "expense",
+        "notes": "Masala republic ",
+        "amount": 46,
+        "person": "kushvanth",
+        "category": "Food",
+        "accountId": "acc-k-zolve",
+        "timestamp": "2026-07-27T15:52:22.914Z",
+        "autoMessage": "Kushvanth paid $46 for Food via Zolve · Credit Card (shared: Kushvanth $23, Grishma $23)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 23,
+          "kushvanth": 23
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "a30d5478-25e4-48ab-acce-ccb1aecbf443",
+        "date": "2026-07-27",
+        "time": "10:51:13",
+        "type": "expense",
+        "notes": "Gurung Bazzar",
+        "amount": 35.53,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-27T15:51:13.016Z",
+        "autoMessage": "Kushvanth paid $35.53 for Groceries via Cash Wallet · Cash Wallet (shared: Kushvanth $17.77, Grishma $17.77)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 17.765,
+          "kushvanth": 17.765
+        },
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "a459c3aa-e005-4cf2-9dd2-6203f9680d10",
+        "date": "2026-07-27",
+        "time": "10:50:46",
+        "type": "expense",
+        "amount": 11.99,
+        "person": "kushvanth",
+        "category": "Subscription",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-27T15:50:46.204Z",
+        "autoMessage": "Kushvanth paid $11.99 for Subscription via Cash Wallet · Cash Wallet (shared: Kushvanth $6, Grishma $6)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 5.995,
+          "kushvanth": 5.995
+        },
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "ec9b7ac7-3642-4c33-ae95-c4ef033b5a67",
+        "date": "2026-07-27",
+        "time": "10:49:45",
+        "type": "expense",
+        "notes": "Suhnucks",
+        "amount": 29.75,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-27T15:49:45.480Z",
+        "autoMessage": "Kushvanth paid $29.75 for Groceries via Cash Wallet · Cash Wallet (shared: Kushvanth $14.88, Grishma $14.88)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 14.875,
+          "kushvanth": 14.875
+        },
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "2554c10a-9292-48a3-8a3e-04bf9de27550",
+        "date": "2026-07-27",
+        "time": "10:49:10",
+        "type": "expense",
+        "amount": 32.51,
+        "person": "kushvanth",
+        "category": "Gas",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-27T15:49:10.065Z",
+        "autoMessage": "Kushvanth paid $32.51 for Gas via Cash Wallet · Cash Wallet",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "a279401c-5cc8-46f9-adcf-5d84d5547a36",
+        "date": "2026-07-27",
+        "time": "10:48:48",
+        "type": "income",
+        "amount": 109.78,
+        "person": "kushvanth",
+        "category": "Door Dash",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-27T15:48:48.000Z",
+        "autoMessage": "Kushvanth received $109.78 from Door Dash → deposited to Cash Wallet",
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "e039c2c2-6cf3-42d5-b2f6-580d25b5efd9",
+        "date": "2026-07-26",
+        "time": "09:04:04",
+        "type": "income",
+        "notes": "Greendot withdraw at room rent",
+        "amount": 96,
+        "person": "grishma",
+        "category": "Custom",
+        "accountId": "acc-g-cash",
+        "timestamp": "2026-07-26T14:04:04.000Z",
+        "autoMessage": "Grishma received $96 from Custom → deposited to Cash Wallet",
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "1b5ad6a6-62b4-48b5-9fe2-cb70d3fe70e2",
+        "date": "2026-07-26",
+        "time": "09:03:07",
+        "type": "expense",
+        "amount": 96,
+        "person": "grishma",
+        "category": "Cash withdraw",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-26T14:03:07.652Z",
+        "autoMessage": "Grishma paid $96 for Cash withdraw via GreenDot · Debit Account",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "ab9dfe54-bbb5-4b92-9ef1-940c31eb3708",
+        "date": "2026-07-26",
+        "time": "08:46:58",
+        "type": "expense",
+        "notes": "Masala republic on jul 23",
+        "amount": 50.59,
+        "person": "grishma",
+        "category": "Food",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-26T13:46:58.745Z",
+        "autoMessage": "Grishma paid $50.59 for Food via Zolve · Credit Card (shared: Kushvanth $25.3, Grishma $25.3)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 25.295,
+          "kushvanth": 25.295
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "336370f6-99d6-4e3c-8ecb-da6155363b5d",
+        "date": "2026-07-26",
+        "time": "08:40:30",
+        "type": "income",
+        "amount": 130.49,
+        "person": "grishma",
+        "category": "Grubhub",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-26T13:40:30.000Z",
+        "autoMessage": "Grishma received $130.49 from Grubhub → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "98991e2b-f346-4c91-a09c-9e83dc60e61d",
+        "date": "2026-07-26",
+        "time": "08:37:26",
+        "type": "income",
+        "notes": "From 500 half amount and tips",
+        "amount": 108,
+        "person": "grishma",
+        "category": "Custom",
+        "accountId": "acc-g-cash",
+        "timestamp": "2026-07-26T13:37:26.000Z",
+        "autoMessage": "Grishma received $108 from Custom → deposited to Cash Wallet",
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
+      {
+        "id": "a198a9d7-8829-4721-b8e3-e0ceff6fb58e",
+        "date": "2026-07-26",
+        "time": "08:35:49",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 19.61999999999989,
+        "person": "grishma",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-26T13:35:49.127Z",
+        "autoMessage": "Grishma updated Zolve balance: Credit balance update",
+        "paymentMethod": "Zolve",
+        "previousBalance": 1461.1200000000001
+      },
+      {
+        "id": "82d91c22-61fd-41eb-989c-c13d5b0cbc40",
+        "date": "2026-07-25",
+        "time": "23:34:19",
+        "type": "expense",
+        "amount": 42,
+        "person": "grishma",
+        "category": "Gas",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-26T04:34:19.845Z",
+        "autoMessage": "Grishma paid $42 for Gas via Zolve · Credit Card",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "d83dbe02-673e-46f8-b0eb-078dfb64cdc7",
+        "date": "2026-07-25",
+        "time": "23:33:54",
+        "type": "expense",
+        "notes": "Philips",
+        "amount": 6.58,
+        "person": "grishma",
+        "category": "Food",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-26T04:33:54.372Z",
+        "autoMessage": "Grishma paid $6.58 for Food via Zolve · Credit Card",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "0b31a370-9190-471f-a07c-3b811c055817",
+        "date": "2026-07-25",
+        "time": "23:32:40",
+        "type": "expense",
+        "notes": "Paratha chicken old city ",
+        "amount": 9.95,
+        "person": "grishma",
+        "category": "Food",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-26T04:32:40.845Z",
+        "autoMessage": "Grishma paid $9.95 for Food via Zolve · Credit Card (shared: Kushvanth $4.98, Grishma $4.98)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 4.975,
+          "kushvanth": 4.975
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "50d912c4-63f7-455f-802d-96f5d1e9f917",
+        "date": "2026-07-25",
+        "time": "14:50:51",
+        "type": "income",
+        "amount": 51.73,
+        "person": "kushvanth",
+        "category": "Door Dash",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-25T19:50:51.000Z",
+        "autoMessage": "Kushvanth received $51.73 from Door Dash → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "1e4b9d99-dfdc-4dde-9c78-23c40c65388f",
+        "date": "2026-07-25",
+        "time": "14:34:34",
+        "type": "expense",
+        "amount": 100,
+        "person": "kushvanth",
+        "category": "Door Dash account",
+        "accountId": "00c31453-dcce-4ecf-9f37-1d3175f79db5",
+        "timestamp": "2026-07-25T19:34:34.737Z",
+        "autoMessage": "Kushvanth paid $100 for Door Dash account via Zolve · Debit Account (shared: Kushvanth $50, Grishma $50)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 50,
+          "kushvanth": 50
+        },
+        "paymentMethod": "Zolve · Debit Account"
+      },
+      {
+        "id": "a1e8c2b0-75b5-4691-99a2-e4d89fad4200",
+        "date": "2026-07-25",
+        "time": "13:29:10",
+        "type": "expense",
+        "notes": "Milk and banana apples for puja day",
+        "amount": 14.89,
+        "person": "grishma",
+        "category": "Groceries",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T18:29:10.525Z",
+        "autoMessage": "Grishma paid $14.89 for Groceries via Zolve · Credit Card (shared: Kushvanth $7.45, Grishma $7.45)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 7.445,
+          "kushvanth": 7.445
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "0ed94e2c-a3da-4b87-a315-a9b6202942cf",
+        "date": "2026-07-24",
+        "time": "23:45:52",
+        "type": "expense",
+        "notes": "Wallmart",
+        "amount": 107.83,
+        "person": "kushvanth",
+        "category": "Groceries",
+        "accountId": "acc-k-amex",
+        "timestamp": "2026-07-25T04:45:52.586Z",
+        "autoMessage": "Kushvanth paid $107.83 for Groceries via Credit One Amex · Credit Card (shared: Kushvanth $53.92, Grishma $53.92)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 53.915,
+          "kushvanth": 53.915
+        },
+        "paymentMethod": "Credit One Amex · Credit Card"
+      },
+      {
+        "id": "f19e41b7-16e7-47ad-af8b-a67dd042d8fd",
+        "date": "2026-07-24",
+        "time": "23:44:43",
+        "type": "expense",
+        "notes": "Uber eats poypos",
+        "amount": 35.04,
+        "person": "kushvanth",
+        "category": "Food",
+        "accountId": "acc-k-amex",
+        "timestamp": "2026-07-25T04:44:43.938Z",
+        "autoMessage": "Kushvanth paid $35.04 for Food via Credit One Amex · Credit Card (shared: Kushvanth $17.52, Grishma $17.52)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 17.52,
+          "kushvanth": 17.52
+        },
+        "paymentMethod": "Credit One Amex · Credit Card"
+      },
+      {
+        "id": "ba992e49-f282-4c83-965f-fc55f56c5108",
+        "date": "2026-07-24",
+        "time": "20:24:55",
+        "type": "expense",
+        "notes": "Chickfillaa",
+        "amount": 10.74,
+        "person": "grishma",
+        "category": "Food",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T01:24:55.815Z",
+        "autoMessage": "Grishma paid $10.74 for Food via Zolve · Credit Card (shared: Kushvanth $5.37, Grishma $5.37)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 5.37,
+          "kushvanth": 5.37
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "6248b2c8-afac-4a66-b76c-ae290db4ec72",
+        "date": "2026-07-24",
+        "time": "20:24:28",
+        "type": "expense",
+        "notes": "Snucks for tide",
+        "amount": 15.52,
+        "person": "grishma",
+        "category": "Groceries",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T01:24:28.259Z",
+        "autoMessage": "Grishma paid $15.52 for Groceries via Zolve · Credit Card (shared: Kushvanth $7.76, Grishma $7.76)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 7.76,
+          "kushvanth": 7.76
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "17047411-ca87-4c83-8c6d-b54cfbd5888e",
+        "date": "2026-07-24",
+        "time": "20:20:51",
+        "type": "expense",
+        "amount": 41.54,
+        "person": "kushvanth",
+        "category": "Dollar tree",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-25T01:20:51.622Z",
+        "autoMessage": "Kushvanth paid $41.54 for Dollar tree via Bank of America · Debit Account (shared: Kushvanth $20.77, Grishma $20.77)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 20.77,
+          "kushvanth": 20.77
+        },
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "1e20578f-9463-41cb-acf2-aba53fa3393f",
+        "date": "2026-07-24",
+        "time": "19:40:52",
+        "type": "expense",
+        "notes": "Keys only ",
+        "amount": 9.87,
+        "person": "grishma",
+        "category": "Home depot",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T00:40:52.591Z",
+        "autoMessage": "Grishma paid $9.87 for Home depot via Zolve · Credit Card (shared: Kushvanth $4.94, Grishma $4.94)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 4.935,
+          "kushvanth": 4.935
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "d7a70435-4ab2-4966-a93e-49b20e17da73",
+        "date": "2026-07-24",
+        "time": "19:40:10",
+        "type": "expense",
+        "notes": "Spray and keys",
+        "amount": 13.11,
+        "person": "grishma",
+        "category": "Home depot",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T00:40:10.415Z",
+        "autoMessage": "Grishma paid $13.11 for Home depot via Zolve · Credit Card (shared: Kushvanth $6.56, Grishma $6.56)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 6.555,
+          "kushvanth": 6.555
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "7b56f3b8-565f-4646-8c08-86fecfdb977b",
+        "date": "2026-07-24",
+        "time": "19:39:16",
+        "type": "expense",
+        "amount": 40.73,
+        "person": "grishma",
+        "category": "Dollar tree",
+        "accountId": "acc-g-zolve",
+        "timestamp": "2026-07-25T00:39:16.081Z",
+        "autoMessage": "Grishma paid $40.73 for Dollar tree via Zolve · Credit Card (shared: Kushvanth $20.37, Grishma $20.37)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 20.365,
+          "kushvanth": 20.365
+        },
+        "paymentMethod": "Zolve · Credit Card"
+      },
+      {
+        "id": "8889cad1-62f0-458c-870e-7c320e502704",
+        "date": "2026-07-24",
+        "time": "19:35:36",
+        "type": "expense",
+        "notes": "Room rent for four days ",
+        "amount": 407,
+        "person": "grishma",
+        "category": "For Keys",
+        "accountId": "17e71636-dbad-4360-bc72-276167193be7",
+        "timestamp": "2026-07-25T00:35:36.715Z",
+        "autoMessage": "Grishma paid $407 for For Keys via GreenDot · Debit Account (shared: Kushvanth $203.5, Grishma $203.5)",
+        "expenseOwner": "grishma",
+        "paidByPerson": "grishma",
+        "expenseShares": {
+          "grishma": 203.5,
+          "kushvanth": 203.5
+        },
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "a0b95d6e-37f3-4ddd-ab36-e796683fe2e8",
+        "date": "2026-07-24",
+        "time": "19:31:35",
+        "type": "income",
+        "notes": "Ride money from airport",
+        "amount": 15,
+        "person": "kushvanth",
+        "category": "Custom",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-25T00:31:35.000Z",
+        "autoMessage": "Kushvanth received $15 from Custom → deposited to Bank of America",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "4ee89c19-c3f5-4415-890c-4645e316ae16",
+        "date": "2026-07-24",
+        "time": "11:37:07",
+        "type": "income",
+        "amount": 43,
+        "person": "kushvanth",
+        "category": "Amazon Flex",
+        "accountId": "269948d2-ab9c-4303-8fb0-cab9277438df",
+        "timestamp": "2026-07-24T16:37:07.000Z",
+        "autoMessage": "Kushvanth received $43 from Amazon Flex → deposited to GreenDot",
+        "paymentMethod": "GreenDot · Debit Account"
+      },
+      {
+        "id": "688d9017-0c40-4ca9-96e2-f570e5dbab1c",
+        "date": "2026-07-23",
+        "time": "21:47:38",
+        "type": "expense",
+        "notes": "Chick fill a",
+        "amount": 13.44,
+        "person": "kushvanth",
+        "category": "Food",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-24T02:47:38.679Z",
+        "autoMessage": "Kushvanth paid $13.44 for Food via Bank of America · Debit Account (shared: Kushvanth $6.72, Grishma $6.72)",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "expenseShares": {
+          "grishma": 6.72,
+          "kushvanth": 6.72
+        },
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "5bd91bfa-38a5-48cf-be71-0131f6274cd7",
+        "date": "2026-07-23",
+        "time": "21:21:10",
+        "type": "income",
+        "notes": "Got refund for keys",
+        "amount": 6.21,
+        "person": "kushvanth",
+        "category": "Custom",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-24T02:21:10.000Z",
+        "autoMessage": "Kushvanth received $6.21 from Custom → deposited to Bank of America",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "f496a3a7-be70-49f8-95aa-18f256980264",
+        "date": "2026-07-23",
+        "time": "20:40:44",
+        "type": "expense",
+        "notes": "Westend mail keys",
+        "amount": 6.21,
+        "person": "kushvanth",
+        "category": "For Keys",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-24T01:40:44.113Z",
+        "autoMessage": "Kushvanth paid $6.21 for For Keys via Bank of America · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "4ecdfca8-6b81-4e11-aca2-37619ada2647",
+        "date": "2026-07-23",
+        "time": "18:38:18",
+        "type": "expense",
+        "amount": 432.86,
+        "person": "kushvanth",
+        "category": "Eduction Loan",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-23T23:38:18.164Z",
+        "autoMessage": "Kushvanth paid $432.86 for Eduction Loan via Bank of America · Debit Account",
+        "expenseOwner": "kushvanth",
+        "paidByPerson": "kushvanth",
+        "paymentMethod": "Bank of America · Debit Account"
+      },
+      {
+        "id": "d463e754-c525-4ee1-85d5-f1440b75beb7",
+        "date": "2026-07-23",
+        "time": "18:30:19",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 99.86999999999998,
+        "person": "kushvanth",
+        "accountId": "ea3cf880-4862-4a39-9e2e-398462b19343",
+        "timestamp": "2026-07-23T23:30:19.090Z",
+        "autoMessage": "Kushvanth updated Cash App balance: Credit balance update",
+        "paymentMethod": "Cash App",
+        "previousBalance": 101.58999999999997
+      },
+      {
+        "id": "cf9bab5a-ddd3-4cd7-9bc2-fa63466f6a8d",
+        "date": "2026-07-23",
+        "time": "18:29:50",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 1100.03,
+        "person": "kushvanth",
+        "accountId": "acc-k-chime",
+        "timestamp": "2026-07-23T23:29:50.009Z",
+        "autoMessage": "Kushvanth updated Chime balance: Credit balance update",
+        "paymentMethod": "Chime",
+        "previousBalance": 1118.03
+      },
+      {
+        "id": "6fa6b505-3773-4ab8-b063-3cdb23b07688",
+        "date": "2026-07-23",
+        "time": "18:29:29",
+        "type": "balance_adjustment",
+        "notes": "Credit balance update",
+        "amount": 181,
+        "person": "kushvanth",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-23T23:29:29.288Z",
+        "autoMessage": "Kushvanth updated Cash Wallet balance: Credit balance update",
+        "paymentMethod": "Cash Wallet",
+        "previousBalance": 181
+      },
+      {
+        "id": "9c0e5179-cad7-4023-ac18-f7bd2492e7e2",
+        "date": "2026-07-23",
+        "time": "18:29:15",
+        "type": "balance_adjustment",
+        "notes": "i deposited all chime amount in Bofa",
+        "amount": 1375.01,
+        "person": "kushvanth",
+        "accountId": "acc-k-boa-debit",
+        "timestamp": "2026-07-23T23:29:15.090Z",
+        "autoMessage": "Kushvanth updated Bank of America balance: i deposited all chime amount in Bofa",
+        "paymentMethod": "Bank of America",
+        "previousBalance": 1.810000000000013
+      },
+      {
+        "id": "16ec1813-87cc-4824-b59c-635ae6c8d9d0",
+        "date": "2026-07-23",
+        "time": "18:28:09",
+        "type": "income",
+        "amount": 170,
+        "person": "kushvanth",
+        "category": "Gas Station",
+        "accountId": "acc-k-cash",
+        "timestamp": "2026-07-23T23:28:09.000Z",
+        "autoMessage": "Kushvanth received $170 from Gas Station → deposited to Cash Wallet",
+        "paymentMethod": "Cash Wallet · Cash Wallet"
+      },
       {
         "id": "4cb32521-ed09-4382-959c-f0fb1ff92234",
         "date": "2026-07-23",
@@ -1456,6 +2592,153 @@
         "timestamp": "2026-07-23T15:32:54.000Z",
         "depositType": "debit",
         "depositAccountId": "17e71636-dbad-4360-bc72-276167193be7"
+      },
+      {
+        "id": "411e6c3a-756a-49ef-9628-d3c07f1cfe17",
+        "date": "2026-07-23",
+        "time": "18:28:09",
+        "amount": 170,
+        "person": "kushvanth",
+        "sourceId": "is-k2",
+        "timestamp": "2026-07-23T23:28:09.000Z",
+        "depositType": "cash",
+        "depositAccountId": "acc-k-cash"
+      },
+      {
+        "id": "9f6ca8e9-2ac4-4fe4-8d4d-1dd0a9ca7ecc",
+        "date": "2026-07-23",
+        "time": "21:21:10",
+        "notes": "Got refund for keys",
+        "amount": 6.21,
+        "person": "kushvanth",
+        "sourceId": "75a1e318-121f-47b5-9471-6f3e24f6f158",
+        "timestamp": "2026-07-24T02:21:10.000Z",
+        "depositType": "debit",
+        "depositAccountId": "acc-k-boa-debit"
+      },
+      {
+        "id": "fb9e1221-bbc0-4da5-b9bf-3cb11ebce6e3",
+        "date": "2026-07-24",
+        "time": "11:37:07",
+        "amount": 43,
+        "person": "kushvanth",
+        "sourceId": "is-k3",
+        "timestamp": "2026-07-24T16:37:07.000Z",
+        "depositType": "debit",
+        "depositAccountId": "269948d2-ab9c-4303-8fb0-cab9277438df"
+      },
+      {
+        "id": "65426052-bc6a-4550-8ad8-9cdfe9c14da1",
+        "date": "2026-07-24",
+        "time": "19:31:35",
+        "notes": "Ride money from airport",
+        "amount": 15,
+        "person": "kushvanth",
+        "sourceId": "75a1e318-121f-47b5-9471-6f3e24f6f158",
+        "timestamp": "2026-07-25T00:31:35.000Z",
+        "depositType": "debit",
+        "depositAccountId": "acc-k-boa-debit"
+      },
+      {
+        "id": "e9acef91-3eef-4c3e-85db-8d45705a455c",
+        "date": "2026-07-25",
+        "time": "14:50:51",
+        "amount": 51.73,
+        "person": "kushvanth",
+        "sourceId": "73af13e4-80a2-4613-b65a-a6e475035748",
+        "timestamp": "2026-07-25T19:50:51.000Z",
+        "depositType": "debit",
+        "depositAccountId": "269948d2-ab9c-4303-8fb0-cab9277438df"
+      },
+      {
+        "id": "58b5128b-50f7-4ca2-adcd-5a7ce0496a5e",
+        "date": "2026-07-26",
+        "time": "08:37:26",
+        "notes": "From 500 half amount and tips",
+        "amount": 108,
+        "person": "grishma",
+        "sourceId": "e53f4750-d60c-4132-85be-2419baa9be8e",
+        "timestamp": "2026-07-26T13:37:26.000Z",
+        "depositType": "cash",
+        "depositAccountId": "acc-g-cash"
+      },
+      {
+        "id": "ec30d0f4-d503-4677-b73d-501dadaaa5e6",
+        "date": "2026-07-26",
+        "time": "08:40:30",
+        "amount": 130.49,
+        "person": "grishma",
+        "sourceId": "is-g1",
+        "timestamp": "2026-07-26T13:40:30.000Z",
+        "depositType": "debit",
+        "depositAccountId": "17e71636-dbad-4360-bc72-276167193be7"
+      },
+      {
+        "id": "ff5afe37-a413-430f-adc2-cbee0b803f5b",
+        "date": "2026-07-26",
+        "time": "09:04:04",
+        "notes": "Greendot withdraw at room rent",
+        "amount": 96,
+        "person": "grishma",
+        "sourceId": "e53f4750-d60c-4132-85be-2419baa9be8e",
+        "timestamp": "2026-07-26T14:04:04.000Z",
+        "depositType": "cash",
+        "depositAccountId": "acc-g-cash"
+      },
+      {
+        "id": "35c9fbb4-e4ec-4c74-80d9-603bcf695101",
+        "date": "2026-07-27",
+        "time": "10:48:48",
+        "amount": 109.78,
+        "person": "kushvanth",
+        "sourceId": "73af13e4-80a2-4613-b65a-a6e475035748",
+        "timestamp": "2026-07-27T15:48:48.000Z",
+        "depositType": "cash",
+        "depositAccountId": "acc-k-cash"
+      },
+      {
+        "id": "c1324d76-2635-4b22-8889-7674462db935",
+        "date": "2026-07-27",
+        "time": "13:36:04",
+        "amount": 205.06,
+        "person": "grishma",
+        "sourceId": "is-g1",
+        "timestamp": "2026-07-27T18:36:04.000Z",
+        "depositType": "debit",
+        "depositAccountId": "17e71636-dbad-4360-bc72-276167193be7"
+      },
+      {
+        "id": "2a13390d-5bba-4870-ad73-d5197dfa7ea9",
+        "date": "2026-07-30",
+        "time": "11:10:00",
+        "amount": 88.29,
+        "person": "grishma",
+        "sourceId": "is-g1",
+        "timestamp": "2026-07-30T16:10:00.000Z",
+        "depositType": "debit",
+        "depositAccountId": "17e71636-dbad-4360-bc72-276167193be7"
+      },
+      {
+        "id": "d18924d5-0edc-4770-86a1-426c97ba667f",
+        "date": "2026-07-30",
+        "time": "11:10:35",
+        "amount": 50,
+        "person": "kushvanth",
+        "sourceId": "is-k3",
+        "timestamp": "2026-07-30T16:10:35.000Z",
+        "depositType": "debit",
+        "depositAccountId": "269948d2-ab9c-4303-8fb0-cab9277438df"
+      },
+      {
+        "id": "35ff5cf4-47f8-44e8-8825-5768b1767fe3",
+        "date": "2026-07-30",
+        "time": "11:10:54",
+        "amount": 5.64,
+        "person": "kushvanth",
+        "sourceId": "is-k3",
+        "timestamp": "2026-07-30T16:10:54.000Z",
+        "depositType": "debit",
+        "depositAccountId": "269948d2-ab9c-4303-8fb0-cab9277438df"
       }
     ],
     "incomeSources": [
@@ -1493,6 +2776,11 @@
         "id": "e53f4750-d60c-4132-85be-2419baa9be8e",
         "name": "Custom",
         "person": "grishma"
+      },
+      {
+        "id": "73af13e4-80a2-4613-b65a-a6e475035748",
+        "name": "Door Dash",
+        "person": "kushvanth"
       }
     ],
     "deletedHistory": [
@@ -1884,104 +3172,471 @@
     ],
     "spendCategories": [
       {
-        "id": "sc-gas",
-        "name": "Gas",
+        "id": "9900e1f7-b94a-4aee-aae5-ad3a24e1a17b",
+        "name": "Eduction Loan",
         "keywords": [
-          "gas",
-          "fuel",
-          "petrol",
-          "shell",
-          "exxon"
+          "415.86"
         ]
       },
       {
-        "id": "sc-food",
+        "id": "96b42886-1166-46e8-b02d-de57fdb95f7f",
+        "name": "For Keys",
+        "keywords": []
+      },
+      {
+        "id": "bbd3016d-998f-4745-ab2f-6eb3776bcfda",
         "name": "Food",
         "keywords": [
-          "food",
-          "restaurant",
-          "lunch",
-          "dinner",
-          "uber eats",
-          "doordash",
-          "grubhub"
+          "All kind"
         ]
       },
       {
-        "id": "sc-home-rent",
-        "name": "Home Rent",
-        "keywords": [
-          "home rent",
-          "rent",
-          "room rent",
-          "landlord",
-          "apartment"
-        ]
+        "id": "eef9a726-31e0-4464-9827-4a2cdbb365cf",
+        "name": "Dollar tree",
+        "keywords": []
       },
       {
-        "id": "sc-car-loan",
-        "name": "Car Loan",
-        "keywords": [
-          "car loan",
-          "auto loan",
-          "vehicle loan"
-        ]
+        "id": "c32c8e55-d212-46ec-9e1f-b206aa6f80b0",
+        "name": "Home depot",
+        "keywords": []
       },
       {
-        "id": "sc-car-maintain",
-        "name": "Car Maintain",
-        "keywords": [
-          "car maintain",
-          "car maintenance",
-          "oil change",
-          "repair",
-          "mechanic"
-        ]
-      },
-      {
-        "id": "sc-college-fee",
-        "name": "College Fee",
-        "keywords": [
-          "college fee",
-          "college",
-          "tuition",
-          "semester"
-        ]
-      },
-      {
-        "id": "sc-edu-loan",
-        "name": "Education Loan",
-        "keywords": [
-          "education loan",
-          "student loan"
-        ]
-      },
-      {
-        "id": "sc-groceries",
+        "id": "99d885fb-ed04-4bd8-9169-fcaf06d24c49",
         "name": "Groceries",
         "keywords": [
-          "grocery",
-          "groceries",
-          "walmart",
-          "costco",
-          "target",
-          "aldi"
+          "Vegetables",
+          "house appliances"
         ]
       },
       {
-        "id": "sc-clothes",
-        "name": "Clothes",
+        "id": "29dd0a51-907d-4362-85d2-b34a22bc7a56",
+        "name": "Door Dash account",
         "keywords": [
-          "clothes",
-          "clothing",
-          "apparel",
-          "shoes",
-          "fashion"
+          "Amber"
         ]
+      },
+      {
+        "id": "70e464c6-2b74-47d4-8d0a-2ad572435386",
+        "name": "Gas",
+        "keywords": []
+      },
+      {
+        "id": "26c3a11d-e1db-403d-8016-037bd1b9b367",
+        "name": "Cash withdraw",
+        "keywords": []
+      },
+      {
+        "id": "f4225884-5a51-4349-80f7-7b9d707808a1",
+        "name": "Subscription",
+        "keywords": []
+      },
+      {
+        "id": "98318c17-df2a-4b8d-97f4-f580de4533c5",
+        "name": "Debts",
+        "keywords": []
+      },
+      {
+        "id": "c960dc7a-a8d8-4a09-9502-b0a865ec99f9",
+        "name": "Car loan",
+        "keywords": []
+      },
+      {
+        "id": "b9d35d1a-7cd0-43b1-a4fe-53ab5d89eb33",
+        "name": "Mama debt",
+        "keywords": []
+      },
+      {
+        "id": "cd14cbfa-3ae2-4401-a648-22fccccf3736",
+        "name": "Car maintenance",
+        "keywords": []
       }
     ],
-    "interCoupleBalance": 9054.685000000001,
+    "interCoupleBalance": 8392.345000000001,
     "interCoupleHistory": [
+      {
+        "id": "7c00390b-b839-44fb-a9cd-8b51727ff29b",
+        "date": "2026-07-30",
+        "time": "15:45:21",
+        "amount": 96.37,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:45:21.130Z",
+        "autoMessage": "Kushvanth paid $96.37 for Grishma's share",
+        "runningBalance": 8392.345000000001,
+        "sourceTransactionId": "bd441265-3726-499a-b076-60e281fc2f46"
+      },
+      {
+        "id": "42ccc679-c1bc-4bf0-940c-6f43a1de517b",
+        "date": "2026-07-30",
+        "time": "15:44:21",
+        "amount": 9.97,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:44:21.474Z",
+        "autoMessage": "Kushvanth paid $9.97 for Grishma's share (Groceries shared)",
+        "runningBalance": 8295.975,
+        "sourceTransactionId": "8dd839ab-97e3-434f-b873-6d3a18810587"
+      },
+      {
+        "id": "7ee828d8-fc21-4786-98bd-6065f24902c4",
+        "date": "2026-07-30",
+        "time": "15:43:55",
+        "amount": 12.855,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:43:55.953Z",
+        "autoMessage": "Kushvanth paid $12.86 for Grishma's share (Groceries shared)",
+        "runningBalance": 8286.005000000001,
+        "sourceTransactionId": "a2317886-b037-42d8-984c-5448b304a234"
+      },
+      {
+        "id": "c93b8832-123c-4661-a5ef-f02184247757",
+        "date": "2026-07-30",
+        "time": "15:43:37",
+        "amount": 33.75,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:43:37.501Z",
+        "autoMessage": "Kushvanth paid $33.75 for Grishma's share (Groceries shared)",
+        "runningBalance": 8273.150000000001,
+        "sourceTransactionId": "eaa10ef6-f8f5-4e89-89e2-6706e1bc7662"
+      },
+      {
+        "id": "97dc0b4c-a4ef-4465-8b91-2e5cd89ef242",
+        "date": "2026-07-30",
+        "time": "15:43:21",
+        "amount": 12.085,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:43:21.318Z",
+        "autoMessage": "Kushvanth paid $12.09 for Grishma's share (Groceries shared)",
+        "runningBalance": 8239.400000000001,
+        "sourceTransactionId": "aad0802d-1c50-4a05-ad61-ffe2e2a64db4"
+      },
+      {
+        "id": "f078bd48-a1bd-4b6f-8833-8ced7b31e147",
+        "date": "2026-07-30",
+        "time": "15:43:03",
+        "amount": 3,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:43:03.481Z",
+        "autoMessage": "Kushvanth paid $3 for Grishma's share (Groceries shared)",
+        "runningBalance": 8227.315000000002,
+        "sourceTransactionId": "5e428288-2d78-43b0-886f-02e6def8816a"
+      },
+      {
+        "id": "44510778-4b65-44f2-a8d5-b6a4766206ce",
+        "date": "2026-07-30",
+        "time": "15:42:30",
+        "amount": 87.195,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-30T20:42:30.714Z",
+        "autoMessage": "Kushvanth paid $87.2 for Grishma's share (Groceries shared)",
+        "runningBalance": 8224.315000000002,
+        "sourceTransactionId": "b9c2dd65-b6b6-4ad5-acc6-8edad49ffa94"
+      },
+      {
+        "id": "ab83836c-9a15-4b6d-8e25-6bbe13ebfaba",
+        "date": "2026-07-28",
+        "time": "13:10:43",
+        "amount": 40.38,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-28T18:10:43.690Z",
+        "autoMessage": "Kushvanth paid $40.38 for Grishma's share",
+        "runningBalance": 8137.120000000003,
+        "sourceTransactionId": "cc7ea568-cdf1-4df7-8316-a275595eeb0f"
+      },
+      {
+        "id": "a1f8411e-2196-4e2a-8eb0-a99d1f5e5ed9",
+        "date": "2026-07-28",
+        "time": "09:09:39",
+        "amount": 3.835,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-28T14:09:39.590Z",
+        "autoMessage": "Kushvanth paid $3.84 for Grishma's share (Groceries shared)",
+        "runningBalance": 8096.7400000000025,
+        "sourceTransactionId": "1e14324d-9002-4a31-9df7-7a7fc4642038"
+      },
+      {
+        "id": "e460e4ba-1bcb-4fd0-8180-a3325b12acde",
+        "date": "2026-07-28",
+        "time": "09:09:17",
+        "amount": 3.68,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-28T14:09:17.032Z",
+        "autoMessage": "Kushvanth paid $3.68 for Grishma's share (Groceries shared)",
+        "runningBalance": 8092.9050000000025,
+        "sourceTransactionId": "6cfc6187-6ee3-4bcf-a145-605f0d0050ef"
+      },
+      {
+        "id": "8a042767-c5b3-49d3-b299-0ad5258b6953",
+        "date": "2026-07-28",
+        "time": "09:07:23",
+        "amount": 59.535,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-28T14:07:23.522Z",
+        "autoMessage": "Kushvanth paid $59.54 for Grishma's share (Groceries shared)",
+        "runningBalance": 8089.225000000002,
+        "sourceTransactionId": "ebd8a587-e823-4dcd-ac08-3fdde7b680bc"
+      },
+      {
+        "id": "245fa633-bf67-46fb-b933-90c90c318d45",
+        "date": "2026-07-28",
+        "time": "09:06:58",
+        "amount": 16.025,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-28T14:06:58.822Z",
+        "autoMessage": "Kushvanth paid $16.03 for Grishma's share (Dollar tree shared)",
+        "runningBalance": 8029.690000000002,
+        "sourceTransactionId": "6a985dc2-3895-4f16-b582-053adba76b75"
+      },
+      {
+        "id": "6d2c7767-5b02-424f-a52d-6f5c356d6c79",
+        "date": "2026-07-27",
+        "time": "16:42:42",
+        "amount": 1000,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-27T21:42:42.321Z",
+        "autoMessage": "Grishma paid $1,000 for Kushvanth's share",
+        "runningBalance": 8013.665000000003,
+        "sourceTransactionId": "54357e83-9d85-46a0-b7b3-5164ac32b187"
+      },
+      {
+        "id": "63805104-d624-4e1d-82a6-71d1efbfe2a0",
+        "date": "2026-07-27",
+        "time": "10:53:17",
+        "amount": 34.62,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-27T15:53:17.879Z",
+        "autoMessage": "Kushvanth paid $34.62 for Grishma's share (Groceries shared)",
+        "runningBalance": 9013.665000000003,
+        "sourceTransactionId": "72ed8a55-1283-4bf7-9a5c-5052e183cfa2"
+      },
+      {
+        "id": "77b1842f-eea0-4e94-9bad-9ed9b0e7ae60",
+        "date": "2026-07-27",
+        "time": "10:52:22",
+        "amount": 23,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-27T15:52:22.915Z",
+        "autoMessage": "Kushvanth paid $23 for Grishma's share (Food shared)",
+        "runningBalance": 8979.045000000002,
+        "sourceTransactionId": "0ae193da-ce7a-498a-bc0e-ec30c607fc7e"
+      },
+      {
+        "id": "e731155e-5a01-40b9-840a-743f2cd6690f",
+        "date": "2026-07-27",
+        "time": "10:51:13",
+        "amount": 17.765,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-27T15:51:13.016Z",
+        "autoMessage": "Kushvanth paid $17.77 for Grishma's share (Groceries shared)",
+        "runningBalance": 8956.045000000002,
+        "sourceTransactionId": "a30d5478-25e4-48ab-acce-ccb1aecbf443"
+      },
+      {
+        "id": "64b63e36-6324-42c6-b896-8890d8f9b702",
+        "date": "2026-07-27",
+        "time": "10:50:46",
+        "amount": 5.995,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-27T15:50:46.205Z",
+        "autoMessage": "Kushvanth paid $6 for Grishma's share (Subscription shared)",
+        "runningBalance": 8938.280000000002,
+        "sourceTransactionId": "a459c3aa-e005-4cf2-9dd2-6203f9680d10"
+      },
+      {
+        "id": "56d4be4d-8cb3-440e-acb2-f209370d33bb",
+        "date": "2026-07-27",
+        "time": "10:49:45",
+        "amount": 14.875,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-27T15:49:45.481Z",
+        "autoMessage": "Kushvanth paid $14.88 for Grishma's share (Groceries shared)",
+        "runningBalance": 8932.285000000002,
+        "sourceTransactionId": "ec9b7ac7-3642-4c33-ae95-c4ef033b5a67"
+      },
+      {
+        "id": "179989fd-2c06-40c0-87d9-68039bc5b491",
+        "date": "2026-07-26",
+        "time": "08:46:58",
+        "amount": 25.295,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-26T13:46:58.745Z",
+        "autoMessage": "Grishma paid $25.3 for Kushvanth's share (Food shared)",
+        "runningBalance": 8917.410000000002,
+        "sourceTransactionId": "ab9dfe54-bbb5-4b92-9ef1-940c31eb3708"
+      },
+      {
+        "id": "670cb303-8d0c-415e-8e15-d6cdad795842",
+        "date": "2026-07-25",
+        "time": "23:32:40",
+        "amount": 4.975,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-26T04:32:40.845Z",
+        "autoMessage": "Grishma paid $4.98 for Kushvanth's share (Food shared)",
+        "runningBalance": 8942.705000000002,
+        "sourceTransactionId": "0b31a370-9190-471f-a07c-3b811c055817"
+      },
+      {
+        "id": "c3a5e195-c072-476e-bc0d-1fe138a16578",
+        "date": "2026-07-25",
+        "time": "14:34:34",
+        "amount": 50,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-25T19:34:34.738Z",
+        "autoMessage": "Kushvanth paid $50 for Grishma's share (Door Dash account shared)",
+        "runningBalance": 8947.680000000002,
+        "sourceTransactionId": "1e4b9d99-dfdc-4dde-9c78-23c40c65388f"
+      },
+      {
+        "id": "38db1f41-fbd3-4d65-95a2-9b0bec0349cd",
+        "date": "2026-07-25",
+        "time": "13:29:10",
+        "amount": 7.445,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T18:29:10.527Z",
+        "autoMessage": "Grishma paid $7.45 for Kushvanth's share (Groceries shared)",
+        "runningBalance": 8897.680000000002,
+        "sourceTransactionId": "a1e8c2b0-75b5-4691-99a2-e4d89fad4200"
+      },
+      {
+        "id": "65d89431-a68b-4ed4-a201-55c7089fa778",
+        "date": "2026-07-24",
+        "time": "23:45:52",
+        "amount": 53.915,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-25T04:45:52.587Z",
+        "autoMessage": "Kushvanth paid $53.92 for Grishma's share (Groceries shared)",
+        "runningBalance": 8905.125000000002,
+        "sourceTransactionId": "0ed94e2c-a3da-4b87-a315-a9b6202942cf"
+      },
+      {
+        "id": "d965dac0-6a9e-4185-926c-a8f1f1d643db",
+        "date": "2026-07-24",
+        "time": "23:44:43",
+        "amount": 17.52,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-25T04:44:43.939Z",
+        "autoMessage": "Kushvanth paid $17.52 for Grishma's share (Food shared)",
+        "runningBalance": 8851.210000000001,
+        "sourceTransactionId": "f19e41b7-16e7-47ad-af8b-a67dd042d8fd"
+      },
+      {
+        "id": "66bd1082-0567-4cd2-8ab2-6bb6d2a3309b",
+        "date": "2026-07-24",
+        "time": "20:24:55",
+        "amount": 5.37,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T01:24:55.816Z",
+        "autoMessage": "Grishma paid $5.37 for Kushvanth's share (Food shared)",
+        "runningBalance": 8833.69,
+        "sourceTransactionId": "ba992e49-f282-4c83-965f-fc55f56c5108"
+      },
+      {
+        "id": "233dba8c-020a-4f21-8638-b6ad774ab9d8",
+        "date": "2026-07-24",
+        "time": "20:24:28",
+        "amount": 7.76,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T01:24:28.259Z",
+        "autoMessage": "Grishma paid $7.76 for Kushvanth's share (Groceries shared)",
+        "runningBalance": 8839.060000000001,
+        "sourceTransactionId": "6248b2c8-afac-4a66-b76c-ae290db4ec72"
+      },
+      {
+        "id": "c2e34589-02dd-409f-8865-38cb8ccab38b",
+        "date": "2026-07-24",
+        "time": "20:20:51",
+        "amount": 20.77,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-25T01:20:51.623Z",
+        "autoMessage": "Kushvanth paid $20.77 for Grishma's share (Dollar tree shared)",
+        "runningBalance": 8846.820000000002,
+        "sourceTransactionId": "17047411-ca87-4c83-8c6d-b54cfbd5888e"
+      },
+      {
+        "id": "0c73c7a1-6494-46b7-a7a3-fd74df720e4b",
+        "date": "2026-07-24",
+        "time": "19:40:52",
+        "amount": 4.935,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T00:40:52.591Z",
+        "autoMessage": "Grishma paid $4.94 for Kushvanth's share (Home depot shared)",
+        "runningBalance": 8826.050000000001,
+        "sourceTransactionId": "1e20578f-9463-41cb-acf2-aba53fa3393f"
+      },
+      {
+        "id": "b3ebc457-9c8b-46e3-b50d-1fff428f4967",
+        "date": "2026-07-24",
+        "time": "19:40:10",
+        "amount": 6.555,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T00:40:10.416Z",
+        "autoMessage": "Grishma paid $6.56 for Kushvanth's share (Home depot shared)",
+        "runningBalance": 8830.985,
+        "sourceTransactionId": "d7a70435-4ab2-4966-a93e-49b20e17da73"
+      },
+      {
+        "id": "61d67c97-dceb-4790-86d8-5abcbc30ef27",
+        "date": "2026-07-24",
+        "time": "19:39:16",
+        "amount": 20.365,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T00:39:16.081Z",
+        "autoMessage": "Grishma paid $20.37 for Kushvanth's share (Dollar tree shared)",
+        "runningBalance": 8837.54,
+        "sourceTransactionId": "7b56f3b8-565f-4646-8c08-86fecfdb977b"
+      },
+      {
+        "id": "a8e93590-39a9-4223-bd69-f1083ecf4822",
+        "date": "2026-07-24",
+        "time": "19:35:36",
+        "amount": 203.5,
+        "paidBy": "grishma",
+        "benefited": "kushvanth",
+        "timestamp": "2026-07-25T00:35:36.717Z",
+        "autoMessage": "Grishma paid $203.5 for Kushvanth's share (For Keys shared)",
+        "runningBalance": 8857.905,
+        "sourceTransactionId": "8889cad1-62f0-458c-870e-7c320e502704"
+      },
+      {
+        "id": "b3a50864-fb09-4e12-a54a-52c220fbece8",
+        "date": "2026-07-23",
+        "time": "21:47:38",
+        "amount": 6.72,
+        "paidBy": "kushvanth",
+        "benefited": "grishma",
+        "timestamp": "2026-07-24T02:47:38.680Z",
+        "autoMessage": "Kushvanth paid $6.72 for Grishma's share (Food shared)",
+        "runningBalance": 9061.405,
+        "sourceTransactionId": "688d9017-0c40-4ca9-96e2-f570e5dbab1c"
+      },
       {
         "id": "486b1503-65b5-46c2-bacc-8760c6918357",
         "date": "2026-07-23",

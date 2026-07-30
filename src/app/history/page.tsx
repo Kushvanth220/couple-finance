@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Filter, RotateCcw } from "lucide-react";
 import { DeletedHistoryCard } from "@/components/history/deleted-history-card";
+import { ActiveTransactionDetails } from "@/components/history/active-transaction-details";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -14,10 +15,11 @@ import {
   getMonthRangeBounds,
   type MonthRangeValue,
 } from "@/components/ui/month-range-filter";
-import { useFinanceStore } from "@/store/finance-store";
+import { useFinanceStore, getFinanceState } from "@/store/finance-store";
 import { getAvailableMonthKeys } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, compareByDateTime, isWithinDateRange } from "@/lib/formatters";
 import { getTransactionDisplayMessage, getTransactionActor } from "@/lib/transaction-messages";
+import { forcePushNow, getActiveHouseholdId } from "@/lib/supabase/sync";
 import { PERSON_LABELS, type Person, type Transaction, type TransactionType } from "@/types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -79,6 +81,8 @@ function HistoryPageContent() {
     id: string;
     message: string;
   } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedByChoice, setDeletedByChoice] = useState<Person>("kushvanth");
 
   const bounds = getMonthRangeBounds(dateRange);
@@ -93,9 +97,24 @@ function HistoryPageContent() {
   };
 
   const confirmDelete = () => {
-    if (!pendingDelete) return;
-    deleteTransaction(pendingDelete.id, deletedByChoice);
-    setPendingDelete(null);
+    if (!pendingDelete || isDeleting) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      deleteTransaction(pendingDelete.id, deletedByChoice);
+      setPendingDelete(null);
+
+      void forcePushNow(getActiveHouseholdId(), getFinanceState).catch((err) => {
+        setDeleteError(err instanceof Error ? err.message : "Could not sync delete to cloud");
+      }).finally(() => {
+        setIsDeleting(false);
+      });
+    } catch (err) {
+      setIsDeleting(false);
+      setDeleteError(err instanceof Error ? err.message : "Could not delete transaction");
+    }
   };
 
   useEffect(() => {
@@ -261,6 +280,12 @@ function HistoryPageContent() {
         <p className="text-[10px] text-[#007aff] px-1">Linked from Between Us</p>
       ) : null}
 
+      {deleteError ? (
+        <p className="text-xs text-[#ff3b30] bg-[#ff3b30]/10 rounded-2xl px-4 py-3">
+          {deleteError}
+        </p>
+      ) : null}
+
       <GlassCard className="!p-0 divide-y divide-black/5 dark:divide-white/10">
         {view === "deleted" ? (
           filteredDeleted.length === 0 ? (
@@ -315,7 +340,8 @@ function HistoryPageContent() {
                       {formatDateTime(transaction.date, transaction.time, transaction.timestamp)}
                     </span>
                   </div>
-                  <p className="font-medium mt-1 text-xs leading-snug line-clamp-2">{message}</p>
+                  <p className="font-medium mt-1 text-xs leading-snug">{message}</p>
+                  <ActiveTransactionDetails transaction={transaction} />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <span
@@ -329,8 +355,11 @@ function HistoryPageContent() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => openDeleteConfirm(transaction)}
-                    className="text-muted hover:text-[#ff3b30] px-1.5 py-0.5 text-sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openDeleteConfirm(transaction);
+                    }}
+                    className="text-muted hover:text-[#ff3b30] px-2 py-1 text-base leading-none min-w-[28px] min-h-[28px]"
                     aria-label="Delete transaction"
                   >
                     ×
@@ -375,8 +404,8 @@ function HistoryPageContent() {
           <GlassButton className="flex-1" onClick={() => setPendingDelete(null)}>
             Cancel
           </GlassButton>
-          <GlassButton variant="danger" className="flex-1" onClick={confirmDelete}>
-            Delete
+          <GlassButton variant="danger" className="flex-1" onClick={confirmDelete} disabled={isDeleting}>
+            {isDeleting ? "Deleting…" : "Delete"}
           </GlassButton>
         </div>
       </GlassModal>
@@ -387,7 +416,8 @@ function HistoryPageContent() {
         title="Reset all data?"
       >
         <p className="text-sm text-muted leading-relaxed">
-          Clears active data and resets balances. Deleted audit log is kept.
+          Clears active data on this device and resets balances. Your cloud backup stays safe —
+          the app will not overwrite cloud data when cloud has more history.
         </p>
         <div className="flex gap-3 mt-5">
           <GlassButton className="flex-1" onClick={() => setShowResetConfirm(false)}>

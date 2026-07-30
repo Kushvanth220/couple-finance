@@ -183,6 +183,13 @@ export function getTransactionActor(transaction: Transaction): Person {
   return transaction.paidByPerson ?? transaction.person;
 }
 
+function appendNotesIfMissing(message: string, notes?: string): string {
+  const note = notes?.trim();
+  if (!note) return message;
+  if (message.toLowerCase().includes(note.toLowerCase())) return message;
+  return `${message} — ${note}`;
+}
+
 export function getTransactionDisplayMessage(transaction: Transaction): string {
   const actor = getTransactionActor(transaction);
   const actorLabel = PERSON_LABELS[actor];
@@ -201,38 +208,50 @@ export function getTransactionDisplayMessage(transaction: Transaction): string {
       message = `${message} — ${transaction.notes}`;
     }
 
-    return message;
+    return appendNotesIfMissing(message, transaction.notes);
   }
 
   const payment = transaction.paymentMethod ? ` via ${transaction.paymentMethod}` : "";
   const category = transaction.category;
 
+  let message: string;
+
   switch (transaction.type) {
     case "income":
-      return `${actorLabel} received ${formatCurrency(transaction.amount)}${category ? ` from ${category}` : ""}${payment}`;
+      message = `${actorLabel} received ${formatCurrency(transaction.amount)}${category ? ` from ${category}` : ""}${payment}`;
+      break;
     case "expense":
-      return `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` for ${category}` : ""}${payment}`;
+      message = `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` for ${category}` : ""}${payment}`;
+      break;
     case "credit_payment":
     case "debt_payment":
-      return `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` toward ${category}` : ""}${payment}`;
+      message = `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` toward ${category}` : ""}${payment}`;
+      break;
     case "cash_withdrawal":
-      return `${actorLabel} withdrew ${formatCurrency(transaction.amount)} cash${category ? ` for ${category}` : ""}${payment}`;
+      message = `${actorLabel} withdrew ${formatCurrency(transaction.amount)} cash${category ? ` for ${category}` : ""}${payment}`;
+      break;
     case "cash_deposit":
-      return `${actorLabel} deposited ${formatCurrency(transaction.amount)} cash${payment}`;
+      message = `${actorLabel} deposited ${formatCurrency(transaction.amount)} cash${payment}`;
+      break;
     case "inter_couple":
       if (transaction.notes && transaction.category === "External") {
-        return `${actorLabel} gave ${formatCurrency(transaction.amount)} to ${
+        message = `${actorLabel} gave ${formatCurrency(transaction.amount)} to ${
           transaction.beneficiaryPerson
             ? PERSON_LABELS[transaction.beneficiaryPerson]
             : "partner"
         } — ${transaction.notes}`;
+      } else {
+        message = transaction.beneficiaryPerson
+          ? `${actorLabel} paid ${formatCurrency(transaction.amount)} for ${PERSON_LABELS[transaction.beneficiaryPerson]}`
+          : `${actorLabel} — between us transfer ${formatCurrency(transaction.amount)}`;
       }
-      return transaction.beneficiaryPerson
-        ? `${actorLabel} paid ${formatCurrency(transaction.amount)} for ${PERSON_LABELS[transaction.beneficiaryPerson]}`
-        : `${actorLabel} — between us transfer ${formatCurrency(transaction.amount)}`;
+      break;
     case "balance_adjustment":
-      return `${actorLabel} updated account balance${transaction.notes ? `: ${transaction.notes}` : ""}`;
+      message = `${actorLabel} updated account balance${transaction.notes ? `: ${transaction.notes}` : ""}`;
+      break;
     default:
-      return `${actorLabel} — ${category ?? transaction.type}${payment}`;
+      message = `${actorLabel} — ${category ?? transaction.type}${payment}`;
   }
+
+  return appendNotesIfMissing(message, transaction.notes);
 }

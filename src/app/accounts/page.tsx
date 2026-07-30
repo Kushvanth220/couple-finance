@@ -24,6 +24,8 @@ import {
   getWeeklyIncome,
 } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/formatters";
+import { getAccountsForPerson, isSharedAccount } from "@/lib/accounts";
+import { SharedAccountActivity } from "@/components/accounts/shared-account-activity";
 import { CREDIT_LABELS } from "@/lib/inter-couple";
 import { type Account, type Person } from "@/types";
 
@@ -65,7 +67,7 @@ export default function AccountsPage() {
   const [sourceName, setSourceName] = useState("");
   const [editSourceId, setEditSourceId] = useState<string | null>(null);
 
-  const personAccounts = accounts.filter((a) => a.person === person);
+  const personAccounts = getAccountsForPerson(accounts, person);
   const personSources = incomeSources.filter((s) => s.person === person);
   const personEntries = useMemo(
     () =>
@@ -234,7 +236,17 @@ export default function AccountsPage() {
               <GlassCard key={account.id} className="!p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold">{account.name}</p>
+                    <p className="font-semibold flex items-center gap-1.5 flex-wrap">
+                      {account.name}
+                      {isSharedAccount(account) ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-[#af52de]/15 text-[#af52de]">
+                          Shared
+                        </span>
+                      ) : null}
+                    </p>
+                    {isSharedAccount(account) ? (
+                      <p className="text-[10px] text-muted">Both of you use this account</p>
+                    ) : null}
                     {account.type === "credit" && account.creditLimit != null && (
                       <p className="text-xs text-muted">
                         Limit: {formatCurrency(account.creditLimit)}
@@ -303,6 +315,10 @@ export default function AccountsPage() {
                     </div>
                   )}
                 </div>
+
+                {isSharedAccount(account) ? (
+                  <SharedAccountActivity accountId={account.id} accountName={account.name} />
+                ) : null}
               </GlassCard>
             ))}
           </div>

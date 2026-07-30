@@ -124,7 +124,9 @@ export function getAccountBalances(
 ): number {
   return accounts
     .filter((account) => {
-      if (person && account.person !== person) return false;
+      if (person) {
+        if (!account.shared && account.person !== person) return false;
+      }
       if (type && account.type !== type) return false;
       return true;
     })

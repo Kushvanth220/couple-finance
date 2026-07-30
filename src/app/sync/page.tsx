@@ -21,6 +21,10 @@ export default function SyncPage() {
   const [householdId, setHouseholdId] = useState(getHouseholdSyncKey());
   const [cloudTransactions, setCloudTransactions] = useState<number | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState<string | null>(null);
+  const [cloudHealthError, setCloudHealthError] = useState<string | null>(null);
+  const [householdRows, setHouseholdRows] = useState<
+    Array<{ household_id: string; transactions: number }>
+  >([]);
 
   useEffect(() => {
     void loadSyncConfig().then(async (config) => {
@@ -31,10 +35,44 @@ export default function SyncPage() {
       setSupabaseUrl(config.supabaseUrl);
 
       try {
-        const remote = await fetchRemoteFinance(config.householdKey);
-        setCloudTransactions(remote?.data.transactions?.length ?? 0);
-      } catch {
+        const health = (await fetch("/api/cloud-health", { cache: "no-store" }).then((res) =>
+          res.json()
+        )) as {
+          ok?: boolean;
+          error?: string;
+          matched?: { transactions?: number };
+          rows?: Array<{ household_id: string; transactions: number }>;
+        };
+
+        if (health.ok && health.matched) {
+          setCloudTransactions(health.matched.transactions ?? 0);
+          setCloudHealthError(null);
+          setHouseholdRows(health.rows ?? []);
+          return;
+        }
+
+        if (health.ok && health.rows?.length) {
+          setHouseholdRows(health.rows);
+          setCloudTransactions(null);
+          setCloudHealthError(
+            `Connected, but no row for "${config.householdKey}". Found: ${health.rows
+              .map((row) => `${row.household_id} (${row.transactions} tx)`)
+              .join(", ")}`
+          );
+          return;
+        }
+
         setCloudTransactions(null);
+        setCloudHealthError(health.error ?? "Could not read cloud data.");
+      } catch {
+        try {
+          const remote = await fetchRemoteFinance(config.householdKey);
+          setCloudTransactions(remote?.data.transactions?.length ?? 0);
+          setCloudHealthError(null);
+        } catch {
+          setCloudTransactions(null);
+          setCloudHealthError("Could not reach Supabase from this device.");
+        }
       }
     });
 
@@ -87,11 +125,19 @@ export default function SyncPage() {
             Just open the same app on both devices.
           </p>
 
-          {syncError ? (
+          {syncError || cloudHealthError ? (
             <p className="text-sm text-[#ff3b30] bg-[#ff3b30]/10 rounded-2xl px-4 py-3">
-              {syncError}
+              {syncError ?? cloudHealthError}
             </p>
           ) : null}
+
+          <div className="rounded-2xl bg-[#34c759]/10 px-4 py-3 text-xs text-muted space-y-1">
+            <p className="font-medium text-[#34c759]">Cloud backup active</p>
+            <p>
+              Your data auto-saves to Supabase. Uploads are blocked if cloud is unreachable or if
+              this device would overwrite richer cloud history.
+            </p>
+          </div>
 
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 px-4 py-3 text-xs text-muted space-y-1">
             <p>
@@ -105,6 +151,14 @@ export default function SyncPage() {
                 : `${cloudTransactions} transactions`}
             </p>
             {supabaseUrl ? <p className="truncate">Project: {supabaseUrl}</p> : null}
+            {householdRows.length > 0 ? (
+              <p>
+                Cloud households:{" "}
+                {householdRows
+                  .map((row) => `${row.household_id} (${row.transactions} tx)`)
+                  .join(", ")}
+              </p>
+            ) : null}
           </div>
 
           <p className="text-xs text-muted">Household: {householdId}</p>

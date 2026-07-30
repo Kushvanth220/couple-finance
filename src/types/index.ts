@@ -63,6 +63,8 @@ export interface Account {
   type: AccountType;
   balance: number;
   creditLimit?: number;
+  /** Household account used by both people (e.g. shared GreenDot debit). */
+  shared?: boolean;
 }
 
 export interface Debt {

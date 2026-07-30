@@ -58,6 +58,7 @@ const listeners = new Set<SyncListener>();
 const initialSyncListeners = new Set<() => void>();
 
 let initialSyncComplete = typeof window === "undefined";
+let cloudReachable = false;
 
 const PUSH_DEBOUNCE_MS = 250;
 const POLL_INTERVAL_MS = 1_500;
@@ -220,6 +221,16 @@ function assertSafeToPush(remote: FinanceState | null, local: FinanceState) {
 function helpfulErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown error";
 
+  if (
+    message.includes("Failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("ENOTFOUND") ||
+    message.includes("getaddrinfo") ||
+    message.includes("could not be resolved")
+  ) {
+    return "Cannot reach Supabase. Copy the exact Project URL from Supabase → Settings → API into .env.local, then restart the app.";
+  }
+
   if (message.includes("household_id") && message.includes("does not exist")) {
     return "Database table is outdated. Run supabase/setup.sql in Supabase SQL Editor.";
   }
@@ -233,6 +244,10 @@ function helpfulErrorMessage(error: unknown) {
   }
 
   return message;
+}
+
+export function isCloudReachable() {
+  return cloudReachable;
 }
 
 export async function fetchRemoteFinance(
@@ -263,6 +278,12 @@ export async function pushFinanceState(
   state: FinanceState,
   options?: { skipSafetyCheck?: boolean }
 ): Promise<RemoteFinanceRow> {
+  if (!cloudReachable && !options?.skipSafetyCheck) {
+    throw new Error(
+      "Cloud is unreachable — upload blocked to protect your database. Fix the Supabase URL first."
+    );
+  }
+
   const config = getConfigOrThrow();
   const supabase = createClient(config);
   if (!supabase) throw new Error("Supabase is not configured");
@@ -299,14 +320,6 @@ export async function pushFinanceState(
     data: data.data as FinanceState,
     updated_at: data.updated_at,
   };
-
-  if (sessionPullConfig?.householdId === householdId) {
-    void pullRemoteIfNewer(
-      householdId,
-      sessionPullConfig.getLocalState,
-      sessionPullConfig.applyRemoteState
-    );
-  }
 
   return row;
 }
@@ -352,7 +365,7 @@ export function scheduleFinancePush(
       }
 
       if (existing && wouldWipeRemoteData(existing.data, localState)) {
-        if (sessionPullConfig) {
+        if (!pendingLocalChanges && sessionPullConfig) {
           applyRemoteRow(existing, sessionPullConfig.applyRemoteState);
         }
         notifyStatus("synced");
@@ -444,6 +457,10 @@ function shouldPullRemote(
 
   if (localEditTime > remoteTime) return false;
 
+  const localTx = localState.transactions?.length ?? 0;
+  const remoteTx = remote.data.transactions?.length ?? 0;
+  if (localEditTime && localTx !== remoteTx) return false;
+
   if (remoteTime > syncedTime) return true;
 
   if (!meta.lastSyncedAt) return true;
@@ -460,6 +477,11 @@ function shouldPushLocalOverRemote(
 
   const remoteTime = new Date(remote.updated_at).getTime();
   const localEditTime = lastLocalEditTime(meta);
+  const localTx = localState.transactions?.length ?? 0;
+  const remoteTx = remote.data.transactions?.length ?? 0;
+
+  if (localEditTime && localTx !== remoteTx) return true;
+
   return localEditTime > remoteTime;
 }
 
@@ -486,15 +508,27 @@ export async function resolveInitialSync(
   applyRemoteState: (state: FinanceState) => void
 ): Promise<"local" | "remote" | "none"> {
   clearPendingLocalChanges();
+  cloudReachable = false;
 
   const localState = ensureBestLocalState(getLocalState, applyRemoteState);
-  const remote = await fetchRemoteFinance(householdId);
+  let remote: RemoteFinanceRow | null;
+
+  try {
+    remote = await fetchRemoteFinance(householdId);
+    cloudReachable = true;
+  } catch (err) {
+    notifyStatus("error", helpfulErrorMessage(err));
+    return "none";
+  }
+
   const meta = readSyncMeta();
 
   if (!remote) {
-    await pushFinanceState(householdId, localState);
-    notifyStatus("synced");
-    return "local";
+    notifyStatus(
+      "error",
+      `No cloud row for household "${householdId}". Showing local data only — nothing was uploaded.`
+    );
+    return "none";
   }
 
   if (scoreFinanceState(remote.data) > scoreFinanceState(localState) + 50) {

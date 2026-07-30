@@ -3,39 +3,26 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { isSupabaseConfiguredAsync } from "@/lib/supabase/client";
-import { isInitialSyncComplete, onInitialSyncComplete } from "@/lib/supabase/sync";
+import { waitForStoreHydration } from "@/store/finance-store";
 
 export function SyncReadyGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(isInitialSyncComplete());
-  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    void isSupabaseConfiguredAsync().then((value) => {
-      setConfigured(value);
-      if (!value) {
-        setReady(true);
-      }
+    void waitForStoreHydration().then(() => {
+      setReady(true);
     });
   }, []);
 
   useEffect(() => {
-    if (configured !== true) return;
-    if (isInitialSyncComplete()) {
-      setReady(true);
-      return;
-    }
+    void isSupabaseConfiguredAsync();
+  }, []);
 
-    return onInitialSyncComplete(() => {
-      setReady(true);
-    });
-  }, [configured]);
-
-  if (configured === null || (configured && !ready)) {
+  if (!ready) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
         <Loader2 className="h-6 w-6 animate-spin text-[#007aff]" />
         <p className="text-sm font-medium">Loading your finances…</p>
-        <p className="text-xs text-muted">Syncing from cloud</p>
       </div>
     );
   }

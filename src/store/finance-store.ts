@@ -26,6 +26,7 @@ import {
   type ExpenseShares,
 } from "@/lib/transaction-reversal";
 import { buildDeletedHistoryRecord } from "@/lib/deleted-history";
+import { applySharedAccountNormalization } from "@/lib/accounts";
 import { celebrateBetweenUsUpdate } from "@/lib/between-us-celebration";
 import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data";
 import { parseAppDateTime } from "@/lib/formatters";
@@ -1201,6 +1202,24 @@ export const useFinanceStore = create<FinanceStore>()(
         if (!state.spendCategories?.length) {
           state.spendCategories = seedData.spendCategories;
         }
+
+        const normalized = applySharedAccountNormalization({
+          accounts: state.accounts,
+          incomeEntries: state.incomeEntries,
+          transactions: state.transactions,
+          incomeSources: state.incomeSources,
+          spendCategories: state.spendCategories,
+          monthlyExpenses: state.monthlyExpenses,
+          debts: state.debts,
+          interCoupleHistory: state.interCoupleHistory,
+          interCoupleBalance: state.interCoupleBalance,
+          deletedHistory: state.deletedHistory,
+        });
+
+        state.accounts = normalized.accounts;
+        state.incomeEntries = normalized.incomeEntries;
+        state.transactions = normalized.transactions;
+
         const baseline = ensureInterCoupleBaseline(
           state.interCoupleHistory,
           state.interCoupleBalance
@@ -1241,18 +1260,19 @@ export function getFinanceState(): FinanceState {
 }
 
 export function applyRemoteFinanceState(state: FinanceState) {
+  const normalized = applySharedAccountNormalization(state);
   const baseline = ensureInterCoupleBaseline(
-    state.interCoupleHistory,
-    state.interCoupleBalance
+    normalized.interCoupleHistory,
+    normalized.interCoupleBalance
   );
   const synced = recalculateInterCoupleState(baseline.interCoupleHistory);
 
   useFinanceStore.setState({
-    ...state,
-    spendCategories: state.spendCategories?.length
-      ? state.spendCategories
+    ...normalized,
+    spendCategories: normalized.spendCategories?.length
+      ? normalized.spendCategories
       : seedData.spendCategories,
-    deletedHistory: state.deletedHistory ?? [],
+    deletedHistory: normalized.deletedHistory ?? [],
     interCoupleHistory: synced.interCoupleHistory,
     interCoupleBalance: synced.interCoupleBalance,
   });
