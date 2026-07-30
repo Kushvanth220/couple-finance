@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "preview": "npm run build && npm run start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backup:supabase": "node scripts/backup-supabase-data.mjs",
+    "restore:supabase": "node scripts/restore-supabase-data.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

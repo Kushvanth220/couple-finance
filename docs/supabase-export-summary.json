@@ -1,9 +1,12 @@
 {
   "household_id": "grik-finance-couple",
   "updated_at": "2026-07-30T20:46:33.069244+00:00",
+  "exported_at": "2026-07-30T21:48:28.084Z",
+  "supabase_url": "https://wlbksoamcghjpkiqousv.supabase.co",
   "counts": {
     "incomeSources": 8,
     "incomeEntries": 36,
+    "spendCategories": 14,
     "monthlyExpenses": 4,
     "accounts": 14,
     "debts": 9,
