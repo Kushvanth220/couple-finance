@@ -1,31 +1,23 @@
 # Supabase migration (keep your data)
 
-Use this when deleting the old Supabase project and creating a new one.
+Your finance data is bundled in the app at `src/data/household-finance.json`.
+On first load, the app uses that snapshot and uploads it to Supabase when the cloud is empty.
 
-## 1. Back up now (old project)
-
-With your **current** `.env.local` still pointing at the old project:
+## Before you delete the old Supabase project
 
 ```bash
 npm run backup:supabase
 ```
 
-This saves:
+Copy the `backups/` folder somewhere safe.
 
-- `backups/<timestamp>-grik-finance-couple/household-finance.json` — full backup
-- `docs/supabase-export.json` — latest copy for restore
-
-**Copy the whole `backups/` folder somewhere safe** (USB, Google Drive, etc.) before deleting the old Supabase project.
-
-## 2. Create the new Supabase project
+## Set up the new Supabase project
 
 1. Create a new project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor** and run the entire file: `supabase/setup.sql`
-3. Enable **Realtime** for `household_finance` if prompted (the SQL script tries to add it).
+3. Copy **Project URL** and **anon public key** from Settings → API.
 
-## 3. Point the app at the new project
-
-Update `.env.local`:
+## Local `.env.local`
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-NEW-PROJECT.supabase.co
@@ -33,36 +25,46 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_new_anon_key
 NEXT_PUBLIC_HOUSEHOLD_SYNC_KEY=grik-finance-couple
 ```
 
-Update the same variables on **Vercel** (Project → Settings → Environment Variables), then redeploy.
+Restart dev server after saving:
 
-## 4. Restore data into the new project
+```bash
+npm run dev
+```
+
+Open http://localhost:3000 — data loads from the bundled snapshot and syncs to the new cloud automatically.
+
+## Vercel deploy
+
+1. Push this repo to GitHub.
+2. In Vercel → Project → Settings → Environment Variables, set:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_HOUSEHOLD_SYNC_KEY` = `grik-finance-couple`
+3. Redeploy.
+4. Open your live site once — it seeds the new Supabase project automatically.
+
+Optional manual restore (instead of waiting for first app load):
 
 ```bash
 npm run restore:supabase
 ```
 
-Or restore a specific backup:
+## Update bundled data later
+
+After exporting fresh cloud data:
 
 ```bash
-npm run restore:supabase -- backups/2026-07-30T...-grik-finance-couple/household-finance.json
+npm run backup:supabase
+npm run seed:generate
 ```
 
-## 5. Refresh the app
+Then commit `src/data/household-finance.json` and redeploy.
 
-1. Restart `npm run dev` locally (or wait for Vercel redeploy).
-2. Open the app — it should pull the restored cloud data.
-3. If a device still shows old data, hard refresh or clear site data once, then reload.
+## What's included
 
-## What is included in the backup
-
-All finance data in one JSON blob:
-
-- Accounts, debts, transactions
-- Income sources and entries
-- Spend categories and monthly expenses
-- Inter-couple balance and history
+- 136 transactions
+- 14 accounts
+- 36 income entries
+- 9 debts
+- Inter-couple history and balance
 - Deleted history log
-
-## Optional: local browser backup
-
-The app also keeps a copy in browser `localStorage`. Before switching projects, you can open DevTools → Application → Local Storage and note keys starting with `couple-finance`. The cloud backup above is the source of truth.

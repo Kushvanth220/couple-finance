@@ -1,88 +1,35 @@
 import type { FinanceState } from "@/types";
+import householdFinance from "@/data/household-finance.json";
 
-export const seedData: FinanceState = {
-  incomeSources: [
-    { id: "is-k1", person: "kushvanth", name: "On Campus Job" },
-    { id: "is-k2", person: "kushvanth", name: "Gas Station" },
-    { id: "is-k3", person: "kushvanth", name: "Amazon Flex" },
-    { id: "is-k4", person: "kushvanth", name: "Uber Eats" },
-    { id: "is-g1", person: "grishma", name: "Grubhub" },
-  ],
-  incomeEntries: [],
-  spendCategories: [
-    { id: "sc-gas", name: "Gas", keywords: ["gas", "fuel", "petrol", "shell", "exxon"] },
-    { id: "sc-food", name: "Food", keywords: ["food", "restaurant", "lunch", "dinner", "uber eats", "doordash", "grubhub"] },
-    { id: "sc-home-rent", name: "Home Rent", keywords: ["home rent", "rent", "room rent", "landlord", "apartment"] },
-    { id: "sc-car-loan", name: "Car Loan", keywords: ["car loan", "auto loan", "vehicle loan"] },
-    { id: "sc-car-maintain", name: "Car Maintain", keywords: ["car maintain", "car maintenance", "oil change", "repair", "mechanic"] },
-    { id: "sc-college-fee", name: "College Fee", keywords: ["college fee", "college", "tuition", "semester"] },
-    { id: "sc-edu-loan", name: "Education Loan", keywords: ["education loan", "student loan"] },
-    { id: "sc-groceries", name: "Groceries", keywords: ["grocery", "groceries", "walmart", "costco", "target", "aldi"] },
-    { id: "sc-clothes", name: "Clothes", keywords: ["clothes", "clothing", "apparel", "shoes", "fashion"] },
-  ],
-  monthlyExpenses: [
-    { id: "me-k1", person: "kushvanth", name: "Education Loan", amount: 420, isVariable: false, isRecurring: true, dueDayOfMonth: 5 },
-    { id: "me-k2", person: "kushvanth", name: "Car Loan", amount: 300, isVariable: false, isRecurring: true, dueDayOfMonth: 10 },
-    { id: "me-k3", person: "kushvanth", name: "College Fee", amount: 2500, isVariable: false, isRecurring: true, dueDayOfMonth: 15 },
-    { id: "me-k4", person: "kushvanth", name: "Car Maintenance", amount: 150, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-k5", person: "kushvanth", name: "Car Gas", amount: 1000, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-k6", person: "kushvanth", name: "India Expenses", amount: 500, isVariable: false, isRecurring: true, dueDayOfMonth: 20 },
-    { id: "me-k7", person: "kushvanth", name: "T-Mobile", amount: null, isVariable: true, isRecurring: true, dueDayOfMonth: 18 },
-    { id: "me-k8", person: "kushvanth", name: "Room Rent", amount: 500, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-k9", person: "kushvanth", name: "Savings / Account", amount: 500, isVariable: false, isRecurring: true, dueDayOfMonth: 25 },
-    { id: "me-g1", person: "grishma", name: "College Fee", amount: 1000, isVariable: false, isRecurring: true, dueDayOfMonth: 15 },
-    { id: "me-g2", person: "grishma", name: "Car Maintenance", amount: 200, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-g3", person: "grishma", name: "Car Gas", amount: 800, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-g4", person: "grishma", name: "Room Rent", amount: 500, isVariable: false, isRecurring: true, dueDayOfMonth: 1 },
-    { id: "me-g5", person: "grishma", name: "Savings / Account", amount: 500, isVariable: false, isRecurring: true, dueDayOfMonth: 25 },
-    {
-      id: "me-g-mama",
-      person: "grishma",
-      name: "Mama",
-      amount: 2000,
-      isVariable: false,
-      isRecurring: false,
-      oneTimeMonth: 8,
-      oneTimeYear: 2026,
-      dueDayOfMonth: 1,
-      dueDate: "2026-08-01",
-      isPaid: false,
-    },
-  ],
-  accounts: [
-    { id: "acc-k-zolve", person: "kushvanth", name: "Zolve", type: "credit", balance: 3500, creditLimit: 4000 },
-    { id: "acc-k-boa-cc", person: "kushvanth", name: "Bank of America", type: "credit", balance: 560, creditLimit: 700 },
-    { id: "acc-k-amex", person: "kushvanth", name: "Credit One Amex", type: "credit", balance: 100, creditLimit: 300 },
-    { id: "acc-k-boa-debit", person: "kushvanth", name: "Bank of America", type: "debit", balance: 0 },
-    { id: "acc-k-chime", person: "kushvanth", name: "Chime", type: "debit", balance: 0 },
-    { id: "acc-k-cash", person: "kushvanth", name: "Cash Wallet", type: "cash", balance: 0 },
-    { id: "acc-g-zolve", person: "grishma", name: "Zolve", type: "credit", balance: 500, creditLimit: 1000 },
-    { id: "acc-g-boa-debit", person: "grishma", name: "Bank of America", type: "debit", balance: 0 },
-    { id: "acc-g-cash", person: "grishma", name: "Cash Wallet", type: "cash", balance: 0 },
-  ],
-  debts: [
-    { id: "debt-k1", person: "kushvanth", name: "Zolve Credit Card", amount: 3500, linkedAccountId: "acc-k-zolve" },
-    { id: "debt-k2", person: "kushvanth", name: "Bank of America Credit Card", amount: 560, linkedAccountId: "acc-k-boa-cc" },
-    { id: "debt-k3", person: "kushvanth", name: "Credit One Amex", amount: 100, linkedAccountId: "acc-k-amex" },
-    { id: "debt-k4", person: "kushvanth", name: "Dhamodhar", amount: 1000 },
-    { id: "debt-k5", person: "kushvanth", name: "India", amount: 5000 },
-    { id: "debt-g1", person: "grishma", name: "Zolve Credit Card", amount: 500, linkedAccountId: "acc-g-zolve" },
-    { id: "debt-g2", person: "grishma", name: "Dhamodhar", amount: 1000 },
-    { id: "debt-g3", person: "grishma", name: "Mama", amount: 2000 },
-  ],
-  transactions: [],
-  interCoupleHistory: [
-    {
-      id: "ic-opening-balance",
-      date: "2020-01-01",
-      time: "00:00",
-      amount: 9080,
-      paidBy: "kushvanth",
-      benefited: "grishma",
-      autoMessage: "Starting balance",
-      runningBalance: 9080,
-    },
-  ],
-  interCoupleBalance: 9080,
-  deletedHistory: [],
+type HouseholdFinanceExport = {
+  household_id: string;
+  updated_at?: string;
+  data: FinanceState;
 };
+
+const exportPayload = householdFinance as HouseholdFinanceExport;
+
+function normalizeFinanceState(state: FinanceState): FinanceState {
+  return {
+    ...state,
+    deletedHistory: state.deletedHistory ?? [],
+    spendCategories: state.spendCategories ?? [],
+  };
+}
+
+/** Bundled household snapshot — used as default app data and first cloud upload. */
+export const seedData: FinanceState = normalizeFinanceState(exportPayload.data);
+
+export const HOUSEHOLD_SEED_ID = exportPayload.household_id ?? "grik-finance-couple";
+
+export const HOUSEHOLD_SEED_UPDATED_AT = exportPayload.updated_at ?? null;
+
+export function getBundledSeedSummary() {
+  return {
+    householdId: HOUSEHOLD_SEED_ID,
+    updatedAt: HOUSEHOLD_SEED_UPDATED_AT,
+    transactions: seedData.transactions?.length ?? 0,
+    accounts: seedData.accounts?.length ?? 0,
+    incomeEntries: seedData.incomeEntries?.length ?? 0,
+  };
+}

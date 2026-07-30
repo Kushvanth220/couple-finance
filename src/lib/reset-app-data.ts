@@ -1,4 +1,4 @@
-export const FINANCE_STORAGE_KEY = "couple-finance-storage-v2";
+export const FINANCE_STORAGE_KEY = "couple-finance-storage-v3";
 
 const LEGACY_STORAGE_KEY = "couple-finance-storage";
 

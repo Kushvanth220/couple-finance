@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
 import { pickRicherState, readLocalFinanceBackup, scoreFinanceState } from "@/lib/recover-finance-data";
+import { seedData } from "@/lib/seed-data";
 
 /** Bumped to reset stale per-device sync timestamps from older builds. */
 export const SYNC_META_KEY = "couple-finance-sync-meta-v5";
@@ -524,11 +525,34 @@ export async function resolveInitialSync(
   const meta = readSyncMeta();
 
   if (!remote) {
+    const best = pickRicherState(seedData, localState);
+
+    if (scoreFinanceState(best) > 0) {
+      applyingRemote = true;
+      applyRemoteState(best);
+      applyingRemote = false;
+      await pushFinanceState(householdId, best, { skipSafetyCheck: true });
+      notifyStatus("synced");
+      return "local";
+    }
+
     notifyStatus(
       "error",
-      `No cloud row for household "${householdId}". Showing local data only — nothing was uploaded.`
+      `No cloud row for household "${householdId}" and no bundled data to upload.`
     );
     return "none";
+  }
+
+  if (
+    scoreFinanceState(remote.data) < scoreFinanceState(seedData) - 50 &&
+    scoreFinanceState(localState) < scoreFinanceState(seedData) - 50
+  ) {
+    applyingRemote = true;
+    applyRemoteState(seedData);
+    applyingRemote = false;
+    await pushFinanceState(householdId, seedData, { skipSafetyCheck: true });
+    notifyStatus("synced");
+    return "local";
   }
 
   if (scoreFinanceState(remote.data) > scoreFinanceState(localState) + 50) {

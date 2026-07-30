@@ -29,6 +29,7 @@ import { buildDeletedHistoryRecord } from "@/lib/deleted-history";
 import { applySharedAccountNormalization } from "@/lib/accounts";
 import { celebrateBetweenUsUpdate } from "@/lib/between-us-celebration";
 import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data";
+import { pickRicherState, scoreFinanceState } from "@/lib/recover-finance-data";
 import { parseAppDateTime } from "@/lib/formatters";
 import { seedData } from "@/lib/seed-data";
 import { PERSON_LABELS } from "@/types";
@@ -1199,6 +1200,25 @@ export const useFinanceStore = create<FinanceStore>()(
         if (!state.deletedHistory) {
           state.deletedHistory = [];
         }
+
+        const persisted = {
+          incomeSources: state.incomeSources,
+          incomeEntries: state.incomeEntries,
+          spendCategories: state.spendCategories,
+          monthlyExpenses: state.monthlyExpenses,
+          accounts: state.accounts,
+          debts: state.debts,
+          transactions: state.transactions,
+          interCoupleHistory: state.interCoupleHistory,
+          interCoupleBalance: state.interCoupleBalance,
+          deletedHistory: state.deletedHistory,
+        };
+
+        const best = pickRicherState(seedData, persisted);
+        if (scoreFinanceState(best) > scoreFinanceState(persisted)) {
+          Object.assign(state, best);
+        }
+
         if (!state.spendCategories?.length) {
           state.spendCategories = seedData.spendCategories;
         }

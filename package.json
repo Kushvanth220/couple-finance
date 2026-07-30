@@ -10,7 +10,8 @@
     "preview": "npm run build && npm run start",
     "lint": "eslint",
     "backup:supabase": "node scripts/backup-supabase-data.mjs",
-    "restore:supabase": "node scripts/restore-supabase-data.mjs"
+    "restore:supabase": "node scripts/restore-supabase-data.mjs",
+    "seed:generate": "node scripts/generate-seed-data.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
