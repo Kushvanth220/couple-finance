@@ -52,11 +52,8 @@ export async function connectLiveVoiceWithRetry(options: {
   callbacks: LiveVoiceCallbacks;
 }): Promise<LiveVoiceConnection> {
   let lastError: Error | null = null;
-  let leftover: LiveVoiceConnection | null = null;
 
   for (let attempt = 0; attempt < LIVE_VOICE_MAX_CONNECT_RETRIES; attempt += 1) {
-    leftover?.close();
-    leftover = null;
     try {
       return await connectGeminiLiveVoice(options);
     } catch (error) {
@@ -67,7 +64,6 @@ export async function connectLiveVoiceWithRetry(options: {
     }
   }
 
-  leftover?.close();
   throw lastError ?? new Error("Could not connect to live voice.");
 }
 

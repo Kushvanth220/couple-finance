@@ -7,6 +7,7 @@ import {
 } from "@google/generative-ai";
 import { buildHouseholdSystemInstruction, GEMINI_MODEL } from "@/lib/ai/system-instructions";
 import { ASSISTANT_TOOLS, type AssistantToolCall } from "@/lib/ai/tools";
+import { readGeminiApiKey } from "@/lib/ai/env";
 import type { AiUserId } from "@/lib/ai/person";
 import type { Person } from "@/types";
 
@@ -26,7 +27,7 @@ export type GeminiChatOutcome =
   | { kind: "tool_calls"; toolCalls: AssistantToolCall[]; modelParts: Part[] };
 
 export function getGeminiApiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
+  const key = readGeminiApiKey();
   if (!key) {
     throw new Error("GEMINI_API_KEY is not configured on the server.");
   }

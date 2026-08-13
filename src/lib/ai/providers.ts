@@ -1,3 +1,5 @@
+import { readGeminiApiKey, readOpenAiApiKey, readXaiApiKey } from "@/lib/ai/env";
+
 export type AiProviderId = "gemini" | "chatgpt" | "grok";
 
 export interface AiProviderStatus {
@@ -11,17 +13,17 @@ export function getAiProviderStatus(): AiProviderStatus[] {
     {
       id: "gemini",
       label: "Gemini",
-      configured: Boolean(process.env.GEMINI_API_KEY),
+      configured: Boolean(readGeminiApiKey()),
     },
     {
       id: "chatgpt",
       label: "ChatGPT",
-      configured: Boolean(process.env.OPENAI_API_KEY),
+      configured: Boolean(readOpenAiApiKey()),
     },
     {
       id: "grok",
       label: "Grok",
-      configured: Boolean(process.env.XAI_API_KEY),
+      configured: Boolean(readXaiApiKey()),
     },
   ];
 }
@@ -85,7 +87,7 @@ async function openaiCompatibleChat(options: {
 }
 
 export async function generateChatGptReply(system: string, user: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = readOpenAiApiKey();
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
   return openaiCompatibleChat({
     url: "https://api.openai.com/v1/chat/completions",
@@ -98,7 +100,7 @@ export async function generateChatGptReply(system: string, user: string): Promis
 }
 
 export async function generateGrokReply(system: string, user: string): Promise<string> {
-  const apiKey = process.env.XAI_API_KEY;
+  const apiKey = readXaiApiKey();
   if (!apiKey) throw new Error("XAI_API_KEY is not configured.");
   return openaiCompatibleChat({
     url: "https://api.x.ai/v1/chat/completions",

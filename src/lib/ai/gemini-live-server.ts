@@ -9,10 +9,11 @@ import { resolveAssistantLiveVoice, type AssistantVoiceGender } from "@/lib/ai/a
 import { ASSISTANT_TOOLS } from "@/lib/ai/tools";
 import { buildHouseholdSystemInstruction } from "@/lib/ai/system-instructions";
 import { resolveHouseholdFinanceContext } from "@/lib/ai/resolve-finance-context";
+import { readGeminiApiKey } from "@/lib/ai/env";
 import type { FinanceState } from "@/types";
 
 function getGeminiServerClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = readGeminiApiKey();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured on the server.");
   }
