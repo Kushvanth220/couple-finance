@@ -16,7 +16,8 @@ import {
 } from "@/lib/ai/live-voice-session";
 import {
   ensureAudioUnlocked,
-  getLiveAudioContext,
+  getCaptureAudioContext,
+  getPlaybackAudioContext,
   LiveAudioPlayer,
   requestLiveMicStream,
   startMicStreamer,
@@ -535,8 +536,10 @@ export function AiVoicePanel({
     };
 
     try {
-      const audioContext = getLiveAudioContext();
-      void audioContext.resume();
+      const playbackContext = getPlaybackAudioContext();
+      const captureContext = getCaptureAudioContext();
+      void playbackContext.resume();
+      void captureContext.resume();
 
       setLiveHint("Loading your accounts…");
       const financePromise = getClientFinancePayload(HOUSEHOLD_CHAT_USER);
@@ -566,10 +569,11 @@ export function AiVoicePanel({
       }
 
       const player = new LiveAudioPlayer({
-        audioContext,
+        audioContext: playbackContext,
         onLevel: setOutputLevel,
       });
       playerRef.current = player;
+      let heardModelAudio = false;
       const tokenPayload = await tokenPromise;
       if (startId !== startGenerationRef.current) {
         dropUnusedMic();
@@ -621,11 +625,13 @@ export function AiVoicePanel({
             transcriptSessionRef.current.onTurnComplete();
           },
           onInterrupted: () => {
-            player.interrupt();
+            // Do not dump the speaker queue here. Echo / leftover mic often
+            // marks the model as interrupted before any speech is audible.
             transcriptSessionRef.current.onInterrupted();
           },
           onModelAudio: (base64Pcm) => {
             if (startId !== startGenerationRef.current) return;
+            heardModelAudio = true;
             player.enqueueBase64Pcm(base64Pcm);
           },
           onToolCall: async (toolCall) => {
@@ -809,6 +815,10 @@ export function AiVoicePanel({
         (level) => {
           setInputLevel(level);
           const now = performance.now();
+          if (!heardModelAudio) {
+            micHandle?.setSending(false);
+            return;
+          }
           if (player.isSpeaking) {
             echoUntil = now + ECHO_HOLD_MS;
             if (level >= BARGE_IN_LEVEL) {
@@ -830,7 +840,7 @@ export function AiVoicePanel({
           bargeChunks = 0;
           micHandle?.setSending(now >= echoUntil);
         },
-        { audioContext, stream: micStream }
+        { audioContext: captureContext, stream: micStream, sending: false }
       );
       micHandle = mic;
       micOwned = true;
@@ -844,9 +854,17 @@ export function AiVoicePanel({
 
       micRef.current = mic;
 
+      window.setTimeout(() => {
+        if (startId !== startGenerationRef.current) return;
+        if (!heardModelAudio) {
+          heardModelAudio = true;
+          mic.setSending(true);
+        }
+      }, 3000);
+
       if (!greetedRef.current) {
         greetedRef.current = true;
-        echoUntil = performance.now() + 800;
+        echoUntil = performance.now() + 2500;
         mic.setSending(false);
         player.interrupt();
         connection.sendGreeting(askWhoIsSpeakingPrompt());

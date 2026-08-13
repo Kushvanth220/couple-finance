@@ -192,10 +192,15 @@ function handleLiveMessage(message: LiveServerMessage, callbacks: LiveVoiceCallb
     }
 
     const parts = content.modelTurn?.parts ?? [];
+    let playedAudio = false;
     for (const part of parts) {
       if (part.inlineData?.data) {
         callbacks.onModelAudio?.(part.inlineData.data);
+        playedAudio = true;
       }
+    }
+    if (!playedAudio && message.data) {
+      callbacks.onModelAudio?.(message.data);
     }
   }
 

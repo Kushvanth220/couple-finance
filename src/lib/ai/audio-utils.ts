@@ -9,39 +9,88 @@ const MIC_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   sampleRate: LIVE_INPUT_SAMPLE_RATE,
 };
 
-let liveAudioContext: AudioContext | null = null;
+let playbackAudioContext: AudioContext | null = null;
+let captureAudioContext: AudioContext | null = null;
 let audioUnlockPromise: Promise<void> | null = null;
+
+function createAudioContext(): AudioContext {
+  const scope = window as unknown as {
+    AudioContext?: typeof AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  };
+  const Ctor = scope.AudioContext ?? scope.webkitAudioContext;
+  if (!Ctor) {
+    throw new Error("Web Audio is not supported in this browser.");
+  }
+  return new Ctor();
+}
 
 function isUsableContext(context: AudioContext | null): context is AudioContext {
   return !!context && context.state !== "closed";
 }
 
-/** Shared graph for mic + playback. Never closed — closing it re-locks autoplay. */
+function getOrCreateContext(
+  current: AudioContext | null,
+  assign: (context: AudioContext) => void
+): AudioContext {
+  if (!isUsableContext(current)) {
+    const next = createAudioContext();
+    assign(next);
+    return next;
+  }
+  if (current.state === "suspended") {
+    void current.resume();
+  }
+  return current;
+}
+
+/**
+ * Speaker-only graph. Must stay separate from the mic graph — Chrome echo
+ * cancellation will mute AI playback if both share one AudioContext.
+ */
+export function getPlaybackAudioContext(): AudioContext {
+  return getOrCreateContext(playbackAudioContext, (context) => {
+    playbackAudioContext = context;
+  });
+}
+
+/** Microphone processing only. Never play AI audio through this context. */
+export function getCaptureAudioContext(): AudioContext {
+  return getOrCreateContext(captureAudioContext, (context) => {
+    captureAudioContext = context;
+  });
+}
+
+/** @deprecated Use getPlaybackAudioContext — kept for wake-button unlock. */
 export function getLiveAudioContext(): AudioContext {
-  if (!isUsableContext(liveAudioContext)) {
-    liveAudioContext = new AudioContext();
-  }
-  if (liveAudioContext.state === "suspended") {
-    void liveAudioContext.resume();
-  }
-  return liveAudioContext;
+  return getPlaybackAudioContext();
+}
+
+function playSilentPulse(context: AudioContext) {
+  const buffer = context.createBuffer(1, 1, context.sampleRate);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  source.start(0);
 }
 
 /** Browsers block audio until a user gesture — call during the tap that starts voice. */
 export async function ensureAudioUnlocked(): Promise<void> {
   if (typeof window === "undefined") return;
 
-  const context = getLiveAudioContext();
-  if (!audioUnlockPromise || context.state === "suspended") {
+  const playback = getPlaybackAudioContext();
+  const capture = getCaptureAudioContext();
+  if (
+    !audioUnlockPromise ||
+    playback.state === "suspended" ||
+    capture.state === "suspended"
+  ) {
     audioUnlockPromise = (async () => {
-      if (context.state === "suspended") {
-        await context.resume();
-      }
-      const buffer = context.createBuffer(1, 1, context.sampleRate);
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(context.destination);
-      source.start(0);
+      await Promise.all([
+        playback.state === "suspended" ? playback.resume() : Promise.resolve(),
+        capture.state === "suspended" ? capture.resume() : Promise.resolve(),
+      ]);
+      playSilentPulse(playback);
     })();
   }
 
@@ -171,12 +220,12 @@ function computeRmsLevel(samples: Float32Array): number {
 export async function startMicStreamer(
   onChunk: (base64Pcm: string) => void,
   onLevel?: (level: number) => void,
-  options?: { audioContext?: AudioContext; stream?: MediaStream }
+  options?: { audioContext?: AudioContext; stream?: MediaStream; sending?: boolean }
 ): Promise<MicStreamer> {
   await ensureAudioUnlocked();
 
   const stream = options?.stream ?? (await requestLiveMicStream());
-  const audioContext = options?.audioContext ?? getLiveAudioContext();
+  const audioContext = options?.audioContext ?? getCaptureAudioContext();
   if (audioContext.state === "suspended") {
     await audioContext.resume();
   }
@@ -191,7 +240,7 @@ export async function startMicStreamer(
     gain = audioContext.createGain();
     gain.gain.value = 0;
 
-    let sending = true;
+    let sending = options?.sending ?? false;
     let stopped = false;
 
     processor.onaudioprocess = (event) => {
@@ -239,6 +288,7 @@ export async function startMicStreamer(
 
 export class LiveAudioPlayer {
   private audioContext: AudioContext;
+  private output: GainNode;
   private pending: Float32Array[] = [];
   private pendingSamples = 0;
   private nextStartTime = 0;
@@ -248,20 +298,27 @@ export class LiveAudioPlayer {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private levelDecayTimer: ReturnType<typeof setTimeout> | null = null;
   private onLevel?: (level: number) => void;
-  /** ~200ms at 24kHz — batches tiny chunks to prevent stutter. */
-  private readonly minBatchSamples = 4800;
+  /** ~120ms at 24kHz — small enough to start speech quickly. */
+  private readonly minBatchSamples = 2880;
 
   constructor(options?: { onLevel?: (level: number) => void; audioContext?: AudioContext }) {
     this.onLevel = options?.onLevel;
-    this.audioContext = options?.audioContext ?? getLiveAudioContext();
+    this.audioContext = options?.audioContext ?? getPlaybackAudioContext();
+    this.output = this.audioContext.createGain();
+    this.output.gain.value = 1;
+    this.output.connect(this.audioContext.destination);
     if (this.audioContext.state === "suspended") {
       void this.audioContext.resume();
     }
   }
 
   enqueueBase64Pcm(base64: string) {
-    if (this.closed) return;
+    if (this.closed || !base64) return;
+    if (this.audioContext.state === "suspended") {
+      void this.audioContext.resume();
+    }
     const pcm = base64ToPcm16Le(base64);
+    if (pcm.length === 0) return;
     this.pending.push(int16ToFloat32(pcm));
     this.pendingSamples += pcm.length;
     this.queueSchedule();
@@ -331,7 +388,7 @@ export class LiveAudioPlayer {
 
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(this.audioContext.destination);
+      source.connect(this.output);
       source.onended = () => {
         this.sources = this.sources.filter((item) => item !== source);
       };
@@ -341,7 +398,9 @@ export class LiveAudioPlayer {
       source.start(startAt);
       this.nextStartTime = startAt + audioBuffer.duration;
     } catch {
-      // Drop this chunk rather than killing the session.
+      if (this.audioContext.state === "suspended") {
+        void this.audioContext.resume();
+      }
     } finally {
       this.scheduling = false;
       if (this.pendingSamples > 0 && !this.closed) {
@@ -383,6 +442,11 @@ export class LiveAudioPlayer {
   stop() {
     this.closed = true;
     this.interrupt();
+    try {
+      this.output.disconnect();
+    } catch {
+      // Already disconnected.
+    }
   }
 }
 
