@@ -6,6 +6,7 @@ import {
   ASSISTANT_LANGUAGE,
   ASSISTANT_LIVE_INPUT_MIME,
   GEMINI_LIVE_API_VERSION,
+  LIVE_REALTIME_INPUT_CONFIG,
   buildLiveTranscriptionConfig,
 } from "@/lib/ai/live-config";
 import { resolveAssistantLiveVoice, type AssistantVoiceGender } from "@/lib/ai/assistant-voice";
@@ -64,7 +65,7 @@ export async function connectGeminiLiveVoice(options: {
     httpOptions: { apiVersion: GEMINI_LIVE_API_VERSION },
   });
 
-  const transcription = buildLiveTranscriptionConfig(options.assistantName);
+  const transcription = buildLiveTranscriptionConfig();
   const liveConfig = {
     responseModalities: [Modality.AUDIO],
     speechConfig: {
@@ -75,8 +76,9 @@ export async function connectGeminiLiveVoice(options: {
         },
       },
     },
+    realtimeInputConfig: LIVE_REALTIME_INPUT_CONFIG,
     inputAudioTranscription: transcription,
-    outputAudioTranscription: transcription,
+    outputAudioTranscription: {},
   };
 
   let opened = false;

@@ -16,7 +16,9 @@ import {
 } from "@/lib/ai/live-voice-session";
 import {
   ensureAudioUnlocked,
+  getLiveAudioContext,
   LiveAudioPlayer,
+  requestLiveMicStream,
   startMicStreamer,
   type MicStreamer,
 } from "@/lib/ai/audio-utils";
@@ -53,6 +55,9 @@ import { useAssistant } from "@/components/assistant/assistant-context";
 import { useFinanceStore } from "@/store/finance-store";
 
 const HOUSEHOLD_CHAT_USER: Person = "kushvanth";
+const BARGE_IN_LEVEL = 0.38;
+const BARGE_IN_CHUNKS = 3;
+const ECHO_HOLD_MS = 320;
 
 type AccountChip = { id: string; name: string };
 
@@ -519,14 +524,30 @@ export function AiVoicePanel({
     setLiveHint("Connecting…");
     setLines([]);
 
+    let micOwned = false;
+    const micStreamPromise = requestLiveMicStream();
+    const dropUnusedMic = () => {
+      if (micOwned) return;
+      void micStreamPromise.then(
+        (stream) => stream.getTracks().forEach((track) => track.stop()),
+        () => undefined
+      );
+    };
+
     try {
+      const audioContext = getLiveAudioContext();
+      void audioContext.resume();
+
       setLiveHint("Loading your accounts…");
       const financePromise = getClientFinancePayload(HOUSEHOLD_CHAT_USER);
       const audioPromise = ensureAudioUnlocked();
       const financeState = await financePromise;
       const behaviorInstructions = getBehaviorInstructionsForAssistant();
       const reminders = getRemindersForAssistant();
-      if (startId !== startGenerationRef.current) return;
+      if (startId !== startGenerationRef.current) {
+        dropUnusedMic();
+        return;
+      }
 
       setLiveHint("Starting live voice…");
       const tokenPromise = fetchLiveTokenPayload({
@@ -539,13 +560,21 @@ export function AiVoicePanel({
 
       setLiveHint("Unlocking microphone…");
       await audioPromise;
-      if (startId !== startGenerationRef.current) return;
+      if (startId !== startGenerationRef.current) {
+        dropUnusedMic();
+        return;
+      }
 
       const player = new LiveAudioPlayer({
+        audioContext,
         onLevel: setOutputLevel,
       });
+      playerRef.current = player;
       const tokenPayload = await tokenPromise;
-      if (startId !== startGenerationRef.current) return;
+      if (startId !== startGenerationRef.current) {
+        dropUnusedMic();
+        return;
+      }
 
       const connection = await connectLiveVoiceWithRetry({
         ephemeralToken: tokenPayload.token,
@@ -741,23 +770,70 @@ export function AiVoicePanel({
       });
 
       if (startId !== startGenerationRef.current) {
+        dropUnusedMic();
         connection.close();
         player.stop();
         return;
       }
 
-      playerRef.current = player;
       connectionRef.current = connection;
 
-      const mic = await startMicStreamer((chunk) => {
-        if (startId !== startGenerationRef.current) return;
-        connection.sendAudioChunk(chunk);
-      }, (level) => {
-        setInputLevel(level);
-        if (level > 0.22 && player.isSpeaking) {
-          player.interrupt();
+      let micStream: MediaStream | null = null;
+      try {
+        micStream = await micStreamPromise;
+      } catch (micError) {
+        if (startId !== startGenerationRef.current) {
+          connection.close();
+          player.stop();
+          return;
         }
-      });
+        throw micError;
+      }
+
+      if (startId !== startGenerationRef.current) {
+        micStream.getTracks().forEach((track) => track.stop());
+        connection.close();
+        player.stop();
+        return;
+      }
+
+      let bargeChunks = 0;
+      let echoUntil = 0;
+      let micHandle: MicStreamer | null = null;
+
+      const mic = await startMicStreamer(
+        (chunk) => {
+          if (startId !== startGenerationRef.current) return;
+          connection.sendAudioChunk(chunk);
+        },
+        (level) => {
+          setInputLevel(level);
+          const now = performance.now();
+          if (player.isSpeaking) {
+            echoUntil = now + ECHO_HOLD_MS;
+            if (level >= BARGE_IN_LEVEL) {
+              bargeChunks += 1;
+              if (bargeChunks >= BARGE_IN_CHUNKS) {
+                player.interrupt();
+                micHandle?.setSending(true);
+                bargeChunks = 0;
+              } else {
+                micHandle?.setSending(false);
+              }
+            } else {
+              bargeChunks = 0;
+              micHandle?.setSending(false);
+            }
+            return;
+          }
+
+          bargeChunks = 0;
+          micHandle?.setSending(now >= echoUntil);
+        },
+        { audioContext, stream: micStream }
+      );
+      micHandle = mic;
+      micOwned = true;
 
       if (startId !== startGenerationRef.current) {
         mic.stop();
@@ -770,11 +846,14 @@ export function AiVoicePanel({
 
       if (!greetedRef.current) {
         greetedRef.current = true;
+        echoUntil = performance.now() + 800;
+        mic.setSending(false);
         player.interrupt();
         connection.sendGreeting(askWhoIsSpeakingPrompt());
         setLiveHint("Who am I talking to — Kushvanth or Grishma?");
       }
     } catch (err) {
+      dropUnusedMic();
       if (startId !== startGenerationRef.current) return;
       sessionLockRef.current = false;
       cleanupVoiceSession();

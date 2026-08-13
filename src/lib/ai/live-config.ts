@@ -1,4 +1,6 @@
 /** Current Live native-audio model, then older previews if Google rejects it. */
+import { EndSensitivity, StartSensitivity, TurnCoverage } from "@google/genai";
+
 export const GEMINI_LIVE_MODEL_CANDIDATES = [
   "gemini-3.1-flash-live-preview",
   "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -27,33 +29,24 @@ export const LIVE_VOICE_MAX_CONNECT_RETRIES = 3;
 
 export const LIVE_VOICE_RETRY_BASE_MS = 800;
 
-const BASE_VOICE_VOCABULARY = [
-  "Green Dot",
-  "GreenDot",
-  "Green dog",
-  "Costco",
-  "Kushvanth",
-  "Grishma",
-  "Krishna",
-  "Jarvis",
-  "Salaar",
-  "Doordash",
-  "DoorDash",
-  "T-Mobile",
-  "account balance",
-  "current balance",
-  "groceries",
-  "grocery",
-];
+/**
+ * Server VAD: wait through natural pauses so one sentence is one turn.
+ * High start / low end = hear quieter speech, do not cut mid-sentence.
+ * Must match on the ephemeral token and the browser connect call.
+ */
+export const LIVE_REALTIME_INPUT_CONFIG = {
+  automaticActivityDetection: {
+    disabled: false,
+    startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+    endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+    prefixPaddingMs: 40,
+    silenceDurationMs: 800,
+  },
+  turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
+};
 
-export function buildLiveTranscriptionConfig(assistantName?: string) {
-  const name = assistantName?.trim();
-  const vocabulary = name && !BASE_VOICE_VOCABULARY.includes(name)
-    ? [...BASE_VOICE_VOCABULARY, name]
-    : BASE_VOICE_VOCABULARY;
-
+export function buildLiveTranscriptionConfig() {
   return {
     languageCodes: [ASSISTANT_LANGUAGE],
-    customVocabulary: vocabulary,
   };
 }

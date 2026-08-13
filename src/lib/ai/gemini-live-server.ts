@@ -2,6 +2,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import {
   ASSISTANT_LANGUAGE,
   GEMINI_LIVE_API_VERSION,
+  LIVE_REALTIME_INPUT_CONFIG,
   liveModelFallbackList,
   buildLiveTranscriptionConfig,
 } from "@/lib/ai/live-config";
@@ -66,8 +67,9 @@ export async function createLiveEphemeralToken(
                   },
                 },
               },
-              inputAudioTranscription: buildLiveTranscriptionConfig(assistantName),
-              outputAudioTranscription: buildLiveTranscriptionConfig(assistantName),
+              realtimeInputConfig: LIVE_REALTIME_INPUT_CONFIG,
+              inputAudioTranscription: buildLiveTranscriptionConfig(),
+              outputAudioTranscription: {},
             },
           },
           httpOptions: { apiVersion: GEMINI_LIVE_API_VERSION },

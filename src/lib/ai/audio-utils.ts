@@ -1,31 +1,70 @@
 const LIVE_INPUT_SAMPLE_RATE = 16000;
 const LIVE_OUTPUT_SAMPLE_RATE = 24000;
 
+const MIC_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  sampleRate: LIVE_INPUT_SAMPLE_RATE,
+};
+
+let liveAudioContext: AudioContext | null = null;
 let audioUnlockPromise: Promise<void> | null = null;
 
-/** Browsers block audio until a user gesture — call before voice playback. */
+function isUsableContext(context: AudioContext | null): context is AudioContext {
+  return !!context && context.state !== "closed";
+}
+
+/** Shared graph for mic + playback. Never closed — closing it re-locks autoplay. */
+export function getLiveAudioContext(): AudioContext {
+  if (!isUsableContext(liveAudioContext)) {
+    liveAudioContext = new AudioContext();
+  }
+  if (liveAudioContext.state === "suspended") {
+    void liveAudioContext.resume();
+  }
+  return liveAudioContext;
+}
+
+/** Browsers block audio until a user gesture — call during the tap that starts voice. */
 export async function ensureAudioUnlocked(): Promise<void> {
   if (typeof window === "undefined") return;
 
-  if (!audioUnlockPromise) {
+  const context = getLiveAudioContext();
+  if (!audioUnlockPromise || context.state === "suspended") {
     audioUnlockPromise = (async () => {
-      const context = new AudioContext();
-      try {
-        if (context.state === "suspended") {
-          await context.resume();
-        }
-        const buffer = context.createBuffer(1, 1, 22050);
-        const source = context.createBufferSource();
-        source.buffer = buffer;
-        source.connect(context.destination);
-        source.start(0);
-      } finally {
-        await context.close();
+      if (context.state === "suspended") {
+        await context.resume();
       }
+      const buffer = context.createBuffer(1, 1, context.sampleRate);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
     })();
   }
 
   await audioUnlockPromise;
+}
+
+export async function requestLiveMicStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone is not supported in this browser.");
+  }
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: MIC_AUDIO_CONSTRAINTS });
+  } catch {
+    return navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  }
 }
 
 export function arrayBufferToBase64(buffer: ArrayBufferLike): string {
@@ -46,31 +85,36 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/** Linear resample — works for both downsample (48k→16k) and upsample (24k→48k). */
+export function resampleBuffer(
+  buffer: Float32Array,
+  inputSampleRate: number,
+  outputSampleRate: number
+): Float32Array {
+  if (outputSampleRate === inputSampleRate || buffer.length === 0) return buffer;
+  if (inputSampleRate <= 0 || outputSampleRate <= 0) return buffer;
+
+  const ratio = inputSampleRate / outputSampleRate;
+  const newLength = Math.max(1, Math.round(buffer.length / ratio));
+  const result = new Float32Array(newLength);
+
+  for (let i = 0; i < newLength; i += 1) {
+    const srcIndex = i * ratio;
+    const i0 = Math.floor(srcIndex);
+    const i1 = Math.min(i0 + 1, buffer.length - 1);
+    const frac = srcIndex - i0;
+    result[i] = buffer[i0]! * (1 - frac) + buffer[i1]! * frac;
+  }
+
+  return result;
+}
+
 export function downsampleBuffer(
   buffer: Float32Array,
   inputSampleRate: number,
   outputSampleRate: number
 ): Float32Array {
-  if (outputSampleRate === inputSampleRate) return buffer;
-  if (outputSampleRate > inputSampleRate) return buffer;
-
-  const ratio = inputSampleRate / outputSampleRate;
-  const newLength = Math.round(buffer.length / ratio);
-  const result = new Float32Array(newLength);
-
-  for (let i = 0; i < newLength; i += 1) {
-    const start = Math.floor(i * ratio);
-    const end = Math.floor((i + 1) * ratio);
-    let sum = 0;
-    let count = 0;
-    for (let j = start; j < end && j < buffer.length; j += 1) {
-      sum += buffer[j]!;
-      count += 1;
-    }
-    result[i] = count > 0 ? sum / count : 0;
-  }
-
-  return result;
+  return resampleBuffer(buffer, inputSampleRate, outputSampleRate);
 }
 
 export function floatTo16BitPCM(input: Float32Array): Int16Array {
@@ -90,8 +134,28 @@ export function int16ToFloat32(input: Int16Array): Float32Array {
   return output;
 }
 
+export function pcm16LeToBase64(pcm: Int16Array): string {
+  const bytes = new Uint8Array(pcm.byteLength);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < pcm.length; i += 1) {
+    view.setInt16(i * 2, pcm[i]!, true);
+  }
+  return arrayBufferToBase64(bytes.buffer);
+}
+
+export function base64ToPcm16Le(base64: string): Int16Array {
+  const buffer = base64ToArrayBuffer(base64);
+  const view = new DataView(buffer);
+  const samples = new Int16Array(Math.floor(buffer.byteLength / 2));
+  for (let i = 0; i < samples.length; i += 1) {
+    samples[i] = view.getInt16(i * 2, true);
+  }
+  return samples;
+}
+
 export interface MicStreamer {
   stop: () => void;
+  setSending: (enabled: boolean) => void;
 }
 
 function computeRmsLevel(samples: Float32Array): number {
@@ -106,57 +170,71 @@ function computeRmsLevel(samples: Float32Array): number {
 
 export async function startMicStreamer(
   onChunk: (base64Pcm: string) => void,
-  onLevel?: (level: number) => void
+  onLevel?: (level: number) => void,
+  options?: { audioContext?: AudioContext; stream?: MediaStream }
 ): Promise<MicStreamer> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Microphone is not supported in this browser.");
-  }
-
   await ensureAudioUnlocked();
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-    },
-  });
-
-  const audioContext = new AudioContext();
+  const stream = options?.stream ?? (await requestLiveMicStream());
+  const audioContext = options?.audioContext ?? getLiveAudioContext();
   if (audioContext.state === "suspended") {
     await audioContext.resume();
   }
 
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(4096, 1, 1);
-  const gain = audioContext.createGain();
-  gain.gain.value = 0;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let gain: GainNode | null = null;
 
-  processor.onaudioprocess = (event) => {
-    const channel = event.inputBuffer.getChannelData(0);
-    onLevel?.(computeRmsLevel(channel));
-    const downsampled = downsampleBuffer(
-      channel,
-      audioContext.sampleRate,
-      LIVE_INPUT_SAMPLE_RATE
-    );
-    const pcm = floatTo16BitPCM(downsampled);
-    onChunk(arrayBufferToBase64(pcm.buffer));
-  };
+  try {
+    source = audioContext.createMediaStreamSource(stream);
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    gain = audioContext.createGain();
+    gain.gain.value = 0;
 
-  source.connect(processor);
-  processor.connect(gain);
-  gain.connect(audioContext.destination);
+    let sending = true;
+    let stopped = false;
 
-  return {
-    stop: () => {
-      processor.disconnect();
-      source.disconnect();
-      gain.disconnect();
+    processor.onaudioprocess = (event) => {
+      if (stopped) return;
+      const channel = event.inputBuffer.getChannelData(0);
+      onLevel?.(computeRmsLevel(channel));
+      if (!sending) return;
+
+      const downsampled = resampleBuffer(
+        channel,
+        audioContext.sampleRate,
+        LIVE_INPUT_SAMPLE_RATE
+      );
+      const pcm = floatTo16BitPCM(downsampled);
+      onChunk(pcm16LeToBase64(pcm));
+    };
+
+    source.connect(processor);
+    processor.connect(gain);
+    gain.connect(audioContext.destination);
+
+    return {
+      setSending: (enabled: boolean) => {
+        sending = enabled;
+      },
+      stop: () => {
+        stopped = true;
+        sending = false;
+        processor?.disconnect();
+        source?.disconnect();
+        gain?.disconnect();
+        stream.getTracks().forEach((track) => track.stop());
+      },
+    };
+  } catch (error) {
+    processor?.disconnect();
+    source?.disconnect();
+    gain?.disconnect();
+    if (!options?.stream) {
       stream.getTracks().forEach((track) => track.stop());
-      void audioContext.close();
-    },
-  };
+    }
+    throw error;
+  }
 }
 
 export class LiveAudioPlayer {
@@ -173,15 +251,17 @@ export class LiveAudioPlayer {
   /** ~200ms at 24kHz — batches tiny chunks to prevent stutter. */
   private readonly minBatchSamples = 4800;
 
-  constructor(options?: { onLevel?: (level: number) => void }) {
+  constructor(options?: { onLevel?: (level: number) => void; audioContext?: AudioContext }) {
     this.onLevel = options?.onLevel;
-    this.audioContext = new AudioContext({ sampleRate: LIVE_OUTPUT_SAMPLE_RATE });
+    this.audioContext = options?.audioContext ?? getLiveAudioContext();
+    if (this.audioContext.state === "suspended") {
+      void this.audioContext.resume();
+    }
   }
 
   enqueueBase64Pcm(base64: string) {
     if (this.closed) return;
-    const buffer = base64ToArrayBuffer(base64);
-    const pcm = new Int16Array(buffer);
+    const pcm = base64ToPcm16Le(base64);
     this.pending.push(int16ToFloat32(pcm));
     this.pendingSamples += pcm.length;
     this.queueSchedule();
@@ -223,7 +303,6 @@ export class LiveAudioPlayer {
     this.scheduling = true;
 
     try {
-      await ensureAudioUnlocked();
       if (this.audioContext.state === "suspended") {
         await this.audioContext.resume();
       }
@@ -231,7 +310,13 @@ export class LiveAudioPlayer {
       const samples = this.takeBatch();
       if (!samples || samples.length === 0) return;
 
-      this.onLevel?.(computeRmsLevel(samples));
+      const playback = resampleBuffer(
+        samples,
+        LIVE_OUTPUT_SAMPLE_RATE,
+        this.audioContext.sampleRate
+      );
+
+      this.onLevel?.(computeRmsLevel(playback));
       if (this.levelDecayTimer) clearTimeout(this.levelDecayTimer);
       this.levelDecayTimer = setTimeout(() => {
         this.onLevel?.(0);
@@ -239,10 +324,10 @@ export class LiveAudioPlayer {
 
       const audioBuffer = this.audioContext.createBuffer(
         1,
-        samples.length,
-        LIVE_OUTPUT_SAMPLE_RATE
+        playback.length,
+        this.audioContext.sampleRate
       );
-      audioBuffer.copyToChannel(new Float32Array(samples), 0);
+      audioBuffer.getChannelData(0).set(playback);
 
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
@@ -255,6 +340,8 @@ export class LiveAudioPlayer {
       const startAt = Math.max(this.audioContext.currentTime + 0.02, this.nextStartTime);
       source.start(startAt);
       this.nextStartTime = startAt + audioBuffer.duration;
+    } catch {
+      // Drop this chunk rather than killing the session.
     } finally {
       this.scheduling = false;
       if (this.pendingSamples > 0 && !this.closed) {
@@ -296,7 +383,6 @@ export class LiveAudioPlayer {
   stop() {
     this.closed = true;
     this.interrupt();
-    void this.audioContext.close();
   }
 }
 
