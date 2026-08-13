@@ -9,9 +9,21 @@ export function SyncReadyGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    void waitForStoreHydration().then(() => {
+    let cancelled = false;
+    const fallback = window.setTimeout(() => {
+      if (!cancelled) setReady(true);
+    }, 1200);
+
+    void waitForStoreHydration(1200).then(() => {
+      if (cancelled) return;
+      window.clearTimeout(fallback);
       setReady(true);
     });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallback);
+    };
   }, []);
 
   useEffect(() => {

@@ -1,0 +1,169 @@
+import {
+  GoogleGenerativeAI,
+  type Content,
+  type FunctionCall,
+  type Part,
+  type Tool,
+} from "@google/generative-ai";
+import { buildHouseholdSystemInstruction, GEMINI_MODEL } from "@/lib/ai/system-instructions";
+import { ASSISTANT_TOOLS, type AssistantToolCall } from "@/lib/ai/tools";
+import type { AiUserId } from "@/lib/ai/person";
+import type { Person } from "@/types";
+
+export interface GeminiChatTurn {
+  role: "user" | "model";
+  content: string;
+}
+
+export interface GeminiToolResponseInput {
+  id: string;
+  name: string;
+  result: Record<string, unknown>;
+}
+
+export type GeminiChatOutcome =
+  | { kind: "reply"; reply: string }
+  | { kind: "tool_calls"; toolCalls: AssistantToolCall[]; modelParts: Part[] };
+
+export function getGeminiApiKey(): string {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not configured on the server.");
+  }
+  return key;
+}
+
+function buildModel(
+  financeContext: string,
+  assistantName?: string,
+  behaviorInstructions: string[] = [],
+  reminders: string[] = [],
+  speakingWith?: Person | null
+) {
+  const client = new GoogleGenerativeAI(getGeminiApiKey());
+  return client.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: buildHouseholdSystemInstruction(financeContext, {
+      assistantName,
+      behaviorInstructions,
+      reminders,
+      speakingWith,
+    }),
+    tools: ASSISTANT_TOOLS as Tool[],
+  });
+}
+
+function mapHistory(history: GeminiChatTurn[]): Content[] {
+  return history.map((turn) => ({
+    role: turn.role,
+    parts: [{ text: turn.content }],
+  }));
+}
+
+function extractToolCalls(functionCalls: FunctionCall[] | undefined): AssistantToolCall[] {
+  if (!functionCalls?.length) return [];
+  return functionCalls.map((call, index) => ({
+    id: `${call.name ?? "tool"}-${index}`,
+    name: call.name ?? "unknown",
+    args: (call.args ?? {}) as Record<string, unknown>,
+  }));
+}
+
+function parseGeminiResult(
+  functionCalls: FunctionCall[] | undefined,
+  modelParts: Part[]
+): GeminiChatOutcome {
+  const toolCalls = extractToolCalls(functionCalls);
+  if (toolCalls.length > 0) {
+    return { kind: "tool_calls", toolCalls, modelParts };
+  }
+
+  const text = modelParts
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+
+  if (!text) {
+    throw new Error("Gemini returned an empty response.");
+  }
+
+  return { kind: "reply", reply: text };
+}
+
+export async function generateGeminiPlainReply(systemInstruction: string, user: string): Promise<string> {
+  const client = new GoogleGenerativeAI(getGeminiApiKey());
+  const model = client.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction,
+  });
+  const result = await model.generateContent(user);
+  const text = result.response.text()?.trim();
+  if (!text) throw new Error("Gemini returned an empty response.");
+  return text;
+}
+
+export async function generateGeminiReply(options: {
+  userId: AiUserId;
+  financeContext: string;
+  assistantName?: string;
+  behaviorInstructions?: string[];
+  reminders?: string[];
+  speakingWith?: Person | null;
+  history: GeminiChatTurn[];
+  message: string;
+}): Promise<GeminiChatOutcome> {
+  const model = buildModel(
+    options.financeContext,
+    options.assistantName,
+    options.behaviorInstructions ?? [],
+    options.reminders ?? [],
+    options.speakingWith
+  );
+  const chat = model.startChat({ history: mapHistory(options.history) });
+  const result = await chat.sendMessage(options.message);
+  return parseGeminiResult(
+    result.response.functionCalls(),
+    result.response.candidates?.[0]?.content?.parts ?? []
+  );
+}
+
+/** Continue after client executed tools — replays user turn + model function call + results. */
+export async function continueGeminiWithToolResults(options: {
+  userId: AiUserId;
+  financeContext: string;
+  assistantName?: string;
+  behaviorInstructions?: string[];
+  reminders?: string[];
+  speakingWith?: Person | null;
+  history: GeminiChatTurn[];
+  userMessage: string;
+  modelParts: Part[];
+  toolResponses: GeminiToolResponseInput[];
+}): Promise<GeminiChatOutcome> {
+  const model = buildModel(
+    options.financeContext,
+    options.assistantName,
+    options.behaviorInstructions ?? [],
+    options.reminders ?? [],
+    options.speakingWith
+  );
+  const chat = model.startChat({ history: mapHistory(options.history) });
+
+  const toolResponseParts: Part[] = options.toolResponses.map((response) => ({
+    functionResponse: {
+      name: response.name,
+      response: response.result,
+    },
+  }));
+
+  const result = await chat.sendMessage([
+    { text: options.userMessage },
+    ...options.modelParts,
+    ...toolResponseParts,
+  ]);
+
+  return parseGeminiResult(
+    result.response.functionCalls(),
+    result.response.candidates?.[0]?.content?.parts ?? []
+  );
+}

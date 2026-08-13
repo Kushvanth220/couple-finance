@@ -3,11 +3,14 @@
 import { GrikLogo } from "@/components/layout/grik-logo";
 import { DesktopNav } from "@/components/layout/desktop-nav";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
+import { AssistantFloatingButton } from "@/components/assistant/assistant-floating-button";
+import { AssistantProvider } from "@/components/assistant/assistant-context";
 import { SyncStatusBadge } from "@/components/sync/sync-status";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh flex flex-col">
+    <AssistantProvider>
+      <div className="min-h-dvh flex flex-col">
       <div className="mesh-bg" />
 
       <header className="sticky top-0 z-40 glass-strong border-b border-white/10">
@@ -23,6 +26,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
 
       <MobileBottomNav />
+      <AssistantFloatingButton />
     </div>
+    </AssistantProvider>
   );
 }

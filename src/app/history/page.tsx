@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Filter, RotateCcw } from "lucide-react";
+import { Filter, RotateCcw, Trash2 } from "lucide-react";
 import { DeletedHistoryCard } from "@/components/history/deleted-history-card";
 import { ActiveTransactionDetails } from "@/components/history/active-transaction-details";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
@@ -82,6 +82,7 @@ function HistoryPageContent() {
     message: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedByChoice, setDeletedByChoice] = useState<Person>("kushvanth");
 
@@ -105,11 +106,10 @@ function HistoryPageContent() {
     try {
       deleteTransaction(pendingDelete.id, deletedByChoice);
       setPendingDelete(null);
+      setIsDeleting(false);
 
       void forcePushNow(getActiveHouseholdId(), getFinanceState).catch((err) => {
-        setDeleteError(err instanceof Error ? err.message : "Could not sync delete to cloud");
-      }).finally(() => {
-        setIsDeleting(false);
+        setDeleteError(err instanceof Error ? err.message : "Deleted locally, but cloud sync failed");
       });
     } catch (err) {
       setIsDeleting(false);
@@ -161,8 +161,24 @@ function HistoryPageContent() {
   }, [typeParam, personParam]);
 
   const handleReset = () => {
-    resetToSeed();
-    setShowResetConfirm(false);
+    if (isResetting) return;
+    setIsResetting(true);
+    setDeleteError(null);
+    try {
+      resetToSeed();
+      setShowResetConfirm(false);
+      void forcePushNow(getActiveHouseholdId(), getFinanceState, {
+        skipSafetyCheck: true,
+      }).catch((err) => {
+        setDeleteError(
+          err instanceof Error
+            ? err.message
+            : "Reset locally, but cloud sync failed — history may come back."
+        );
+      });
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   const filtered = transactions
@@ -359,10 +375,10 @@ function HistoryPageContent() {
                       event.stopPropagation();
                       openDeleteConfirm(transaction);
                     }}
-                    className="text-muted hover:text-[#ff3b30] px-2 py-1 text-base leading-none min-w-[28px] min-h-[28px]"
+                    className="text-muted hover:text-[#ff3b30] p-1.5 rounded-lg hover:bg-[#ff3b30]/10"
                     aria-label="Delete transaction"
                   >
-                    ×
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -412,19 +428,25 @@ function HistoryPageContent() {
 
       <GlassModal
         open={showResetConfirm}
-        onClose={() => setShowResetConfirm(false)}
+        onClose={() => {
+          if (!isResetting) setShowResetConfirm(false);
+        }}
         title="Reset all data?"
       >
         <p className="text-sm text-muted leading-relaxed">
-          Clears active data on this device and resets balances. Your cloud backup stays safe —
-          the app will not overwrite cloud data when cloud has more history.
+          This clears active history and resets balances on this device and in the cloud. Deleted
+          records stay in the Deleted tab.
         </p>
         <div className="flex gap-3 mt-5">
-          <GlassButton className="flex-1" onClick={() => setShowResetConfirm(false)}>
+          <GlassButton
+            className="flex-1"
+            onClick={() => setShowResetConfirm(false)}
+            disabled={isResetting}
+          >
             Cancel
           </GlassButton>
-          <GlassButton variant="danger" className="flex-1" onClick={handleReset}>
-            Reset
+          <GlassButton variant="danger" className="flex-1" onClick={handleReset} disabled={isResetting}>
+            {isResetting ? "Resetting…" : "Reset"}
           </GlassButton>
         </div>
       </GlassModal>

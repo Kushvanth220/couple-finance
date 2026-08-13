@@ -1299,33 +1299,29 @@ export function applyRemoteFinanceState(state: FinanceState) {
   });
 }
 
-let hydrationPromise: Promise<void> | null = null;
-
 /** Wait until localStorage data has loaded into the store. */
 export function waitForStoreHydration(timeoutMs = 5000): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
   if (useFinanceStore.persist.hasHydrated()) {
     return Promise.resolve();
   }
 
-  if (!hydrationPromise) {
-    hydrationPromise = new Promise((resolve) => {
-      const finish = () => resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
 
-      if (useFinanceStore.persist.hasHydrated()) {
-        finish();
-        return;
-      }
+    if (useFinanceStore.persist.hasHydrated()) {
+      finish();
+      return;
+    }
 
-      useFinanceStore.persist.onFinishHydration(finish);
-
-      setTimeout(() => {
-        console.warn("[finance-store] Hydration timed out — continuing with defaults.");
-        finish();
-      }, timeoutMs);
-    });
-  }
-
-  return hydrationPromise;
+    useFinanceStore.persist.onFinishHydration(finish);
+    window.setTimeout(finish, timeoutMs);
+  });
 }
 
 export type { IncomeSource, IncomeEntry, MonthlyExpense, Account, Debt, Transaction };

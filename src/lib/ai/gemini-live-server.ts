@@ -1,0 +1,91 @@
+import { GoogleGenAI, Modality } from "@google/genai";
+import {
+  ASSISTANT_LANGUAGE,
+  GEMINI_LIVE_API_VERSION,
+  liveModelFallbackList,
+  buildLiveTranscriptionConfig,
+} from "@/lib/ai/live-config";
+import { resolveAssistantLiveVoice, type AssistantVoiceGender } from "@/lib/ai/assistant-voice";
+import { ASSISTANT_TOOLS } from "@/lib/ai/tools";
+import { buildHouseholdSystemInstruction } from "@/lib/ai/system-instructions";
+import { resolveHouseholdFinanceContext } from "@/lib/ai/resolve-finance-context";
+import type { FinanceState } from "@/types";
+
+function getGeminiServerClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured on the server.");
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: { apiVersion: GEMINI_LIVE_API_VERSION },
+  });
+}
+
+export async function createLiveEphemeralToken(
+  assistantName?: string,
+  voiceGender?: AssistantVoiceGender,
+  clientFinanceState?: FinanceState,
+  behaviorInstructions: string[] = [],
+  reminders: string[] = []
+) {
+  const financeContext = await resolveHouseholdFinanceContext(clientFinanceState, true);
+  const systemInstruction = buildHouseholdSystemInstruction(financeContext, {
+    assistantName,
+    behaviorInstructions,
+    reminders,
+  });
+  const voiceName = resolveAssistantLiveVoice(voiceGender);
+
+  const client = getGeminiServerClient();
+  const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const newSessionExpireTime = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+  const models = liveModelFallbackList();
+  let lastError: Error | null = null;
+
+  for (const model of models) {
+    try {
+      const token = await client.authTokens.create({
+        config: {
+          uses: 1,
+          expireTime,
+          newSessionExpireTime,
+          liveConnectConstraints: {
+            model,
+            config: {
+              responseModalities: [Modality.AUDIO],
+              systemInstruction,
+              tools: ASSISTANT_TOOLS as never,
+              speechConfig: {
+                languageCode: ASSISTANT_LANGUAGE,
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: voiceName,
+                  },
+                },
+              },
+              inputAudioTranscription: buildLiveTranscriptionConfig(assistantName),
+              outputAudioTranscription: buildLiveTranscriptionConfig(assistantName),
+            },
+          },
+          httpOptions: { apiVersion: GEMINI_LIVE_API_VERSION },
+        },
+      });
+
+      if (!token.name) {
+        throw new Error("Failed to create Gemini Live ephemeral token.");
+      }
+
+      return {
+        token: token.name,
+        model,
+        expires_at: expireTime,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Live token create failed.");
+    }
+  }
+
+  throw lastError ?? new Error("Failed to create Gemini Live ephemeral token.");
+}

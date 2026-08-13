@@ -694,7 +694,8 @@ export function unsubscribeFromFinanceChanges() {
 
 export async function forcePushNow(
   householdId: string,
-  getState: () => FinanceState
+  getState: () => FinanceState,
+  options?: { skipSafetyCheck?: boolean }
 ) {
   if (pushTimer) {
     clearTimeout(pushTimer);
@@ -703,7 +704,7 @@ export async function forcePushNow(
 
   pendingLocalChanges = true;
   notifyStatus("syncing");
-  await pushFinanceState(householdId, getState());
+  await pushFinanceState(householdId, getState(), options);
   notifyStatus("synced");
 }
 

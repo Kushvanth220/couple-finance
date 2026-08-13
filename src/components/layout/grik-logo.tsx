@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BRAND_INITIALS } from "@/lib/brand";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,11 @@ export function GrikLogo({
   asLink = true,
 }: GrikLogoProps) {
   const isHero = size === "hero";
+  const [motionReady, setMotionReady] = useState(false);
+
+  useEffect(() => {
+    setMotionReady(true);
+  }, []);
 
   const content = (
     <div className={cn("relative inline-block", className)}>
@@ -39,7 +45,10 @@ export function GrikLogo({
           {BRAND_INITIALS.split("").map((letter, index) => (
             <span
               key={`${letter}-${index}`}
-              className="grik-letter grik-gradient-text inline-block"
+              className={cn(
+                "grik-gradient-text inline-block",
+                motionReady && "grik-letter"
+              )}
               style={{ animationDelay: `${index * 0.07}s` }}
             >
               {letter}
@@ -59,8 +68,10 @@ export function GrikLogo({
 
       {showSubtitle && (
         <p
+          suppressHydrationWarning
           className={cn(
-            "grik-subtitle mt-0.5 flex items-center gap-1",
+            "mt-0.5 flex items-center gap-1",
+            motionReady && "grik-subtitle",
             isHero ? "text-sm" : "text-[11px]"
           )}
         >
