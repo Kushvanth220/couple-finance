@@ -1,4 +1,5 @@
 import type { AssistantToolCall } from "@/lib/ai/tools";
+import { describeSchedule, DEFAULT_LEAD_DAYS, type Reminder } from "@/lib/ai/reminders";
 import { parseAiUserId } from "@/lib/ai/person";
 import { PERSON_LABELS } from "@/types";
 
@@ -10,10 +11,35 @@ export const ASSISTANT_WRITE_TOOLS = new Set([
   "pay_debt_from_account",
   "adjust_account_balance",
   "add_account",
+  // Memory changes go through the same gate as money. Something the assistant
+  // will still believe in six months deserves a look before it is written.
+  "save_reminder",
+  "update_reminder",
+  "delete_reminder",
+  "save_behavior_preference",
+  "delete_behavior_preference",
 ]);
 
 export function isWriteTool(name: string): boolean {
   return ASSISTANT_WRITE_TOOLS.has(name);
+}
+
+/**
+ * Memory is household-wide: one shared list of reminders and rules, with no
+ * person on them. Only money writes carry a person (expense_for, paid_by,
+ * for_person), so only money writes need to know who is speaking — asking
+ * before a reminder would be a question whose answer changes nothing.
+ */
+export const HOUSEHOLD_WRITE_TOOLS = new Set([
+  "save_reminder",
+  "update_reminder",
+  "delete_reminder",
+  "save_behavior_preference",
+  "delete_behavior_preference",
+]);
+
+export function writeNeedsSpeaker(name: string): boolean {
+  return isWriteTool(name) && !HOUSEHOLD_WRITE_TOOLS.has(name);
 }
 
 export function isToolConfirmed(args: Record<string, unknown>): boolean {
@@ -165,6 +191,36 @@ export function sortAccountChips<T extends { name: string }>(chips: T[]): T[] {
   return [...chips].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
 
+function numberOr(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeRepeat(value: unknown): Reminder["repeat"] {
+  const raw = String(value ?? "").toLowerCase();
+  return raw === "weekly" || raw === "monthly" || raw === "yearly" ? raw : "once";
+}
+
+function ordinalDay(value: unknown): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  const suffix = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${suffix[(v - 20) % 10] ?? suffix[v] ?? suffix[0]}`;
+}
+
+function weekdayName(value: unknown): string {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const n = Number(value);
+  return days[n] ?? String(value);
+}
+
+function monthName(value: unknown): string {
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const n = Number(value);
+  return months[n - 1] ?? String(value);
+}
+
 function moneyLabel(value: unknown): string {
   const amount = Number(value);
   return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : "this amount";
@@ -200,6 +256,41 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
       return `Pay ${moneyLabel(args.amount)} toward ${String(args.debt_name ?? args.debt_id ?? "a debt")} from ${String(args.from_account_name ?? args.from_account_id ?? "an account")}.`;
     case "adjust_account_balance":
       return `Set ${String(args.account_name ?? args.account_id ?? "the account")} balance to ${moneyLabel(args.new_balance)}.`;
+    case "save_reminder": {
+      const preview: Reminder = {
+        id: "preview",
+        text: String(args.reminder ?? "this"),
+        done: false,
+        repeat: normalizeRepeat(args.repeat),
+        leadDays: numberOr(args.lead_days, DEFAULT_LEAD_DAYS),
+        ...(args.date ? { date: String(args.date) } : {}),
+        ...(args.day_of_month != null ? { dayOfMonth: Number(args.day_of_month) } : {}),
+        ...(args.month != null ? { month: Number(args.month) } : {}),
+        ...(args.weekday != null ? { weekday: Number(args.weekday) } : {}),
+        ...(args.time ? { time: String(args.time) } : {}),
+      };
+      const lead = preview.leadDays > 0 ? `, raised ${preview.leadDays} days early` : "";
+      return `Remember "${preview.text}" — ${describeSchedule(preview)}${lead}.`;
+    }
+    case "update_reminder": {
+      const changes: string[] = [];
+      if (args.new_text) changes.push(`text to "${String(args.new_text)}"`);
+      if (args.repeat) changes.push(`repeat to ${String(args.repeat)}`);
+      if (args.day_of_month != null) changes.push(`day to the ${ordinalDay(args.day_of_month)}`);
+      if (args.weekday != null) changes.push(`day to ${weekdayName(args.weekday)}`);
+      if (args.month != null) changes.push(`month to ${monthName(args.month)}`);
+      if (args.date) changes.push(`date to ${String(args.date)}`);
+      if (args.time) changes.push(`time to ${String(args.time)}`);
+      if (args.lead_days != null) changes.push(`lead time to ${Number(args.lead_days)} days`);
+      const what = changes.length > 0 ? changes.join(", ") : "nothing";
+      return `Update the reminder matching "${String(args.match ?? "")}" — change ${what}.`;
+    }
+    case "delete_reminder":
+      return `Forget the reminder matching "${String(args.match ?? "")}". This cannot be undone from chat.`;
+    case "save_behavior_preference":
+      return `Always follow this from now on: "${String(args.preference ?? args.instruction ?? "")}".`;
+    case "delete_behavior_preference":
+      return `Stop following the rule matching "${String(args.match ?? "")}".`;
     case "add_account": {
       const kind = String(args.account_type ?? "account");
       const opening = Number(args.starting_balance);
@@ -221,6 +312,16 @@ export function spokenSaveConfirmation(call: AssistantToolCall): string {
       return "The balance is updated.";
     case "add_account":
       return "The account is added.";
+    case "save_reminder":
+      return "I'll remember that.";
+    case "update_reminder":
+      return "The reminder is updated.";
+    case "delete_reminder":
+      return "I've forgotten that one.";
+    case "save_behavior_preference":
+      return "Got it — I'll do that from now on.";
+    case "delete_behavior_preference":
+      return "I'll stop doing that.";
     case "save_reminder":
       return "Got it.";
     default:

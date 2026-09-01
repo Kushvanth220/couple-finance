@@ -327,9 +327,31 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
       type: "object",
       properties: {
         reminder: { type: "string", description: "What to remember, in the user's words" },
+        repeat: {
+          type: "string",
+          description:
+            "How often it repeats: once, weekly, monthly, or yearly. Set this whenever they say a cycle like 'every month' or 'every Friday'.",
+        },
+        day_of_month: {
+          type: "number",
+          description: "1-31, for monthly or yearly. E.g. 'the 3rd of every month' -> 3.",
+        },
+        weekday: {
+          type: "number",
+          description: "0=Sunday .. 6=Saturday, for weekly. E.g. 'every Friday' -> 5.",
+        },
+        month: { type: "number", description: "1-12, for yearly only." },
+        date: { type: "string", description: "yyyy-MM-dd, for a one-time reminder." },
+        time: { type: "string", description: "24h HH:mm, only if they gave a time of day." },
+        lead_days: {
+          type: "number",
+          description:
+            "How many days before the due date to raise it. Household default is 5 — only change it if they ask.",
+        },
         when: {
           type: "string",
-          description: "Timing, e.g. 3rd of every month, every Friday, tomorrow, from the 24th",
+          description:
+            "Free-text timing, only when it does not fit the fields above (e.g. 'from the 24th to the 26th').",
         },
         timezone: {
           type: "string",
@@ -337,6 +359,70 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         },
       },
       required: ["reminder"],
+    },
+  },
+  {
+    name: "update_reminder",
+    description:
+      "Change an existing reminder — its wording, its schedule, or how early it is raised. Call this directly with words from the reminder in match; it finds the reminder itself and tells you if nothing or more than one matched. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: {
+          type: "string",
+          description: "Words from the existing reminder, enough to identify it uniquely.",
+        },
+        new_text: { type: "string", description: "Replacement wording, if they changed it." },
+        repeat: { type: "string", description: "once, weekly, monthly, or yearly." },
+        day_of_month: { type: "number", description: "1-31, for monthly or yearly." },
+        weekday: { type: "number", description: "0=Sunday .. 6=Saturday, for weekly." },
+        month: { type: "number", description: "1-12, for yearly." },
+        date: { type: "string", description: "yyyy-MM-dd, for a one-time reminder." },
+        time: { type: "string", description: "24h HH:mm." },
+        lead_days: { type: "number", description: "Days before the due date to raise it." },
+        user_confirmed: {
+          type: "boolean",
+          description: "Only true after they said yes to this exact change.",
+        },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "delete_reminder",
+    description:
+      "Forget a reminder completely. Use when they say stop reminding me, remove it, or it is finished for good. Call this directly with words from the reminder in match. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the reminder to remove." },
+        user_confirmed: {
+          type: "boolean",
+          description: "Only true after they said yes to removing this one.",
+        },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "list_behavior_preferences",
+    description:
+      "List the standing rules the assistant follows. Call before changing or removing one.",
+  },
+  {
+    name: "delete_behavior_preference",
+    description:
+      "Stop following one of the saved behaviour rules. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the rule to remove." },
+        user_confirmed: {
+          type: "boolean",
+          description: "Only true after they said yes to removing this rule.",
+        },
+      },
+      required: ["match"],
     },
   },
   {

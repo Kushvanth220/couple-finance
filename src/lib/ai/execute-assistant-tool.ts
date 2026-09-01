@@ -3,6 +3,15 @@
 import { format } from "date-fns";
 import { getAccountsForPerson } from "@/lib/accounts";
 import { roundMoney, splitMoney } from "@/lib/money";
+import {
+  DEFAULT_LEAD_DAYS,
+  describeSchedule,
+  dueLabel,
+  daysUntilDue,
+  isDueSoon,
+  renderReminderLine,
+  type ReminderRepeat,
+} from "@/lib/ai/reminders";
 import { parseAiUserId } from "@/lib/ai/person";
 import {
   buildConfirmationToolResult,
@@ -933,17 +942,198 @@ export function executeAssistantTool(
         }
         const when = args.when ? String(args.when).trim() : "";
         const timezone = args.timezone ? String(args.timezone).trim() : "";
+        // Keep only what does not fit a real field, so the text stays the
+        // user's words and the schedule lives as data.
         const extras = [when, timezone ? `tz:${timezone}` : ""].filter(Boolean).join(" · ");
-        const line = extras ? `${reminder} (${extras})` : reminder;
-        useAssistantPreferencesStore.getState().addReminder(line);
+        const text = extras ? `${reminder} (${extras})` : reminder;
+
+        const asNumber = (value: unknown, min: number, max: number) => {
+          const n = Number(value);
+          return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+        };
+        const rawRepeat = String(args.repeat ?? "").toLowerCase().trim();
+        const repeat: ReminderRepeat =
+          rawRepeat === "weekly" || rawRepeat === "monthly" || rawRepeat === "yearly"
+            ? rawRepeat
+            : "once";
+        const time = /^\d{1,2}:\d{2}$/.test(String(args.time ?? "").trim())
+          ? String(args.time).trim()
+          : undefined;
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(String(args.date ?? "").trim())
+          ? String(args.date).trim()
+          : undefined;
+
+        useAssistantPreferencesStore.getState().addStructuredReminder({
+          text,
+          done: false,
+          repeat,
+          leadDays: asNumber(args.lead_days, 0, 60) ?? DEFAULT_LEAD_DAYS,
+          ...(repeat === "once" && date ? { date } : {}),
+          ...(repeat === "weekly" ? { weekday: asNumber(args.weekday, 0, 6) } : {}),
+          ...(repeat === "monthly" || repeat === "yearly"
+            ? { dayOfMonth: asNumber(args.day_of_month, 1, 31) }
+            : {}),
+          ...(repeat === "yearly" ? { month: asNumber(args.month, 1, 12) } : {}),
+          ...(time ? { time } : {}),
+        });
         return {
           id: call.id,
           name: call.name,
           result: {
             ok: true,
             saved: true,
-            message: `Saved. I'll remember: "${line.slice(0, 160)}"`,
+            // Read back the schedule too, so a mis-heard cycle is caught now
+            // rather than the day a bill is missed.
+            message: `Saved. I'll remember: "${text.slice(0, 140)}" — ${describeSchedule({
+              id: "new",
+              text,
+              done: false,
+              repeat,
+              leadDays: asNumber(args.lead_days, 0, 60) ?? DEFAULT_LEAD_DAYS,
+              ...(repeat === "once" && date ? { date } : {}),
+              ...(repeat === "weekly" ? { weekday: asNumber(args.weekday, 0, 6) } : {}),
+              ...(repeat === "monthly" || repeat === "yearly"
+                ? { dayOfMonth: asNumber(args.day_of_month, 1, 31) }
+                : {}),
+              ...(repeat === "yearly" ? { month: asNumber(args.month, 1, 12) } : {}),
+              ...(time ? { time } : {}),
+            })}`,
           },
+        };
+      }
+
+      case "update_reminder": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useAssistantPreferencesStore.getState();
+        // Match every candidate, not the first. Changing the wrong reminder
+        // because two share a word is silent damage the user would not see.
+        const hits = match
+          ? store.structuredReminders.filter((item) => item.text.toLowerCase().includes(match))
+          : [];
+        if (hits.length > 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `"${args.match ?? ""}" matches ${hits.length} reminders: ${hits
+                .map((item) => `"${item.text}"`)
+                .join(", ")}. Ask which one they mean.`,
+            },
+          };
+        }
+        const target = hits[0];
+        if (!match || !target) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `No reminder matched "${args.match ?? ""}". Call list_reminders and use the exact wording.`,
+            },
+          };
+        }
+
+        const asNumber = (value: unknown, min: number, max: number) => {
+          const n = Number(value);
+          return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+        };
+        const rawRepeat = String(args.repeat ?? "").toLowerCase().trim();
+        const repeat: ReminderRepeat | undefined =
+          rawRepeat === "once" || rawRepeat === "weekly" || rawRepeat === "monthly" || rawRepeat === "yearly"
+            ? rawRepeat
+            : undefined;
+
+        const updates: Partial<typeof target> = {
+          ...(args.new_text ? { text: String(args.new_text).trim() } : {}),
+          ...(repeat ? { repeat } : {}),
+          ...(args.day_of_month != null ? { dayOfMonth: asNumber(args.day_of_month, 1, 31) } : {}),
+          ...(args.weekday != null ? { weekday: asNumber(args.weekday, 0, 6) } : {}),
+          ...(args.month != null ? { month: asNumber(args.month, 1, 12) } : {}),
+          ...(/^\d{4}-\d{2}-\d{2}$/.test(String(args.date ?? "")) ? { date: String(args.date) } : {}),
+          ...(/^\d{1,2}:\d{2}$/.test(String(args.time ?? "")) ? { time: String(args.time) } : {}),
+          ...(args.lead_days != null ? { leadDays: asNumber(args.lead_days, 0, 60) ?? target.leadDays } : {}),
+        };
+
+        store.updateStructuredReminder(target.id, updates);
+        const after = { ...target, ...updates };
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            message: `Updated: "${after.text}" — ${describeSchedule(after)}.`,
+          },
+        };
+      }
+
+      case "delete_reminder": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useAssistantPreferencesStore.getState();
+        const hits = match
+          ? store.structuredReminders.filter((item) => item.text.toLowerCase().includes(match))
+          : [];
+        if (hits.length > 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `"${args.match ?? ""}" matches ${hits.length} reminders: ${hits
+                .map((item) => `"${item.text}"`)
+                .join(", ")}. Ask which one to remove.`,
+            },
+          };
+        }
+        const target = hits[0];
+        if (!match || !target) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: `No reminder matched "${args.match ?? ""}".` },
+          };
+        }
+        store.deleteStructuredReminder(target.id);
+        return {
+          id: call.id,
+          name: call.name,
+          result: { ok: true, saved: true, message: `Removed: "${target.text}".` },
+        };
+      }
+
+      case "list_behavior_preferences": {
+        const rules = useAssistantPreferencesStore.getState().behaviorInstructions;
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            count: rules.length,
+            rules,
+            summary: rules.length === 0 ? "No saved rules." : rules.join("; "),
+          },
+        };
+      }
+
+      case "delete_behavior_preference": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useAssistantPreferencesStore.getState();
+        const rules = store.behaviorInstructions;
+        const target = rules.find((line) => line.toLowerCase().includes(match));
+        if (!match || !target) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: `No rule matched "${args.match ?? ""}".` },
+          };
+        }
+        store.setBehaviorInstructions(rules.filter((line) => line !== target));
+        void store.syncToServer();
+        return {
+          id: call.id,
+          name: call.name,
+          result: { ok: true, saved: true, message: `Stopped following: "${target}".` },
         };
       }
 
@@ -1000,20 +1190,22 @@ export function executeAssistantTool(
           year: "numeric",
           timeZone: "America/Chicago",
         });
-        const reminders = useAssistantPreferencesStore.getState().reminders;
-        const pending = reminders.filter((line) => !line.toUpperCase().startsWith("[DONE]"));
-        const dueToday = pending.filter((line) => {
-          const lower = line.toLowerCase();
-          return (
-            lower.includes(` ${day}`) ||
-            lower.includes(`${day}st`) ||
-            lower.includes(`${day}nd`) ||
-            lower.includes(`${day}rd`) ||
-            lower.includes(`${day}th`) ||
-            lower.includes(weekday.toLowerCase()) ||
-            lower.includes("today")
-          );
-        });
+        // Reminders carry real schedules now, so what is due is CALCULATED.
+        // This used to substring-match the day number against the sentence,
+        // which fired on any reminder that merely contained those digits.
+        const structured = useAssistantPreferencesStore.getState().structuredReminders;
+        const openItems = structured.filter((item) => !item.done);
+        const dueNow = openItems
+          .filter((item) => isDueSoon(item, now))
+          .map((item) => ({
+            reminder: item.text,
+            due: dueLabel(item, now),
+            days_away: daysUntilDue(item, now),
+          }))
+          .sort((a, b) => (a.days_away ?? 99) - (b.days_away ?? 99));
+        const pending = openItems.map(renderReminderLine);
+        const undated = openItems.filter((item) => daysUntilDue(item, now) == null).length;
+
         return {
           id: call.id,
           name: call.name,
@@ -1024,11 +1216,16 @@ export function executeAssistantTool(
             weekday,
             timezone: "America/Chicago (US Central)",
             pending_reminders: pending,
-            likely_due_today: dueToday,
+            due_now: dueNow,
+            undated_count: undated,
             summary:
               pending.length === 0
                 ? `Today is ${dateLabel}. No pending reminders.`
-                : `Today is ${dateLabel}. ${dueToday.length} item(s) look due around today. ${pending.length} pending overall.`,
+                : dueNow.length === 0
+                  ? `Today is ${dateLabel}. Nothing is due within its reminder window. ${pending.length} pending overall.`
+                  : `Today is ${dateLabel}. Due now: ${dueNow
+                      .map((item) => `${item.reminder} (${item.due})`)
+                      .join("; ")}.`,
           },
         };
       }

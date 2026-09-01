@@ -24,7 +24,7 @@ import {
   type MicStreamer,
 } from "@/lib/ai/audio-utils";
 import { executeAssistantTools } from "@/lib/ai/execute-assistant-tool";
-import { asProposedWrite, buildToolConfirmationPreview, isWriteTool, spokenSaveConfirmation, EXPENSE_PERSON_CHIPS, EXPENSE_PAID_BY_CHIPS, withExpensePerson, withPaidBy, accountChoicePrompt, withPickedAccount, writeToolNeedsAccount, expenseWriteNeedsPayer, sortAccountChips } from "@/lib/ai/assistant-confirmation";
+import { asProposedWrite, buildToolConfirmationPreview, isWriteTool, writeNeedsSpeaker, spokenSaveConfirmation, EXPENSE_PERSON_CHIPS, EXPENSE_PAID_BY_CHIPS, withExpensePerson, withPaidBy, accountChoicePrompt, withPickedAccount, writeToolNeedsAccount, expenseWriteNeedsPayer, sortAccountChips } from "@/lib/ai/assistant-confirmation";
 import {
   asksIfMoneyWasSaved,
   inferWriteFromRecentTalk,
@@ -705,7 +705,7 @@ export function AiVoicePanel({
             }
 
             const actor = speakerRef.current;
-            const writeCalls = calls.filter((item) => isWriteTool(item.name));
+            const writeCalls = calls.filter((item) => writeNeedsSpeaker(item.name));
             if (writeCalls.length > 0 && !actor) {
               const writeCall = writeCalls[0]!;
               pendingWriteRef.current = mergePendingWrite(pendingWriteRef.current, writeCall);

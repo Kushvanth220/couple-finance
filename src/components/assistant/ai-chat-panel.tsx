@@ -24,6 +24,7 @@ import {
   writeToolNeedsAccount,
   expenseWriteNeedsPayer,
   sortAccountChips,
+  writeNeedsSpeaker,
 } from "@/lib/ai/assistant-confirmation";
 import type { AssistantToolCall } from "@/lib/ai/tools";
 import type { Part } from "@google/generative-ai";
@@ -193,7 +194,7 @@ export function AiChatPanel({
 
   async function confirmPending() {
     if (!pendingConfirm || loading) return;
-    if (!speaker) {
+    if (!speaker && writeNeedsSpeaker(pendingConfirm.name)) {
       setError("Who am I talking to — Kushvanth or Grishma?");
       return;
     }
@@ -205,11 +206,12 @@ export function AiChatPanel({
     setError(null);
     try {
       const prepared = applySpeakerToWrite(pendingConfirm, speaker);
+      // Household memory has no person on it, so it saves without one.
       const call = {
         ...prepared,
         args: { ...prepared.args, user_confirmed: true },
       };
-      const [result] = executeAssistantTools(speaker, [call]);
+      const [result] = executeAssistantTools(speaker ?? person, [call]);
       const saved = result?.result?.saved === true;
       if (saved) {
         const spoken = spokenSaveConfirmation(call);
@@ -427,9 +429,14 @@ export function AiChatPanel({
 
       let waitingOnUser = false;
       while (payload.needs_tools && payload.tool_calls?.length) {
+        // Two different questions, so two different lookups. Every write needs a
+        // confirm card; only writes that carry a person need to know who is
+        // speaking. Folding them together made household memory ask for a name
+        // it never stores — and dropped the card when it stopped asking.
         const writeCall = payload.tool_calls.find((call) => isWriteTool(call.name));
-        if (writeCall && !activeSpeaker) {
-          setPendingConfirm(writeCall);
+        const speakerCall = payload.tool_calls.find((call) => writeNeedsSpeaker(call.name));
+        if (speakerCall && !activeSpeaker) {
+          setPendingConfirm(speakerCall);
           waitingOnUser = true;
           setError("Who am I talking to — Kushvanth or Grishma?");
           break;

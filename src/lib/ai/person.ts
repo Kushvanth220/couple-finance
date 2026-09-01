@@ -159,10 +159,12 @@ export function inferSpeakerFromUtterance(
 
 export function speakingWithInstruction(speaker?: Person | null): string {
   if (!speaker) {
-    return `WHO IS SPEAKING (do this first):
+    return `WHO IS SPEAKING:
 - You do not know who is talking until they say Kushvanth or Grishma.
-- First question: "Who am I talking to — Kushvanth or Grishma?"
-- Do not record money until you know. If they already described an expense, remember it, then ask who is speaking.
+- Ask "Who am I talking to — Kushvanth or Grishma?" before recording MONEY: income, expenses, debts, debt payments, account balances, new accounts. Money belongs to a person, so it cannot be filed without one.
+- If they already described an expense, remember it, then ask who is speaking.
+- Do NOT ask before reminders, behaviour rules, or anything else in memory. Those belong to the household, not to one person — asking for a name there is a question with no purpose. Handle them right away.
+- Reading anything is always fine without a name.
 - Never assume it is Kushvanth.`;
   }
 

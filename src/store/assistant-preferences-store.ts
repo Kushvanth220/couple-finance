@@ -2,11 +2,21 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { v4 as uuidv4 } from "uuid";
 import type { AssistantVoiceGender } from "@/lib/ai/assistant-voice";
+import {
+  DEFAULT_LEAD_DAYS,
+  dueLabel,
+  nextDueDate,
+  reminderFromLegacyLine,
+  renderReminderLine,
+  toIsoDate,
+  type Reminder,
+} from "@/lib/ai/reminders";
 import { ASSISTANT_LANGUAGE } from "@/lib/ai/live-config";
 import type { Person } from "@/types";
 
-const STORAGE_KEY = "couple-finance-assistant-prefs-v5";
+const STORAGE_KEY = "couple-finance-assistant-prefs-v6";
 const DEFAULT_NAME = "Jarvis";
 
 interface AssistantPreferencesState {
@@ -16,6 +26,12 @@ interface AssistantPreferencesState {
   wakeListeningEnabled: boolean;
   language: typeof ASSISTANT_LANGUAGE;
   behaviorInstructions: string[];
+  /**
+   * Source of truth for reminders. `reminders` below is DERIVED from this —
+   * the assistant reads sentences, the app edits structure.
+   */
+  structuredReminders: Reminder[];
+  /** Derived sentences the assistant reads. Never edit directly. */
   reminders: string[];
   setAssistantProfile: (profile: { name: string; voiceGender: AssistantVoiceGender }) => void;
   setAssistantName: (name: string) => void;
@@ -25,6 +41,10 @@ interface AssistantPreferencesState {
   addBehaviorInstruction: (instruction: string) => void;
   addReminder: (reminder: string) => void;
   markReminderDone: (match: string) => string | null;
+  addStructuredReminder: (reminder: Omit<Reminder, "id">) => void;
+  updateStructuredReminder: (id: string, updates: Partial<Reminder>) => void;
+  deleteStructuredReminder: (id: string) => void;
+  toggleReminderDone: (id: string) => void;
   setBehaviorInstructions: (instructions: string[]) => void;
   setReminders: (reminders: string[]) => void;
   hydrateFromServer: () => Promise<void>;
@@ -42,6 +62,7 @@ type LegacyState = {
   assistantName?: string;
   behaviorInstructions?: string[];
   reminders?: string[];
+  structuredReminders?: Reminder[];
 };
 
 function migrateLegacy(state: LegacyState): Partial<AssistantPreferencesState> {
@@ -75,6 +96,7 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
       wakeListeningEnabled: true,
       language: ASSISTANT_LANGUAGE,
       behaviorInstructions: [],
+      structuredReminders: [],
       reminders: [],
 
       setAssistantProfile: (profile) => {
@@ -119,38 +141,109 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
         void get().syncToServer();
       },
 
+      /**
+       * The assistant's save_reminder still hands us a sentence. Keep the words
+       * exactly as spoken — inferring a schedule out of prose would invent data
+       * the user never gave — and let them add the dates on the Memory page.
+       */
       addReminder: (reminder) => {
         const line = reminder.trim().slice(0, 500);
         if (!line) return;
-        const current = get().reminders;
-        if (current.includes(line)) return;
-        set({ reminders: [...current, line] });
-        void get().syncToServer();
+        const current = get().structuredReminders;
+        if (current.some((item) => item.text.toLowerCase() === line.toLowerCase())) return;
+        get().addStructuredReminder({
+          text: line,
+          done: false,
+          repeat: "once",
+          leadDays: DEFAULT_LEAD_DAYS,
+        });
       },
 
       markReminderDone: (match) => {
         const needle = match.trim().toLowerCase();
         if (!needle) return null;
-        const current = get().reminders;
-        const index = current.findIndex((line) => {
-          const normalized = line.toLowerCase();
-          return !normalized.startsWith("[done]") && normalized.includes(needle);
-        });
-        if (index < 0) return null;
-        const original = current[index]!;
-        const next = [...current];
-        next[index] = original.startsWith("[DONE]") ? original : `[DONE] ${original}`;
-        set({ reminders: next });
+        const current = get().structuredReminders;
+        const target = current.find(
+          (item) => !item.done && item.text.toLowerCase().includes(needle)
+        );
+        if (!target) return null;
+        // A one-off is finished. A recurring one is only finished for this
+        // cycle — closing it for good would silence the rent reminder forever
+        // the first time the rent got paid.
+        if (target.repeat === "once") {
+          get().updateStructuredReminder(target.id, { done: true });
+          return renderReminderLine({ ...target, done: true });
+        }
+        const due = nextDueDate(target);
+        const doneThrough = due ? toIsoDate(due) : toIsoDate(new Date());
+        get().updateStructuredReminder(target.id, { doneThrough });
+        const next = { ...target, doneThrough };
+        return `${renderReminderLine(next)} — done for this cycle, next ${dueLabel(
+          next
+        ).toLowerCase()}`;
+      },
+
+      addStructuredReminder: (reminder) => {
+        const next = [...get().structuredReminders, { ...reminder, id: uuidv4() }];
+        set({ structuredReminders: next, reminders: next.map(renderReminderLine) });
         void get().syncToServer();
-        return next[index]!;
+      },
+
+      updateStructuredReminder: (id, updates) => {
+        const next = get().structuredReminders.map((item) =>
+          item.id === id ? { ...item, ...updates } : item
+        );
+        set({ structuredReminders: next, reminders: next.map(renderReminderLine) });
+        void get().syncToServer();
+      },
+
+      deleteStructuredReminder: (id) => {
+        const next = get().structuredReminders.filter((item) => item.id !== id);
+        set({ structuredReminders: next, reminders: next.map(renderReminderLine) });
+        void get().syncToServer();
+      },
+
+      toggleReminderDone: (id) => {
+        const target = get().structuredReminders.find((item) => item.id === id);
+        if (!target) return;
+        get().updateStructuredReminder(id, { done: !target.done });
       },
 
       setBehaviorInstructions: (instructions) => {
         set({ behaviorInstructions: instructions });
       },
 
+      /**
+       * Adopt a raw list (server hydration); anything genuinely new becomes
+       * structured. Matching is on the reminder TEXT, not the rendered line —
+       * rendering appends "due …" and "remind N days before", so comparing
+       * whole lines matched nothing and re-adopted every reminder on each
+       * hydration, multiplying the list on every page load.
+       */
       setReminders: (reminders) => {
-        set({ reminders });
+        const existing = get().structuredReminders;
+        const core = (value: string) =>
+          value.replace(/^\[DONE\]\s*/i, "").trim().toLowerCase();
+        const known = existing.map((item) => core(item.text));
+
+        const adopted = reminders
+          .filter((line) => {
+            const candidate = core(line);
+            if (!candidate) return false;
+            // A rendered line begins with its text, so accept a prefix match
+            // in either direction rather than demanding an exact string.
+            return !known.some(
+              (text) =>
+                text === candidate ||
+                candidate.startsWith(text) ||
+                text.startsWith(candidate)
+            );
+          })
+          .map((line) => reminderFromLegacyLine(line, uuidv4()));
+
+        if (adopted.length === 0) return;
+        const next = [...existing, ...adopted];
+        set({ structuredReminders: next, reminders: next.map(renderReminderLine) });
       },
 
       hydrateFromServer: async () => {
@@ -177,9 +270,25 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
             behaviorInstructions: Array.isArray(prefs.behavior_instructions)
               ? prefs.behavior_instructions
               : state.behaviorInstructions,
-            reminders: Array.isArray(prefs.reminders) ? prefs.reminders : state.reminders,
             namingCompleted: state.namingCompleted || Boolean(prefs.assistant_name),
           }));
+
+          // Reminders go through setReminders so anything the assistant saved
+          // on another device is adopted as structured rather than overwriting
+          // the schedules already set here.
+          if (Array.isArray(prefs.reminders)) {
+            get().setReminders(prefs.reminders);
+          }
+
+          // Push back when our derived lines differ from the server's. Without
+          // this a device that migrated but never edited left the server on the
+          // old strings, so the other phone kept reading stale reminders.
+          const derived = get().reminders;
+          const remote = prefs.reminders ?? [];
+          const drifted =
+            derived.length !== remote.length ||
+            derived.some((line, index) => line !== remote[index]);
+          if (drifted) void get().syncToServer();
         } catch {
           // Supabase table may not exist yet — local prefs still work.
         }
@@ -220,6 +329,20 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
         if (version < 5) {
           return { ...state, reminders: state.reminders ?? [] };
         }
+        if (version < 6) {
+          // Reminders became structured. Keep every existing sentence verbatim
+          // as the text; schedules start empty because the old format never
+          // recorded one, and guessing would fabricate due dates.
+          const legacy = Array.isArray(state.reminders) ? state.reminders : [];
+          const structured = legacy.map((line, index) =>
+            reminderFromLegacyLine(line, `legacy-${index}-${line.slice(0, 12)}`)
+          );
+          return {
+            ...state,
+            structuredReminders: structured,
+            reminders: structured.map(renderReminderLine),
+          } as AssistantPreferencesState;
+        }
         return state as AssistantPreferencesState;
       },
     }
@@ -246,4 +369,9 @@ export function getBehaviorInstructionsForAssistant(): string[] {
 
 export function getRemindersForAssistant(): string[] {
   return useAssistantPreferencesStore.getState().reminders;
+}
+
+/** Structured reminders, for anything that needs real dates (briefing, UI). */
+export function getStructuredReminders(): Reminder[] {
+  return useAssistantPreferencesStore.getState().structuredReminders;
 }
