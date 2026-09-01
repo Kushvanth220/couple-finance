@@ -5,20 +5,77 @@ export const AI_USER_IDS = ["kushvanth", "grishma"] as const;
 export type AiUserId = Person;
 
 const USER_ALIASES: Record<string, AiUserId> = {
+  // Speech-to-text mangles both names constantly — these are spellings seen in practice.
   kushvanth: "kushvanth",
   kushwanth: "kushvanth",
+  kushvant: "kushvanth",
+  kushwant: "kushvanth",
+  khushvanth: "kushvanth",
+  khushwant: "kushvanth",
+  yashwant: "kushvanth",
+  yashvanth: "kushvanth",
+  koshwant: "kushvanth",
+  cushvanth: "kushvanth",
+  kushvan: "kushvanth",
   kush: "kushvanth",
   guzman: "kushvanth",
   grishma: "grishma",
   greeshma: "grishma",
+  grisma: "grishma",
+  krishma: "grishma",
+  gishma: "grishma",
+  reshma: "grishma",
   grish: "grishma",
   krishna: "grishma",
   griezmann: "grishma",
   grizzma: "grishma",
 };
 
-const NAME_PATTERN =
-  "kushvanth|kushwanth|kush|guzman|grishma|greeshma|grish|krishna|griezmann|grizzma";
+/** Canonical spellings, for the fuzzy fallback below. */
+const NAME_TARGETS: Array<{ id: AiUserId; word: string }> = [
+  { id: "kushvanth", word: "kushvanth" },
+  { id: "grishma", word: "grishma" },
+];
+
+function editDistance(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = prev[0]!;
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = prev[j]!;
+      prev[j] = Math.min(
+        prev[j]! + 1,
+        prev[j - 1]! + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      diagonal = temp;
+    }
+  }
+  return prev[b.length]!;
+}
+
+/**
+ * Used only while waiting for "who am I talking to" — in that context a single
+ * mangled word is almost certainly one of the two names, so a loose match is
+ * safe and saves the user repeating themselves.
+ */
+function fuzzyName(word: string): AiUserId | null {
+  if (word.length < 4) return null;
+  let best: { id: AiUserId; score: number } | null = null;
+  for (const target of NAME_TARGETS) {
+    const distance = editDistance(word, target.word);
+    const score = 1 - distance / Math.max(word.length, target.word.length);
+    if (score >= 0.6 && (!best || score > best.score)) {
+      best = { id: target.id, score };
+    }
+  }
+  return best?.id ?? null;
+}
+
+const NAME_PATTERN = Object.keys(USER_ALIASES)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
 
 export function parseAiUserId(value: unknown): AiUserId | null {
   if (typeof value !== "string") return null;
@@ -70,7 +127,20 @@ export function inferSpeakerFromUtterance(
   }
 
   const named = normalized.match(new RegExp(`\\b(${NAME_PATTERN})\\b`));
-  if (!named) return null;
+  if (!named) {
+    // Waiting on "who am I talking to?" — accept a close-enough single word,
+    // because STT keeps inventing new spellings of both names.
+    if (options?.awaitingIdentity) {
+      const words = normalized.split(" ").filter(Boolean);
+      if (words.length <= 4) {
+        for (const word of words) {
+          const guess = fuzzyName(word);
+          if (guess) return guess;
+        }
+      }
+    }
+    return null;
+  }
 
   const words = normalized.split(" ");
   const moneyTalk = /\b(spent|spend|paid|pay|gas|dollar|dollars|expense|account)\b/.test(

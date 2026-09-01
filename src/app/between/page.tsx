@@ -9,6 +9,7 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { GlassInput } from "@/components/ui/glass-input";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { useFinanceStore } from "@/store/finance-store";
+import { AnimatedMoney } from "@/components/ui/animated-number";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { buildExternalBetweenUsMessage } from "@/lib/transaction-messages";
 import {
@@ -85,8 +86,8 @@ export default function BetweenPage() {
     >
       <GlassCard strong className="!py-6 text-center space-y-1">
         <p className="text-xs text-muted">{balanceSummary.label}</p>
-        <p className="text-3xl font-bold tracking-tight text-[#007aff] tabular-nums">
-          {formatCurrency(balanceSummary.amount)}
+        <p className="text-3xl font-bold tracking-tight text-[#007aff] kg-figure">
+          <AnimatedMoney value={balanceSummary.amount} />
         </p>
       </GlassCard>
 

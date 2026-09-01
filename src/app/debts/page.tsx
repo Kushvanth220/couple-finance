@@ -6,6 +6,7 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { GlassInput } from "@/components/ui/glass-input";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { useFinanceStore } from "@/store/finance-store";
 import { getPersonDebtOutstandingSummary } from "@/lib/calculations";
@@ -28,6 +29,8 @@ export default function DebtsPage() {
   const [payDebtId, setPayDebtId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [showCleared, setShowCleared] = useState(false);
+
+  const [pendingDeleteDebt, setPendingDeleteDebt] = useState<Debt | null>(null);
 
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -152,7 +155,7 @@ export default function DebtsPage() {
                 setDebtNotes(debt.notes ?? "");
                 setShowAdd(true);
               }}
-              onDelete={() => deleteDebt(debt.id)}
+              onDelete={() => setPendingDeleteDebt(debt)}
             />
           ))
         )}
@@ -182,7 +185,12 @@ export default function DebtsPage() {
                   <span className="text-[10px] font-semibold text-[#34c759] shrink-0">Cleared</span>
                 </div>
                 <div className="flex justify-end mt-2">
-                  <GlassButton size="sm" variant="ghost" onClick={() => deleteDebt(debt.id)}>
+                  <GlassButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPendingDeleteDebt(debt)}
+                    aria-label={`Delete cleared debt ${debt.name}`}
+                  >
                     <Trash2 className="w-3 h-3 text-[#ff3b30]" />
                   </GlassButton>
                 </div>
@@ -190,6 +198,26 @@ export default function DebtsPage() {
             ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteDebt !== null}
+        title="Delete debt note?"
+        message={
+          pendingDeleteDebt
+            ? `"${pendingDeleteDebt.name}"${
+                pendingDeleteDebt.amount > 0
+                  ? ` still shows ${formatCurrency(pendingDeleteDebt.amount)} outstanding`
+                  : " (already cleared)"
+              } will be removed. Past payments stay in History.`
+            : ""
+        }
+        confirmLabel="Delete debt"
+        onConfirm={() => {
+          if (pendingDeleteDebt) deleteDebt(pendingDeleteDebt.id);
+          setPendingDeleteDebt(null);
+        }}
+        onCancel={() => setPendingDeleteDebt(null)}
+      />
 
       <GlassModal
         open={showAdd}

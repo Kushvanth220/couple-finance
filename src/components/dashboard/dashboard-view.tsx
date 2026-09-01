@@ -14,6 +14,7 @@ import {
   Receipt,
   TrendingUp,
 } from "lucide-react";
+import { AnimatedMoney } from "@/components/ui/animated-number";
 import { GlassCard } from "@/components/ui/glass-card";
 import { PersonTabs } from "@/components/ui/person-tabs";
 import {
@@ -307,11 +308,19 @@ export function DashboardView() {
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
                 <p className="text-[10px] text-muted">This month</p>
-                <p className="text-lg font-bold text-[#34c759] tabular-nums">+{formatCurrency(incomeTotal)}</p>
+                <AnimatedMoney
+                  value={incomeTotal}
+                  prefix="+"
+                  className="block text-lg font-bold text-[#34c759] kg-figure"
+                />
               </div>
               <div>
                 <p className="text-[10px] text-muted">This week</p>
-                <p className="text-lg font-bold text-[#34c759] tabular-nums">+{formatCurrency(weeklyIncomeTotal)}</p>
+                <AnimatedMoney
+                  value={weeklyIncomeTotal}
+                  prefix="+"
+                  className="block text-lg font-bold text-[#34c759] kg-figure"
+                />
               </div>
             </div>
           </div>
@@ -426,8 +435,8 @@ export function DashboardView() {
           </div>
         </div>
 
-        <p className="text-xl font-bold text-[#ff3b30] tabular-nums mb-3">
-          {formatCurrency(expensePeriodTotal)}
+        <p className="text-xl font-bold text-[#ff3b30] kg-figure mb-3">
+          <AnimatedMoney value={expensePeriodTotal} />
           <span className="text-[10px] font-medium text-muted ml-2">
             {expenseView === "weekly" ? "this week" : format(selectedDate, "MMMM yyyy")}
           </span>
@@ -495,8 +504,8 @@ export function DashboardView() {
               <Landmark className="w-3.5 h-3.5 text-[#ff3b30]" />
               <p className="text-xs font-semibold">Debts owed</p>
             </div>
-            <p className="text-xl font-bold text-[#ff3b30] tabular-nums mt-1">
-              {formatCurrency(outstandingDebts.total)}
+            <p className="text-xl font-bold text-[#ff3b30] kg-figure mt-1">
+              <AnimatedMoney value={outstandingDebts.total} />
             </p>
             <p className="text-[11px] text-muted mt-0.5">
               {outstandingDebts.activeCount} open · {outstandingDebts.creditCardBills} card bill{outstandingDebts.creditCardBills === 1 ? "" : "s"}

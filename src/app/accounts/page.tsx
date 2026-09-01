@@ -15,6 +15,7 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { GlassInput } from "@/components/ui/glass-input";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { useFinanceStore } from "@/store/finance-store";
 import {
@@ -23,6 +24,7 @@ import {
   getMonthlyIncome,
   getWeeklyIncome,
 } from "@/lib/calculations";
+import { AnimatedMoney } from "@/components/ui/animated-number";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/formatters";
 import { getAccountsForPerson, isSharedAccount } from "@/lib/accounts";
 import { SharedAccountActivity } from "@/components/accounts/shared-account-activity";
@@ -66,6 +68,14 @@ export default function AccountsPage() {
 
   const [sourceName, setSourceName] = useState("");
   const [editSourceId, setEditSourceId] = useState<string | null>(null);
+
+  const [pendingDelete, setPendingDelete] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    run: () => void;
+  } | null>(null);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const personAccounts = getAccountsForPerson(accounts, person);
   const personSources = incomeSources.filter((s) => s.person === person);
@@ -141,12 +151,38 @@ export default function AccountsPage() {
   const handleDeleteAccount = (account: Account) => {
     const linkedDebt = debts.some((d) => d.linkedAccountId === account.id);
     if (linkedDebt) {
-      alert("Cannot delete — this account is linked to a debt.");
+      setBlockedMessage(
+        `${account.name} is linked to a debt. Clear or unlink that debt first, then delete the account.`
+      );
       return;
     }
-    if (confirm(`Delete ${account.name}?`)) {
-      deleteAccount(account.id);
-    }
+    setPendingDelete({
+      title: "Delete account?",
+      message: `${account.name} will be removed. Its past transactions stay in History but will no longer show an account name.`,
+      confirmLabel: "Delete account",
+      run: () => deleteAccount(account.id),
+    });
+  };
+
+  const confirmDeleteSource = (source: { id: string; name: string }) => {
+    const linkedEntries = incomeEntries.filter((e) => e.sourceId === source.id).length;
+    setPendingDelete({
+      title: "Delete income source?",
+      message: linkedEntries
+        ? `"${source.name}" is used by ${linkedEntries} income ${linkedEntries === 1 ? "entry" : "entries"}. Those entries stay, but will show as "Unknown". Balances are not changed.`
+        : `"${source.name}" will be removed. Balances are not changed.`,
+      confirmLabel: "Delete source",
+      run: () => deleteIncomeSource(source.id),
+    });
+  };
+
+  const confirmDeleteIncome = (entry: { id: string; amount: number }) => {
+    setPendingDelete({
+      title: "Delete this income?",
+      message: `${formatCurrency(entry.amount)} will be removed from the account balance and its History entry deleted. This is saved to the deleted log.`,
+      confirmLabel: "Delete income",
+      run: () => deleteIncome(entry.id, person),
+    });
   };
 
   const getDepositLabel = (accountId: string, depositType: "cash" | "debit") => {
@@ -203,13 +239,14 @@ export default function AccountsPage() {
                       setSourceName(source.name);
                       setShowAddSource(true);
                     }}
-                    className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+                    className="tap-icon focus-ring p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
                   >
                     <Pencil className="w-3.5 h-3.5 text-muted" />
                   </button>
                   <button
-                    onClick={() => deleteIncomeSource(source.id)}
-                    className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+                    onClick={() => confirmDeleteSource(source)}
+                    className="tap-icon focus-ring p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+                    aria-label={`Delete income source ${source.name}`}
                   >
                     <Trash2 className="w-3.5 h-3.5 text-[#ff3b30]" />
                   </button>
@@ -274,14 +311,16 @@ export default function AccountsPage() {
                         setNewLimit(String(account.creditLimit ?? ""));
                         setAdjustNotes("");
                       }}
-                      className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
+                      className="tap-icon focus-ring p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
                       title={account.type === "credit" ? "Update balance" : "Adjust balance"}
                     >
                       <Pencil className="w-4 h-4 text-muted" />
                     </button>
                     <button
                       onClick={() => handleDeleteAccount(account)}
-                      className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
+                      className="tap-icon focus-ring p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
+                      aria-label={`Delete account ${account.name}`}
+                      title={`Delete ${account.name}`}
                     >
                       <Trash2 className="w-4 h-4 text-[#ff3b30]" />
                     </button>
@@ -293,7 +332,7 @@ export default function AccountsPage() {
                     <p className="text-xs text-muted">
                       {account.type === "credit" ? CREDIT_LABELS.cardBalance : "Balance"}
                     </p>
-                    <p className="text-2xl font-bold">{formatCurrency(account.balance)}</p>
+                    <AnimatedMoney value={account.balance} className="block text-2xl font-bold kg-figure" />
                   </div>
                   {account.type === "credit" && account.creditLimit != null && (
                     <div className="text-right">
@@ -350,8 +389,9 @@ export default function AccountsPage() {
                       +{formatCurrency(entry.amount)}
                     </span>
                     <button
-                      onClick={() => deleteIncome(entry.id)}
-                      className="p-1 rounded-lg hover:bg-black/5"
+                      onClick={() => confirmDeleteIncome(entry)}
+                      className="tap-icon focus-ring p-1 rounded-lg hover:bg-black/5"
+                      aria-label={`Delete income of ${formatCurrency(entry.amount)}`}
                     >
                       <Trash2 className="w-3 h-3 text-[#ff3b30]" />
                     </button>
@@ -461,6 +501,29 @@ export default function AccountsPage() {
           </GlassButton>
         </div>
       </GlassModal>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.title ?? ""}
+        message={pendingDelete?.message ?? ""}
+        confirmLabel={pendingDelete?.confirmLabel}
+        onConfirm={() => {
+          pendingDelete?.run();
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={blockedMessage !== null}
+        title="Can't delete this account"
+        message={blockedMessage ?? ""}
+        confirmLabel="Got it"
+        destructive={false}
+        cancelLabel="Close"
+        onConfirm={() => setBlockedMessage(null)}
+        onCancel={() => setBlockedMessage(null)}
+      />
 
       <GlassModal
         open={showAddSource}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { GrikMark } from "@/components/layout/grik-mark";
 import { BRAND_INITIALS, BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
@@ -62,15 +63,7 @@ function GrikSplashMark({ variant }: { variant: SplashVariant }) {
       <div className="grik-splash-monogram-wrap">
         <div className="grik-splash-monogram-shine" aria-hidden />
         <div className="grik-splash-monogram">
-          {BRAND_INITIALS.split("").map((letter, index) => (
-            <span
-              key={`${letter}-${index}`}
-              className="grik-splash-monogram-letter"
-              style={{ animationDelay: `${index * 0.06}s` }}
-            >
-              {letter}
-            </span>
-          ))}
+          <GrikMark className="grik-splash-rings" />
         </div>
       </div>
 

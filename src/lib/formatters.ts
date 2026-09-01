@@ -25,10 +25,14 @@ export function parseAppDateTime(
 }
 
 export function formatCurrency(amount: number): string {
+  // Whole dollars stay compact ("$4,000"), but anything with cents shows BOTH
+  // digits. minimumFractionDigits: 0 alone rendered 12.10 as "$12.1", which is
+  // not a currency amount.
+  const hasCents = Math.round(Math.abs(amount) * 100) % 100 !== 0;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: 0,
+    minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: 2,
   }).format(amount);
 }

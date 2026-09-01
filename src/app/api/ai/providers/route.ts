@@ -7,6 +7,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     providers: getAiProviderStatus(),
-    note: "Gemini, ChatGPT, and Grok each answer as hidden layers. The best reply is the output.",
+    note: "Gemini, ChatGPT, and Claude each answer as hidden layers. The best reply is the output.",
   });
 }

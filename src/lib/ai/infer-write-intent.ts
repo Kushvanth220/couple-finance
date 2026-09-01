@@ -232,17 +232,44 @@ export function mergePendingWrite(
 const EXPENSE_CATEGORY =
   "gas|grocery|groceries|food|rent|wifi|electric|amazon|costco|uber|doordash|coffee|target|walmart|dining|restaurant|phone";
 
-function parseExpenseAmount(text: string): number | null {
-  const patterns = [
-    /(?:spent|spend|paid|pay|expense|bought|add(?:ed)?(?:\s+an?)?\s+expenses?)\s+(?:about\s+)?(?:of\s+)?\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
-    /(?:spent|spend|paid|pay)\s+for\s+[a-z]+\s+\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
-    /\$\s*([\d,]+(?:\.\d{1,2})?)/,
-    /\b(?:it'?s|its)\s+\$?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:dollars?)?/i,
-    /\b(\d{1,5}(?:\.\d{1,2})?)\s*(?:dollars?|bucks)\b/i,
-    new RegExp(`\\b(\\d{1,5}(?:\\.\\d{1,2})?)\\s+(?:for\\s+)?(?:${EXPENSE_CATEGORY})\\b`, "i"),
-    new RegExp(`\\b(?:${EXPENSE_CATEGORY})\\s+\\$?\\s*(\\d{1,5}(?:\\.\\d{1,2})?)\\b`, "i"),
-    /\bsplit\s+(?:amount\s+)?(?:of\s+)?\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
-  ];
+/**
+ * Money actually leaving an account. Required before a loose amount can become
+ * an expense — without it "I have 4000 dollars" reads as a $4,000 purchase.
+ */
+const SPEND_CUE =
+  /\b(spent|spend|spending|paid|pay|paying|bought|buy|buying|purchased?|expenses?|cost|costs|charged?|billed)\b/i;
+
+/**
+ * The user reporting money they HAVE, not money they spent. These sentences
+ * answer "what's your balance?" and must never become an expense.
+ */
+const BALANCE_STATEMENT =
+  /\b(?:balance|i have|we have|it has|there(?:'s| is| are)|left|remaining|available|worth|in (?:my|the|our|his|her) account)\b/i;
+
+/**
+ * Negated, hypothetical, or future money. For a write that moves real money a
+ * missed expense is recoverable; a fabricated one is not — so bail on all of it.
+ */
+const NOT_A_REAL_SPEND =
+  /\b(?:not|never|nope|cancell?ed|cancell?ing|refunded|almost|nearly|instead of|about to|going to|gonna|planning|plan to|thinking|maybe|might|would|could|should|what if|how much|how many)\b|n['’]t\b|\bno\b|\bif\s+(?:i|we|you)\b|\bdo\s+(?:i|we)\s+(?:have|owe)\b/i;
+
+/** Amounts written right next to a spend verb — safe on their own. */
+const VERB_ANCHORED = [
+  /(?:spent|spend|paid|pay|expense|bought|add(?:ed)?(?:\s+an?)?\s+expenses?)\s+(?:about\s+)?(?:of\s+)?\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
+  /(?:spent|spend|paid|pay)\s+for\s+[a-z]+\s+\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
+  /(?:spent|spend|paid|pay|bought|buy)\s+(?:\w+\s+){0,3}for\s+\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
+  /\bsplit\s+(?:amount\s+)?(?:of\s+)?\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
+];
+
+/** Bare amounts. Only trustworthy when the sentence also says money went out. */
+const LOOSE_AMOUNT = [
+  /\$\s*([\d,]+(?:\.\d{1,2})?)/,
+  /\b(\d{1,5}(?:\.\d{1,2})?)\s*(?:dollars?|bucks)\b/i,
+  new RegExp(`\\b(\\d{1,5}(?:\\.\\d{1,2})?)\\s+(?:for\\s+)?(?:${EXPENSE_CATEGORY})\\b`, "i"),
+  new RegExp(`\\b(?:${EXPENSE_CATEGORY})\\s+\\$?\\s*(\\d{1,5}(?:\\.\\d{1,2})?)\\b`, "i"),
+];
+
+function firstAmount(text: string, patterns: RegExp[]): number | null {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
@@ -250,6 +277,24 @@ function parseExpenseAmount(text: string): number | null {
     if (amount != null && amount > 0 && amount < 1_000_000) return amount;
   }
   return null;
+}
+
+/**
+ * Deliberately conservative. A missed expense costs one more sentence of
+ * conversation; a fabricated one silently moves real money between two people
+ * and corrupts the Between Us balance, so every ambiguous case returns null.
+ */
+function parseExpenseAmount(text: string): number | null {
+  if (NOT_A_REAL_SPEND.test(text)) return null;
+
+  const anchored = firstAmount(text, VERB_ANCHORED);
+  if (anchored != null) return anchored;
+
+  // A bare number is an expense only if this sentence says money went out and
+  // is not simply reporting what sits in an account.
+  if (!SPEND_CUE.test(text)) return null;
+  if (BALANCE_STATEMENT.test(text)) return null;
+  return firstAmount(text, LOOSE_AMOUNT);
 }
 
 function prettyCategory(raw: string): string {
@@ -278,7 +323,9 @@ function inferExpense(text: string, speaker?: Person | null): AssistantToolCall 
       ...(accountName ? { account_name: accountName } : {}),
       ...(people.expense_for ? { expense_for: people.expense_for } : {}),
       ...(people.paid_by ? { paid_by: people.paid_by } : {}),
-      notes: text.slice(0, 180),
+      // No raw transcript here: `text` is a joined window of recent speech and
+      // was landing whole conversations (including Jarvis's own lines) in the
+      // saved note. The app writes its own description from the fields above.
     },
   };
 }
@@ -332,11 +379,11 @@ export function inferAssistantToolCall(
     const call = fromPrior ?? fromModel ?? fromHistory;
     if (!call) return null;
     const withSpeaker = applySpeakerToWrite(call, speaker);
-    const confirmed = {
-      ...withSpeaker,
-      args: { ...withSpeaker.args, user_confirmed: true },
-    };
-    return { call: confirmed, modelParts: functionCallParts(confirmed) };
+    // Deliberately NOT user_confirmed. "ok" is not consent for a write the user
+    // has never been shown — this used to guess an expense out of the whole
+    // history and save it outright. The caller must surface a preview and let
+    // the user confirm that exact item.
+    return { call: withSpeaker, modelParts: functionCallParts(withSpeaker) };
   }
 
   const reminder = inferReminder(normalizedMessage);

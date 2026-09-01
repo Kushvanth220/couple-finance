@@ -1,14 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
+/** Expenses live on the Spend page. Server-side 307 — see income/page.tsx. */
 export default function ExpensesPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/spend");
-  }, [router]);
-
-  return null;
+  redirect("/spend");
 }

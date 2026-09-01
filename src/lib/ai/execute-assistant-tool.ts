@@ -2,6 +2,7 @@
 
 import { format } from "date-fns";
 import { getAccountsForPerson } from "@/lib/accounts";
+import { roundMoney, splitMoney } from "@/lib/money";
 import { parseAiUserId } from "@/lib/ai/person";
 import {
   buildConfirmationToolResult,
@@ -189,8 +190,9 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
       }
       expenseShares = { kushvanth: kShare, grishma: gShare };
     } else if (splitEvenly) {
-      const half = amount / 2;
-      expenseShares = { kushvanth: half, grishma: half };
+      // Cent-exact so the two shares add back to the bill exactly.
+      const [kushvanth, grishma] = splitMoney(amount, 2);
+      expenseShares = { kushvanth, grishma };
     } else {
       return {
         id: call.id,
@@ -211,9 +213,9 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
     let gPaid = Number(call.args.grishma_paid_amount);
 
     if (!Number.isFinite(kPaid) || !Number.isFinite(gPaid) || kPaid + gPaid <= 0) {
-      const half = amount / 2;
-      kPaid = Number.isFinite(kPaid) && kPaid > 0 ? kPaid : half;
-      gPaid = Number.isFinite(gPaid) && gPaid > 0 ? gPaid : amount - kPaid;
+      const [halfK] = splitMoney(amount, 2);
+      kPaid = Number.isFinite(kPaid) && kPaid > 0 ? kPaid : halfK;
+      gPaid = Number.isFinite(gPaid) && gPaid > 0 ? gPaid : roundMoney(amount - kPaid);
     }
 
     if (!amountsMatchTotal(kPaid, gPaid, amount)) {
@@ -567,6 +569,66 @@ export function executeAssistantTool(
         };
       }
 
+      case "add_account": {
+        const name = String(call.args.name ?? "").trim();
+        const rawType = String(call.args.account_type ?? "").toLowerCase().trim();
+        const accountType =
+          rawType === "credit" || rawType === "debit" || rawType === "cash" ? rawType : null;
+
+        if (!name) {
+          return { id: call.id, name: call.name, result: { ok: false, error: "Account name required" } };
+        }
+        if (!accountType) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: "Is it a debit account, a credit card, or cash?" },
+          };
+        }
+
+        // Creating a second "GreenDot" would silently split their history, so
+        // match on name the same way the rest of the app resolves accounts.
+        const existing = store.accounts.find(
+          (account) => account.name.toLowerCase().trim() === name.toLowerCase()
+        );
+        if (existing) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              already_exists: true,
+              error: `"${existing.name}" already exists.`,
+            },
+          };
+        }
+
+        const owner = parseAiUserId(call.args.for_person) ?? person;
+        const startingBalance = Number(call.args.starting_balance);
+        const creditLimit = Number(call.args.credit_limit);
+
+        store.addAccount({
+          person: owner,
+          name,
+          type: accountType,
+          balance: Number.isFinite(startingBalance) ? roundMoney(startingBalance) : 0,
+          ...(accountType === "credit" && Number.isFinite(creditLimit)
+            ? { creditLimit: roundMoney(creditLimit) }
+            : {}),
+          ...(call.args.shared === true ? { shared: true } : {}),
+        });
+
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            message: `Added ${accountType} account "${name}".`,
+          },
+        };
+      }
+
       case "record_debt_payment": {
         const amount = Number(call.args.amount);
         if (!Number.isFinite(amount) || amount <= 0) {
@@ -832,8 +894,7 @@ export function executeAssistantTool(
         let kShare = Number(args.kushvanth_share);
         let gShare = Number(args.grishma_share);
         if (splitEvenly || !Number.isFinite(kShare) || !Number.isFinite(gShare)) {
-          kShare = amount / 2;
-          gShare = amount / 2;
+          [kShare, gShare] = splitMoney(amount, 2);
         }
         return {
           id: call.id,

@@ -21,8 +21,10 @@ import { getMonthlyExpensePaid } from "@/lib/monthly-expense-tracker";
 import {
   applyTransactionDeletion,
   ensureInterCoupleBaseline,
+  findIncomeTransactionForEntry,
   getInterCoupleUpdatesFromShares,
   recalculateInterCoupleState,
+  reverseDepositToAccount,
   type ExpenseShares,
 } from "@/lib/transaction-reversal";
 import { buildDeletedHistoryRecord } from "@/lib/deleted-history";
@@ -32,7 +34,6 @@ import { clearPersistedAppData, FINANCE_STORAGE_KEY } from "@/lib/reset-app-data
 import { pickRicherState, scoreFinanceState } from "@/lib/recover-finance-data";
 import { parseAppDateTime } from "@/lib/formatters";
 import { seedData } from "@/lib/seed-data";
-import { PERSON_LABELS } from "@/types";
 import type {
   Account,
   Debt,
@@ -92,7 +93,7 @@ interface FinanceActions {
   deleteIncomeSource: (id: string) => void;
   addIncome: (entry: Omit<IncomeEntry, "id">) => void;
   updateIncome: (id: string, updates: Partial<IncomeEntry>) => void;
-  deleteIncome: (id: string) => void;
+  deleteIncome: (id: string, deletedBy?: Person) => void;
 
   addSpendCategory: (name: string, keywords?: string[]) => void;
   updateSpendCategory: (id: string, updates: Partial<import("@/types").SpendCategory>) => void;
@@ -356,10 +357,64 @@ export const useFinanceStore = create<FinanceStore>()(
           ),
         })),
 
-      deleteIncome: (id) =>
-        set((state) => ({
-          incomeEntries: state.incomeEntries.filter((entry) => entry.id !== id),
-        })),
+      /**
+       * addIncome credits an account AND writes a History row, so removing the
+       * entry alone would leave the balance inflated and the row orphaned.
+       * Delete through the transaction so the balance is reversed and audited.
+       */
+      deleteIncome: (id, deletedBy) =>
+        set((state) => {
+          const entry = state.incomeEntries.find((item) => item.id === id);
+          if (!entry) return state;
+
+          const linked = findIncomeTransactionForEntry(entry, state.transactions);
+
+          if (linked) {
+            const result = applyTransactionDeletion({
+              accounts: state.accounts,
+              debts: state.debts,
+              transactions: state.transactions,
+              incomeEntries: state.incomeEntries,
+              interCoupleHistory: state.interCoupleHistory,
+              interCoupleBalance: state.interCoupleBalance,
+              monthlyExpenses: state.monthlyExpenses,
+              transactionId: linked.id,
+            });
+
+            if (result) {
+              const { deletionAudit, ...nextState } = result;
+              return {
+                ...nextState,
+                // The reversal matches on field equality, so drop this entry explicitly.
+                incomeEntries: nextState.incomeEntries.filter((item) => item.id !== id),
+                deletedHistory: [
+                  ...(state.deletedHistory ?? []),
+                  buildDeletedHistoryRecord({
+                    primaryTransactionId: deletionAudit.primaryTransactionId,
+                    removedTransactions: deletionAudit.removedTransactions,
+                    removedInterCoupleEntries: deletionAudit.removedInterCoupleEntries,
+                    removedIncomeEntry: deletionAudit.removedIncomeEntry ?? entry,
+                    monthlyExpense: deletionAudit.monthlyExpense,
+                    accounts: state.accounts,
+                    debts: state.debts,
+                    incomeSources: state.incomeSources,
+                    deletedBy: deletedBy ?? entry.person,
+                  }),
+                ],
+              };
+            }
+          }
+
+          // Legacy entry with no History row — still undo the deposit.
+          return {
+            accounts: reverseDepositToAccount(
+              state.accounts,
+              entry.depositAccountId,
+              entry.amount
+            ),
+            incomeEntries: state.incomeEntries.filter((item) => item.id !== id),
+          };
+        }),
 
       addSpendCategory: (name, keywords) =>
         set((state) => ({
@@ -780,7 +835,13 @@ export const useFinanceStore = create<FinanceStore>()(
 
           const newTransactions: Transaction[] = [];
 
-          if (cashSourceAccountId) {
+          // Only a CASH payment is topped up from another account. Without this
+          // check a stray cashSourceAccountId on a debit/credit payment wrote a
+          // phantom "withdrew $60 cash" row next to the real expense — two $60
+          // lines in History for one spend. applyPaymentFromAccount already
+          // guards the balances the same way; this keeps the ledger in step.
+          const payingAccount = state.accounts.find((a) => a.id === accountId);
+          if (cashSourceAccountId && payingAccount?.type === "cash") {
             const source = state.accounts.find((a) => a.id === cashSourceAccountId);
             newTransactions.push(
               createTransaction("cash_withdrawal", person, amount, {

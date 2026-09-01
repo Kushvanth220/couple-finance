@@ -50,7 +50,7 @@ export function PersonTabs(props: PersonTabsProps) {
             }
           }}
           className={cn(
-            "flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all duration-300",
+            "tap-card focus-ring flex-1 py-2.5 px-3 rounded-xl text-sm font-medium",
             value === id
               ? "bg-[#007aff] text-white shadow-md"
               : "text-muted hover:text-foreground"

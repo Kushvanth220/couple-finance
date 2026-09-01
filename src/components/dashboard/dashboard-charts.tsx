@@ -18,8 +18,6 @@ import { cn } from "@/lib/utils";
 
 const INCOME_COLOR = "#34c759";
 const SPEND_COLOR = "#ff3b30";
-const DEBT_COLOR = "#ff9500";
-const OTHER_COLOR = "#5856d6";
 const LEFT_COLOR = "#007aff";
 
 export type TrendPoint = {

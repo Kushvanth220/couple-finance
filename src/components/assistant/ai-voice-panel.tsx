@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Mic, MicOff, Trash2 } from "lucide-react";
-import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import {
   AssistantLiveOrb,
   type AssistantLiveOrbState,
 } from "@/components/assistant/assistant-live-orb";
+import { VoicePipeline } from "@/components/assistant/voice-pipeline";
 import type { LiveVoiceConnection } from "@/lib/ai/gemini-live-client";
 import {
   connectLiveVoiceWithRetry,
@@ -24,7 +24,7 @@ import {
   type MicStreamer,
 } from "@/lib/ai/audio-utils";
 import { executeAssistantTools } from "@/lib/ai/execute-assistant-tool";
-import { buildToolConfirmationPreview, isWriteTool, spokenSaveConfirmation, EXPENSE_PERSON_CHIPS, EXPENSE_PAID_BY_CHIPS, withExpensePerson, withPaidBy, accountChoicePrompt, withPickedAccount, writeToolNeedsAccount, expenseWriteNeedsPayer, sortAccountChips } from "@/lib/ai/assistant-confirmation";
+import { asProposedWrite, buildToolConfirmationPreview, isWriteTool, spokenSaveConfirmation, EXPENSE_PERSON_CHIPS, EXPENSE_PAID_BY_CHIPS, withExpensePerson, withPaidBy, accountChoicePrompt, withPickedAccount, writeToolNeedsAccount, expenseWriteNeedsPayer, sortAccountChips } from "@/lib/ai/assistant-confirmation";
 import {
   asksIfMoneyWasSaved,
   inferWriteFromRecentTalk,
@@ -111,7 +111,7 @@ const VOICE_STEPS = [
   "Say yes — or tap Yes, save. It will tell you the expenses are recorded.",
 ] as const;
 
-interface VoiceLine extends VoiceTranscriptLine {}
+type VoiceLine = VoiceTranscriptLine;
 
 interface AiVoicePanelProps {
   assistantName?: string;
@@ -189,9 +189,28 @@ export function AiVoicePanel({
   );
   const saveTimerRef = useRef<number | null>(null);
   const recentlyAffirmedRef = useRef(false);
+  /**
+   * Mirrors `pendingPreview` into a ref. The transcript handler runs on a stale
+   * closure, so it cannot read the state — but it MUST know whether the user has
+   * actually been shown the write they are about to confirm. A spoken "yes" is
+   * only consent for something that was on screen when they said it.
+   */
+  const previewShownRef = useRef<string | null>(null);
+
+  /**
+   * Identity of the write the user actually said yes to. The pending write keeps
+   * being re-inferred from later speech, so a "yes" for $40 must not silently
+   * complete a save that has since become $4,000.
+   */
+  const affirmedWriteRef = useRef<string | null>(null);
   const lastSavedRef = useRef<{ key: string; at: number } | null>(null);
   const lastPersistedRef = useRef("");
   const speakerRef = useRef<Person | null>(null);
+
+  const showWritePreview = useCallback((value: string | null) => {
+    previewShownRef.current = value;
+    setPendingPreview(value);
+  }, []);
   const transcriptSessionRef = useRef(
     createLiveTranscriptSession(setLines, (line) => {
       persistLineRef.current(line);
@@ -280,17 +299,17 @@ export function AiVoicePanel({
       if (merged) pendingWriteRef.current = merged;
       if (merged && isWriteTool(merged.name)) {
         if (expenseWriteNeedsPayer(merged)) {
-          setPendingPreview(buildToolConfirmationPreview(merged));
+          showWritePreview(buildToolConfirmationPreview(merged));
           setAwaitingConfirmation(true);
           setLiveHint("Who paid — Kushvanth, Grishma, or both?");
         } else if (writeToolNeedsAccount(merged)) {
           setAccountChoiceKind("pay-from");
           setAccountChoices(householdAccountChips());
-          setPendingPreview(buildToolConfirmationPreview(merged));
+          showWritePreview(buildToolConfirmationPreview(merged));
           setAwaitingConfirmation(false);
           setLiveHint("Which account should I use?");
         } else {
-          setPendingPreview(buildToolConfirmationPreview(merged));
+          showWritePreview(buildToolConfirmationPreview(merged));
           setAwaitingConfirmation(true);
         }
       }
@@ -301,9 +320,10 @@ export function AiVoicePanel({
           saveTimerRef.current = null;
         }
         recentlyAffirmedRef.current = false;
+        affirmedWriteRef.current = null;
         const pending = pendingWriteRef.current;
         if (pending?.name === "record_expense") {
-          setPendingPreview(buildToolConfirmationPreview(pending));
+          showWritePreview(buildToolConfirmationPreview(pending));
           setAwaitingConfirmation(true);
           setLiveHint(
             expenseWriteNeedsPayer(pending)
@@ -314,17 +334,42 @@ export function AiVoicePanel({
         return;
       }
 
-      const shouldSave = isShortAffirmation(text) || asksIfMoneyWasSaved(text);
-      if (shouldSave) recentlyAffirmedRef.current = true;
+      // Asking "did you save it?" must never CAUSE a save — it only reports.
+      if (asksIfMoneyWasSaved(text) && !isShortAffirmation(text)) {
+        const settled = lastSavedRef.current;
+        const recentlySaved = Boolean(settled && Date.now() - settled.at < 45000);
+        playerRef.current?.interrupt();
+        connectionRef.current?.sendGreeting(
+          `App result (do not call tools): ${JSON.stringify({
+            ok: recentlySaved,
+            saved: recentlySaved,
+          })}. ${
+            recentlySaved
+              ? "Say that it was recorded, in one short English sentence."
+              : 'Say: "It was not recorded." Then ask them to confirm the amount, who paid, and the account.'
+          } Do not save anything.`
+        );
+        return;
+      }
+
+      // Consent requires that the exact write was on screen when they agreed.
+      // Without this a bare "yes" — or, previously, merely saying your own name —
+      // committed a write the user had never been shown.
+      const previewShown = Boolean(previewShownRef.current);
+      const writeIdentity = merged ? `${merged.name}:${String(merged.args.amount ?? "")}` : null;
+      const shouldSave = isShortAffirmation(text) && previewShown;
+      if (shouldSave) {
+        recentlyAffirmedRef.current = true;
+        affirmedWriteRef.current = writeIdentity;
+      }
       const accountAnswerCompletesSave =
         Boolean(withAccount && merged && !writeToolNeedsAccount(merged) && !expenseWriteNeedsPayer(merged)) &&
         recentlyAffirmedRef.current &&
+        previewShown &&
+        // Same tool, same amount as the one they agreed to — nothing else.
+        affirmedWriteRef.current === writeIdentity &&
         !shouldSave;
-      const identityCompletesSave =
-        Boolean(identified) &&
-        recentlyAffirmedRef.current &&
-        Boolean(pendingWriteRef.current);
-      if (!shouldSave && !accountAnswerCompletesSave && !identityCompletesSave) return;
+      if (!shouldSave && !accountAnswerCompletesSave) return;
 
       const runSave = () => {
         const actor = speakerRef.current;
@@ -340,7 +385,9 @@ export function AiVoicePanel({
           );
           return;
         }
-        const pending = pendingWriteRef.current ?? inferred;
+        // Only the write that was previewed and agreed to — never `inferred`,
+        // which may have been re-derived from speech since the preview.
+        const pending = pendingWriteRef.current;
         const prepared = pending ? applySpeakerToWrite(pending, actor) : null;
         const call = prepared
           ? { ...prepared, args: { ...prepared.args, user_confirmed: true } }
@@ -359,6 +406,7 @@ export function AiVoicePanel({
           return;
         }
         if (expenseWriteNeedsPayer(call)) {
+          showWritePreview(buildToolConfirmationPreview(call));
           setAwaitingConfirmation(true);
           setLiveHint("Who paid — Kushvanth, Grishma, or both?");
           playerRef.current?.interrupt();
@@ -411,8 +459,9 @@ export function AiVoicePanel({
         if (saved) {
           pendingWriteRef.current = null;
           recentlyAffirmedRef.current = false;
+        affirmedWriteRef.current = null;
           setAwaitingConfirmation(false);
-          setPendingPreview(null);
+          showWritePreview(null);
           setAccountChoices([]);
           lastSavedRef.current = { key, at: Date.now() };
           const spoken = spokenSaveConfirmation(call);
@@ -420,6 +469,9 @@ export function AiVoicePanel({
           setLiveHint(spoken);
           window.setTimeout(() => setLastSavedBanner(null), 8000);
         } else if (result?.result?.needs_payer === true) {
+          if (pendingWriteRef.current) {
+            showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
+          }
           setAwaitingConfirmation(true);
           setLiveHint("Who paid — Kushvanth, Grishma, or both?");
         } else if (result?.result?.needs_cash_source === true) {
@@ -456,7 +508,7 @@ export function AiVoicePanel({
         runSave();
       }, 850);
     };
-  }, []);
+  }, [showWritePreview]);
 
   const orbState = useMemo(
     () =>
@@ -497,7 +549,7 @@ export function AiVoicePanel({
     setSpeaker(null);
     cleanupVoiceSession();
     setAwaitingConfirmation(false);
-    setPendingPreview(null);
+    showWritePreview(null);
     setLastSavedBanner(null);
     setAccountChoices([]);
     setToolBusy(false);
@@ -505,7 +557,7 @@ export function AiVoicePanel({
     setOutputLevel(0);
     setStatus("idle");
     setLiveHint("Voice session ended.");
-  }, [cleanupVoiceSession]);
+  }, [cleanupVoiceSession, showWritePreview]);
 
   const startVoice = useCallback(async () => {
     const startId = ++startGenerationRef.current;
@@ -637,11 +689,16 @@ export function AiVoicePanel({
           onToolCall: async (toolCall) => {
             if (startId !== startGenerationRef.current) return;
             setToolBusy(true);
-            const calls = (toolCall.functionCalls ?? []).map((call, index) => ({
-              id: call.id ?? `${call.name ?? "tool"}-${index}`,
-              name: call.name ?? "unknown",
-              args: call.args ?? {},
-            }));
+            // asProposedWrite: the model may hand back user_confirmed on its
+            // own. Consent has to come from the person, so strip it and let the
+            // preview + spoken yes below be the only way a write is committed.
+            const calls = (toolCall.functionCalls ?? []).map((call, index) =>
+              asProposedWrite({
+                id: call.id ?? `${call.name ?? "tool"}-${index}`,
+                name: call.name ?? "unknown",
+                args: call.args ?? {},
+              })
+            );
             if (calls.length === 0) {
               setToolBusy(false);
               return;
@@ -652,7 +709,7 @@ export function AiVoicePanel({
             if (writeCalls.length > 0 && !actor) {
               const writeCall = writeCalls[0]!;
               pendingWriteRef.current = mergePendingWrite(pendingWriteRef.current, writeCall);
-              setPendingPreview(buildToolConfirmationPreview(pendingWriteRef.current));
+              showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
               setAwaitingConfirmation(true);
               setLiveHint("Who am I talking to — Kushvanth or Grishma?");
               setToolBusy(false);
@@ -695,7 +752,7 @@ export function AiVoicePanel({
                 actor
               );
               pendingWriteRef.current = merged;
-              setPendingPreview(buildToolConfirmationPreview(merged));
+              showWritePreview(buildToolConfirmationPreview(merged));
             }
             const accountNeed = results.find((result) => result.response?.needs_account === true);
             const cashSourceNeed = results.find(
@@ -725,7 +782,7 @@ export function AiVoicePanel({
             if (savedMoney && writeCall) {
               lastSavedRef.current = { key: writeKey(writeCall), at: Date.now() };
               pendingWriteRef.current = null;
-              setPendingPreview(null);
+              showWritePreview(null);
               setAccountChoices([]);
               setAwaitingConfirmation(false);
               const spoken = spokenSaveConfirmation(writeCall);
@@ -735,6 +792,9 @@ export function AiVoicePanel({
             }
 
             if (pending && !savedMoney && !accountNeed && !cashSourceNeed) {
+              if (pendingWriteRef.current) {
+                showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
+              }
               setAwaitingConfirmation(true);
               setLiveHint(
                 payerNeed ||
@@ -885,7 +945,7 @@ export function AiVoicePanel({
       );
       setLiveHint(blocked ? "Microphone is blocked." : "Could not start voice session.");
     }
-  }, [assistantName, autoStart, cleanupVoiceSession, stopVoice, voiceGender]);
+  }, [assistantName, autoStart, cleanupVoiceSession, showWritePreview, stopVoice, voiceGender]);
 
   startVoiceRef.current = startVoice;
 
@@ -929,7 +989,7 @@ export function AiVoicePanel({
         event.preventDefault();
         pendingWriteRef.current = null;
         setAwaitingConfirmation(false);
-        setPendingPreview(null);
+        showWritePreview(null);
         setLiveHint("Not saved — tell me what to change.");
         playerRef.current?.interrupt();
         connectionRef.current?.sendGreeting(
@@ -939,7 +999,7 @@ export function AiVoicePanel({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [awaitingConfirmation]);
+  }, [awaitingConfirmation, showWritePreview]);
 
   useEffect(() => {
     return () => {
@@ -966,7 +1026,7 @@ export function AiVoicePanel({
       : [];
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       {error ? (
         <div
           role="alert"
@@ -991,7 +1051,7 @@ export function AiVoicePanel({
                     if (pendingWriteRef.current) {
                       const next = applySpeakerToWrite(pendingWriteRef.current, chip.id);
                       pendingWriteRef.current = next;
-                      setPendingPreview(buildToolConfirmationPreview(next));
+                      showWritePreview(buildToolConfirmationPreview(next));
                     }
                     playerRef.current?.interrupt();
                     connectionRef.current?.sendGreeting(speakingWithConfirmedPrompt(chip.id));
@@ -1034,7 +1094,7 @@ export function AiVoicePanel({
                     if (!pending) return;
                     const next = withPickedAccount(pending, account, accountChoiceKind);
                     pendingWriteRef.current = next;
-                    setPendingPreview(buildToolConfirmationPreview(next));
+                    showWritePreview(buildToolConfirmationPreview(next));
                     setAccountChoices([]);
                     setAwaitingConfirmation(true);
                     setLiveHint('Say "yes" or tap Yes, save.');
@@ -1072,7 +1132,7 @@ export function AiVoicePanel({
                             args: withExpensePerson(pending.args, chip.id),
                           };
                           pendingWriteRef.current = next;
-                          setPendingPreview(buildToolConfirmationPreview(next));
+                          showWritePreview(buildToolConfirmationPreview(next));
                         }}
                         className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
                           selected
@@ -1100,7 +1160,7 @@ export function AiVoicePanel({
                             args: withPaidBy(pending.args, chip.id),
                           };
                           pendingWriteRef.current = next;
-                          setPendingPreview(buildToolConfirmationPreview(next));
+                          showWritePreview(buildToolConfirmationPreview(next));
                         }}
                         className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
                           selected
@@ -1129,7 +1189,7 @@ export function AiVoicePanel({
                         args: { ...pending.args, category: category.name },
                       };
                       pendingWriteRef.current = next;
-                      setPendingPreview(buildToolConfirmationPreview(next));
+                      showWritePreview(buildToolConfirmationPreview(next));
                     }}
                     className="min-h-11 rounded-full border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/10 px-3.5 py-2 text-[12px] font-semibold text-foreground"
                   >
@@ -1154,8 +1214,9 @@ export function AiVoicePanel({
                 onClick={() => {
                   pendingWriteRef.current = null;
                   recentlyAffirmedRef.current = false;
+        affirmedWriteRef.current = null;
                   setAwaitingConfirmation(false);
-                  setPendingPreview(null);
+                  showWritePreview(null);
                   setLiveHint("Not saved — tell me what to change.");
                   playerRef.current?.interrupt();
                   connectionRef.current?.sendGreeting(
@@ -1171,53 +1232,47 @@ export function AiVoicePanel({
         </div>
       ) : null}
 
-      <div className={compactOrb ? "assistant-live-orb-stage assistant-live-orb-stage-compact" : "assistant-live-orb-stage"}>
-        <AssistantLiveOrb
-          state={orbState}
-          inputLevel={inputLevel}
-          outputLevel={outputLevel}
-          label={orbLabel}
-          size={compactOrb ? "md" : "lg"}
-        />
-
-        <div className="mt-3 flex items-center gap-2">
-          <span
-            className={`text-[10px] font-semibold uppercase tracking-wide ${
-              status === "live"
-                ? "text-[#a8b4ff]"
-                : status === "connecting"
-                  ? "text-[#c4ceff]"
-                  : "text-white/50"
-            }`}
-          >
-            {status}
-          </span>
-          {speaker ? (
-            <span className="text-[10px] text-white/45">· Talking to {PERSON_LABELS[speaker]}</span>
-          ) : null}
+      {/* Compact orb + the real voice pipeline. The orb is deliberately small:
+          at full size it swallowed the panel and left no room for the chat. */}
+      <div className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 space-y-2">
+        <div className="flex items-center gap-2.5">
+          <AssistantLiveOrb
+            state={orbState}
+            inputLevel={inputLevel}
+            outputLevel={outputLevel}
+            size="sm"
+            className="assistant-gemini-orb-inline shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11.5px] font-semibold text-white/85">{orbLabel}</p>
+            <p className="truncate text-[9.5px] text-white/45">
+              {status}
+              {speaker ? ` · ${PERSON_LABELS[speaker]}` : ""}
+              {sessionActive ? " · Gemini voice" : ""}
+            </p>
+          </div>
           {sessionActive ? (
-            <span className="text-[10px] text-white/45">· Gemini voice · ChatGPT &amp; Grok on text</span>
-          ) : null}
-        </div>
-
-        <div className="mt-4 w-full max-w-xs">
-          {sessionActive ? (
-            <GlassButton
+            <button
               type="button"
-              variant="danger"
-              className="w-full"
               onClick={() => void stopVoice()}
+              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#ff3b30] px-3 py-1.5 text-[11px] font-semibold text-white"
             >
-              <MicOff className="w-4 h-4" />
-              {status === "connecting" ? "Cancel" : "Stop voice"}
-            </GlassButton>
+              <MicOff className="h-3.5 w-3.5" />
+              {status === "connecting" ? "Cancel" : "Stop"}
+            </button>
           ) : (
-            <GlassButton type="button" className="w-full" onClick={() => void startVoice()}>
-              <Mic className="w-4 h-4" />
-              {status === "error" ? "Try again" : "Start voice"}
-            </GlassButton>
+            <button
+              type="button"
+              onClick={() => void startVoice()}
+              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#007aff] px-3 py-1.5 text-[11px] font-semibold text-white"
+            >
+              <Mic className="h-3.5 w-3.5" />
+              {status === "error" ? "Retry" : "Start"}
+            </button>
           )}
         </div>
+
+        <VoicePipeline state={orbState} toolBusy={toolBusy} active={sessionActive} />
       </div>
 
       {!sessionActive && !hasUsedVoice ? (
@@ -1239,13 +1294,7 @@ export function AiVoicePanel({
       ) : null}
 
       <div
-        className={`assistant-voice-transcript rounded-xl overflow-y-auto p-3 space-y-2.5 transition-all ${
-          compactOrb
-            ? "min-h-[12vh] max-h-[22vh]"
-            : sessionActive
-              ? "min-h-[22vh] max-h-[32vh]"
-              : "min-h-[28vh] max-h-[36vh]"
-        }`}
+        className="assistant-voice-transcript flex-1 min-h-[7rem] rounded-xl overflow-y-auto p-3 space-y-2.5"
       >
         {lines.length > 0 ? (
           <div className="flex justify-end">
@@ -1283,7 +1332,7 @@ export function AiVoicePanel({
               className={`flex ${line.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`assistant-voice-bubble max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed break-words ${
+                className={`assistant-voice-bubble max-w-[88%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed break-words ${
                   line.role === "user"
                     ? "assistant-voice-bubble-user"
                     : "assistant-voice-bubble-model"

@@ -54,8 +54,18 @@ function buildModel(
   });
 }
 
+/**
+ * Gemini rejects a history whose first turn is from the model
+ * ("First content should be with role 'user', got model") and fails in 0ms.
+ * That happens whenever the assistant spoke first or the 8-turn window happens
+ * to start on a model reply. Drop the leading model turns so the draft layer
+ * actually runs — when it fails, the cascade falls back to the paid layers on
+ * the full prompt, which is the most expensive path there is.
+ */
 function mapHistory(history: GeminiChatTurn[]): Content[] {
-  return history.map((turn) => ({
+  const firstUser = history.findIndex((turn) => turn.role === "user");
+  const usable = firstUser === -1 ? [] : history.slice(firstUser);
+  return usable.map((turn) => ({
     role: turn.role,
     parts: [{ text: turn.content }],
   }));

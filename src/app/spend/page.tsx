@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { GlassModal } from "@/components/ui/glass-modal";
 import { SpendCategoryManager } from "@/components/spend/spend-category-manager";
 import { useFinanceStore } from "@/store/finance-store";
 import { getAccountsForPerson, isSharedAccount } from "@/lib/accounts";
@@ -21,6 +20,7 @@ import {
 import { getInterCoupleUpdatesFromShares } from "@/lib/transaction-reversal";
 import { describeInterCoupleFromSpend } from "@/lib/inter-couple";
 import { PERSON_LABELS, type Account, type Person, type SpendCategory } from "@/types";
+import { splitMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 type Step = "details" | "payment" | "cash-source" | "done";
@@ -113,16 +113,18 @@ export default function SpendPage() {
       setKushShare("0");
       setGrishShare(String(total));
     } else if (resetSplit || (kushShare === "" && grishShare === "")) {
-      const half = total / 2;
-      setKushShare(String(half));
-      setGrishShare(String(half));
+      // Cent-exact: an odd total gives the extra cent to one side so the two
+      // halves add back to the bill instead of both rounding up in the display.
+      const [kush, grish] = splitMoney(total, 2);
+      setKushShare(String(kush));
+      setGrishShare(String(grish));
     }
   };
 
   const applyEvenExpenseSplit = (total: number) => {
-    const half = total / 2;
-    setExpenseShareKush(String(half));
-    setExpenseShareGrish(String(half));
+    const [kush, grish] = splitMoney(total, 2);
+    setExpenseShareKush(String(kush));
+    setExpenseShareGrish(String(grish));
   };
 
   const handleAmountChange = (val: string) => {
@@ -871,7 +873,12 @@ function CompactSplitInputs({
             onClick={onEvenSplit}
             className="text-[10px] text-[#007aff] font-medium px-0.5"
           >
-            50 / 50 ({formatCurrency(total / 2)} each)
+            {(() => {
+              const [a, b] = splitMoney(total, 2);
+              return a === b
+                ? `50 / 50 (${formatCurrency(a)} each)`
+                : `50 / 50 (${formatCurrency(a)} / ${formatCurrency(b)})`;
+            })()}
           </button>
         </>
       )}

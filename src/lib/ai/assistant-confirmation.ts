@@ -9,6 +9,7 @@ export const ASSISTANT_WRITE_TOOLS = new Set([
   "record_debt_payment",
   "pay_debt_from_account",
   "adjust_account_balance",
+  "add_account",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -22,6 +23,18 @@ export function isToolConfirmed(args: Record<string, unknown>): boolean {
 export function stripConfirmationArg(args: Record<string, unknown>): Record<string, unknown> {
   const { user_confirmed, ...rest } = args;
   return rest;
+}
+
+/**
+ * Consent belongs to the person, never to the model. A tool call produced by an
+ * LLM (or inferred from speech) can arrive already claiming `user_confirmed`,
+ * which would save real money with nothing shown on screen. Strip that claim so
+ * the write is forced back through the app's own confirmation UI, where the
+ * amount is displayed and a human agrees to that exact item.
+ */
+export function asProposedWrite(call: AssistantToolCall): AssistantToolCall {
+  if (!isWriteTool(call.name) || !isToolConfirmed(call.args)) return call;
+  return { ...call, args: stripConfirmationArg(call.args) };
 }
 
 function personLabel(value: unknown, fallback = "someone") {
@@ -187,6 +200,12 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
       return `Pay ${moneyLabel(args.amount)} toward ${String(args.debt_name ?? args.debt_id ?? "a debt")} from ${String(args.from_account_name ?? args.from_account_id ?? "an account")}.`;
     case "adjust_account_balance":
       return `Set ${String(args.account_name ?? args.account_id ?? "the account")} balance to ${moneyLabel(args.new_balance)}.`;
+    case "add_account": {
+      const kind = String(args.account_type ?? "account");
+      const opening = Number(args.starting_balance);
+      const balance = Number.isFinite(opening) && opening !== 0 ? ` starting at ${moneyLabel(opening)}` : "";
+      return `Add a new ${kind} account "${String(args.name ?? "account")}"${balance}.`;
+    }
     default:
       return `Save this ${call.name.replace(/_/g, " ")} action.`;
   }
@@ -200,6 +219,8 @@ export function spokenSaveConfirmation(call: AssistantToolCall): string {
       return "The income is recorded.";
     case "adjust_account_balance":
       return "The balance is updated.";
+    case "add_account":
+      return "The account is added.";
     case "save_reminder":
       return "Got it.";
     default:

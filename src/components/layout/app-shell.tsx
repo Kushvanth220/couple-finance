@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { GrikLogo } from "@/components/layout/grik-logo";
 import { DesktopNav } from "@/components/layout/desktop-nav";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
@@ -8,6 +9,10 @@ import { AssistantProvider } from "@/components/assistant/assistant-context";
 import { SyncStatusBadge } from "@/components/sync/sync-status";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  // Keying <main> on the route replays the entrance animation on every
+  // navigation, so pages arrive instead of blinking into place.
+  const pathname = usePathname();
+
   return (
     <AssistantProvider>
       <div className="min-h-dvh flex flex-col">
@@ -21,7 +26,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 pb-[calc(6.75rem+env(safe-area-inset-bottom))] md:pb-8">
+      <main
+        key={pathname}
+        className="kg-rise flex-1 max-w-6xl w-full mx-auto px-4 py-6 pb-[calc(6.75rem+env(safe-area-inset-bottom))] md:pb-8"
+      >
         {children}
       </main>
 

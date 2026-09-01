@@ -8,7 +8,7 @@ import {
 } from "@/lib/ai/gemini-client";
 import {
   generateChatGptReply,
-  generateGrokReply,
+  generateClaudeReply,
   getAiProviderStatus,
   type AiProviderId,
 } from "@/lib/ai/providers";
@@ -23,6 +23,68 @@ export type CouncilChatOutcome = GeminiChatOutcome & {
   providers: AiProviderId[];
 };
 
+/** The household system prompt is large — give each hidden layer room to finish before it's dropped. */
+const HIDDEN_LAYER_TIMEOUT_MS = 6000;
+
+/** What the request is actually doing right now — reported to the client as it happens. */
+export type CouncilStage = "input" | "draft" | "review" | "merge" | "output";
+
+export type LayerStatus = "pending" | "answered" | "failed" | "skipped";
+
+/** Gemini runs on a free tier; ChatGPT and Claude are billed per token. */
+export type LayerRole = "free" | "paid";
+
+export const LAYER_ROLES: Record<AiProviderId, LayerRole> = {
+  gemini: "free",
+  chatgpt: "paid",
+  claude: "paid",
+};
+
+export interface CouncilProgress {
+  onStage?: (stage: CouncilStage) => void;
+  onLayer?: (
+    id: AiProviderId,
+    status: LayerStatus,
+    meta?: { ms?: number; role?: LayerRole }
+  ) => void;
+  /** Whether the paid review ran this turn, and why — drives the UI and the savings note. */
+  onCascade?: (info: { reviewed: boolean; reason: string }) => void;
+}
+
+/**
+ * Report each layer the moment it settles, rather than after all of them do —
+ * this is what makes the client's graph reflect real timing.
+ */
+function trackLayer<T>(
+  id: AiProviderId,
+  promise: Promise<T>,
+  isUsable: (value: T) => boolean,
+  progress?: CouncilProgress
+): Promise<T> {
+  const startedAt = Date.now();
+  return promise.then(
+    (value) => {
+      const ms = Date.now() - startedAt;
+      progress?.onLayer?.(id, isUsable(value) ? "answered" : "failed", {
+        ms,
+        role: LAYER_ROLES[id],
+      });
+      return value;
+    },
+    (error) => {
+      const ms = Date.now() - startedAt;
+      progress?.onLayer?.(id, "failed", { ms, role: LAYER_ROLES[id] });
+      // Layer errors are swallowed by allSettled — log them or a provider can
+      // sit broken (wrong model, no credits) while the UI still shows it "Live".
+      console.warn(
+        `[council] ${id} failed after ${ms}ms:`,
+        error instanceof Error ? error.message : error
+      );
+      throw error;
+    }
+  );
+}
+
 interface CouncilRequest {
   userId: AiUserId;
   financeContext: string;
@@ -32,6 +94,7 @@ interface CouncilRequest {
   speakingWith?: AiUserId | null;
   history: GeminiChatTurn[];
   message: string;
+  progress?: CouncilProgress;
 }
 
 interface HiddenCandidate {
@@ -39,29 +102,95 @@ interface HiddenCandidate {
   text: string;
 }
 
-const HIDDEN_LAYER_RULES = `You are one hidden layer in a 3-model network (Gemini, ChatGPT, Grok). All three are equals.
+const HIDDEN_LAYER_RULES = `You are one hidden layer in a 3-model network (Gemini, ChatGPT, Claude). All three are equals.
 Answer the user's household-finance question yourself. Do not wait for another model.
-English only. Short. Warm. One question at a time.
+ALWAYS reply in English, whatever language the user used. Never mirror their language, never mix languages, never output non-English script. Short. Warm. One question at a time.
 Never invent balances or transactions — use the finance snapshot.
 NEVER say you updated, adjusted, saved, or recorded money unless this turn includes a tool result with saved true.
 If they want to change Green Dot or any account balance and already gave the number, call the tool — do not only talk.
 If they say yes after a balance/expense preview, call the write tool with user_confirmed true. Do not say "updating now."
 If they ask to remember/remind something, call save_reminder. Do not talk about account balances.
-Never mention Gemini, ChatGPT, Grok, OpenAI, xAI, or that you are a hidden layer.`;
+Never mention Gemini, ChatGPT, Claude, OpenAI, Anthropic, or that you are a hidden layer.`;
+
+/**
+ * The paid layers no longer re-answer the question from scratch — they check the
+ * free layer's draft. This is the whole cost saving: the full household prompt is
+ * ~5,000 input tokens, this one is ~235, so a review costs about an eighth of an
+ * independent answer while still catching bad arithmetic and invented balances.
+ */
+const REVIEW_LAYER_RULES = `You are checking one draft reply for a household finance assistant used by Kushvanth and Grishma.
+
+If the draft is correct, complete, and safe, reply with exactly: APPROVE
+Otherwise reply with the corrected message only — one or two short sentences, then at most one question. No preamble, no explanation of what you changed, no mention of a draft or a review.
+
+Reject or fix a draft that: gets arithmetic wrong, splits an amount into shares that do not add up to the total, states a balance that contradicts the facts given, claims money was saved or recorded, or contains non-English text.
+Never claim anything was saved. English only.`;
+
+/** Reviewer said the draft was fine, in any of the shapes models actually emit. */
+function isApproval(text: string): boolean {
+  return /^\s*approve\b[.!]?\s*$/i.test(text);
+}
+
+/**
+ * Deciding when a second opinion is worth real money. Arithmetic and shared-bill
+ * splits are exactly where a wrong answer costs them, so those always escalate;
+ * greetings and one-word turns never do.
+ */
+function reviewDecision(draft: string, userMessage: string): { reviewed: boolean; reason: string } {
+  const msg = userMessage.trim();
+  const hasMoney = /\$\s?\d|\b\d+\.\d{2}\b/.test(draft);
+  const asksForMath =
+    /\b(split|divide|share|total|breakdown|how much|net worth|owes?|balance|sum|each|left|per person)\b/i.test(
+      msg
+    );
+  const smallTalk =
+    /^(hi|hey|hello|yo|good (morning|afternoon|evening|night)|thanks|thank you|ok|okay|yes|yeah|no|nope|bye)\b/i.test(
+      msg
+    );
+
+  if (hasMoney) return { reviewed: true, reason: "money in the answer" };
+  if (asksForMath) return { reviewed: true, reason: "asked for a calculation" };
+  if (smallTalk) return { reviewed: false, reason: "small talk" };
+  if (draft.length > 200) return { reviewed: true, reason: "long answer" };
+  return { reviewed: false, reason: "simple answer" };
+}
+
+/** Compact facts for the reviewer — enough to catch an invented balance, no more. */
+function reviewFacts(financeContext: string): string {
+  return financeContext.slice(0, 700);
+}
 
 const OUTPUT_LAYER_RULES = `You are the output layer of a 3-model network.
-Three hidden layers answered independently. Produce ONE best English reply for the user.
+Three hidden layers answered independently. Produce ONE best reply, always in English — never in another language and never mixing languages, regardless of what the user wrote.
 Keep correct numbers. Drop guesses that conflict with the finance snapshot.
 NEVER claim a balance/expense/income was saved unless a hidden layer cites a tool result with saved true.
 If any hidden layer pretended a save happened, discard that and ask for the missing number or a yes instead.
 One or two short sentences, then at most one question.
 Never mention the models or that this was a vote.`;
 
+/**
+ * Hard guard, not just a prompt rule: any reply containing non-Latin script is
+ * rejected so another layer's English answer wins instead. Covers Devanagari,
+ * Bengali, Gurmukhi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam,
+ * Sinhala, Thai, Arabic, Hiragana/Katakana, CJK and Hangul.
+ */
+const NON_ENGLISH_OUTPUT =
+  /[ऀ-ॿঀ-৿਀-੿઀-૿଀-୿஀-௿ఀ-౿ಀ-೿ഀ-ൿ඀-෿฀-๿؀-ۿ぀-ヿ一-鿿가-힯]/;
+
+export function isEnglishOutput(text: string): boolean {
+  return !NON_ENGLISH_OUTPUT.test(text);
+}
+
 function isUsableReply(text: string | null | undefined): text is string {
   if (!text) return false;
   const trimmed = text.trim();
   if (trimmed.length < 2 || trimmed.length > 800) return false;
-  if (/as an ai|language model|chatgpt|openai|grok|gemini|hidden layer/i.test(trimmed)) {
+  if (!isEnglishOutput(trimmed)) return false;
+  if (
+    /as an ai|language model|chatgpt|openai|gemini|claude|anthropic|hidden layer/i.test(
+      trimmed
+    )
+  ) {
     return false;
   }
   return true;
@@ -125,13 +254,25 @@ function hiddenUserPayload(options: CouncilRequest, extra?: string): string {
     .join("\n\n");
 }
 
-async function runHiddenLayers(
+/**
+ * Draft → review cascade.
+ *
+ * Step 1 runs the FREE layer (Gemini) with the full household prompt; it also
+ * drives tool calls. Step 2 asks the PAID layers to check that draft with a tiny
+ * prompt, but only when a second opinion is worth paying for. Previously all
+ * three answered independently off the same ~5,000-token prompt, so every turn
+ * billed two full-price answers whether or not they added anything.
+ */
+async function runCascade(
   options: CouncilRequest,
   extra?: string,
   skipGemini = false
 ): Promise<{ gemini: GeminiChatOutcome | null; candidates: HiddenCandidate[] }> {
   const status = getAiProviderStatus();
-  const system = [
+  const configured = (id: AiProviderId) => Boolean(status.find((item) => item.id === id)?.configured);
+  const { progress } = options;
+
+  const fullSystem = [
     buildHouseholdSystemInstruction(options.financeContext, {
       assistantName: options.assistantName,
       behaviorInstructions: options.behaviorInstructions,
@@ -141,43 +282,120 @@ async function runHiddenLayers(
     HIDDEN_LAYER_RULES,
   ].join("\n\n");
   const user = hiddenUserPayload(options, extra);
-  const geminiOn = !skipGemini && status.find((item) => item.id === "gemini")?.configured;
-  const chatgptOn = status.find((item) => item.id === "chatgpt")?.configured;
-  const grokOn = status.find((item) => item.id === "grok")?.configured;
 
-  const [geminiResult, chatgptResult, grokResult] = await Promise.allSettled([
-    geminiOn
-      ? extra
-        ? generateGeminiPlainReply(system, user).then(
+  const geminiOn = !skipGemini && configured("gemini");
+  const paidLayers = (["chatgpt", "claude"] as const).filter(configured);
+
+  // ---- Step 1: the free draft ------------------------------------------
+  progress?.onStage?.("draft");
+  if (geminiOn) progress?.onLayer?.("gemini", "pending", { role: "free" });
+  else progress?.onLayer?.("gemini", "failed", { role: "free" });
+
+  let gemini: GeminiChatOutcome | null = null;
+  if (geminiOn) {
+    try {
+      const draftPromise: Promise<GeminiChatOutcome> = extra
+        ? generateGeminiPlainReply(fullSystem, user).then(
             (reply) => ({ kind: "reply" as const, reply }) satisfies GeminiChatOutcome
           )
-        : generateGeminiReply(options)
-      : Promise.reject(new Error("Gemini is not configured.")),
-    chatgptOn
-      ? withTimeout(generateChatGptReply(system, user), 2800)
-      : Promise.reject(new Error("ChatGPT is off.")),
-    grokOn
-      ? withTimeout(generateGrokReply(system, user), 2800)
-      : Promise.reject(new Error("Grok is off.")),
-  ]);
-
-  const candidates: HiddenCandidate[] = [];
-  let gemini: GeminiChatOutcome | null = null;
-
-  if (geminiResult.status === "fulfilled") {
-    gemini = geminiResult.value;
-    if (gemini.kind === "reply" && isUsableReply(gemini.reply)) {
-      candidates.push({ id: "gemini", text: gemini.reply });
+        : generateGeminiReply(options);
+      gemini = await trackLayer<GeminiChatOutcome>(
+        "gemini",
+        draftPromise,
+        // A tool call is real work too, not just a text reply.
+        (outcome: GeminiChatOutcome) =>
+          outcome.kind === "tool_calls" || isUsableReply(outcome.reply),
+        progress
+      );
+    } catch {
+      gemini = null;
     }
   }
 
-  if (chatgptResult.status === "fulfilled" && isUsableReply(chatgptResult.value)) {
-    candidates.push({ id: "chatgpt", text: chatgptResult.value });
+  // A tool call goes straight to the app's confirmation gate — nothing to review.
+  if (gemini?.kind === "tool_calls") {
+    for (const id of paidLayers) progress?.onLayer?.(id, "skipped", { role: "paid" });
+    progress?.onCascade?.({ reviewed: false, reason: "tool call — no review needed" });
+    return { gemini, candidates: [] };
   }
 
-  if (grokResult.status === "fulfilled" && isUsableReply(grokResult.value)) {
-    candidates.push({ id: "grok", text: grokResult.value });
+  const draft = gemini?.kind === "reply" && isUsableReply(gemini.reply) ? gemini.reply : null;
+
+  // ---- Fallback: no free draft, so the paid layers answer in full ------
+  if (!draft) {
+    if (paidLayers.length === 0) return { gemini, candidates: [] };
+    progress?.onStage?.("review");
+    for (const id of paidLayers) progress?.onLayer?.(id, "pending", { role: "paid" });
+    progress?.onCascade?.({ reviewed: true, reason: "free layer unavailable" });
+
+    const settled = await Promise.allSettled(
+      paidLayers.map((id) =>
+        trackLayer(
+          id,
+          withTimeout(
+            id === "chatgpt"
+              ? generateChatGptReply(fullSystem, user)
+              : generateClaudeReply(fullSystem, user),
+            HIDDEN_LAYER_TIMEOUT_MS
+          ),
+          isUsableReply,
+          progress
+        )
+      )
+    );
+    const candidates: HiddenCandidate[] = [];
+    settled.forEach((result, index) => {
+      if (result.status === "fulfilled" && isUsableReply(result.value)) {
+        candidates.push({ id: paidLayers[index]!, text: result.value });
+      }
+    });
+    return { gemini, candidates };
   }
+
+  const candidates: HiddenCandidate[] = [{ id: "gemini", text: draft }];
+
+  // ---- Step 2: is a paid second opinion worth it? ----------------------
+  const decision = reviewDecision(draft, options.message);
+  progress?.onCascade?.(decision);
+
+  if (!decision.reviewed || paidLayers.length === 0) {
+    for (const id of paidLayers) progress?.onLayer?.(id, "skipped", { role: "paid" });
+    return { gemini, candidates };
+  }
+
+  progress?.onStage?.("review");
+  for (const id of paidLayers) progress?.onLayer?.(id, "pending", { role: "paid" });
+
+  const reviewUser = [
+    `Question: ${options.message}`,
+    `Facts: ${reviewFacts(options.financeContext)}`,
+    `Draft: ${draft}`,
+  ].join("\n\n");
+
+  const reviews = await Promise.allSettled(
+    paidLayers.map((id) =>
+      trackLayer(
+        id,
+        withTimeout(
+          id === "chatgpt"
+            ? generateChatGptReply(REVIEW_LAYER_RULES, reviewUser)
+            : generateClaudeReply(REVIEW_LAYER_RULES, reviewUser),
+          HIDDEN_LAYER_TIMEOUT_MS
+        ),
+        // An APPROVE is a valid, useful answer even though it is not a reply.
+        (text) => isApproval(text) || isUsableReply(text),
+        progress
+      )
+    )
+  );
+
+  // A correction becomes a candidate; a bare APPROVE just endorses the draft.
+  reviews.forEach((result, index) => {
+    if (result.status !== "fulfilled") return;
+    const text = result.value.trim();
+    if (isApproval(text) || !isUsableReply(text)) return;
+    candidates.push({ id: paidLayers[index]!, text });
+  });
 
   return { gemini, candidates };
 }
@@ -281,6 +499,7 @@ async function outputLayer(
   if (candidates.length === 0) {
     throw new Error("All hidden layers failed.");
   }
+  options.progress?.onStage?.("merge");
   if (candidates.length === 1) {
     return { reply: candidates[0]!.text, providers };
   }
@@ -300,40 +519,61 @@ ${snapshot}
 
 Hidden layer Gemini: ${candidates.find((item) => item.id === "gemini")?.text ?? "(no reply)"}
 Hidden layer ChatGPT: ${candidates.find((item) => item.id === "chatgpt")?.text ?? "(no reply)"}
-Hidden layer Grok: ${candidates.find((item) => item.id === "grok")?.text ?? "(no reply)"}
+Hidden layer Claude: ${candidates.find((item) => item.id === "claude")?.text ?? "(no reply)"}
 
 Return only the single best reply.`;
 
   const status = getAiProviderStatus();
-  const [geminiOut, chatgptOut, grokOut] = await Promise.allSettled([
-    status.find((item) => item.id === "gemini")?.configured
-      ? generateGeminiPlainReply(OUTPUT_LAYER_RULES, synthesisUser)
-      : Promise.reject(new Error("Gemini is off.")),
-    status.find((item) => item.id === "chatgpt")?.configured
-      ? withTimeout(generateChatGptReply(OUTPUT_LAYER_RULES, synthesisUser), 2800)
-      : Promise.reject(new Error("ChatGPT is off.")),
-    status.find((item) => item.id === "grok")?.configured
-      ? withTimeout(generateGrokReply(OUTPUT_LAYER_RULES, synthesisUser), 2800)
-      : Promise.reject(new Error("Grok is off.")),
-  ]);
+  const configured = (id: AiProviderId) =>
+    status.find((item) => item.id === id)?.configured;
 
-  const synthesized: HiddenCandidate[] = [];
-  if (geminiOut.status === "fulfilled" && isUsableReply(geminiOut.value)) {
-    synthesized.push({ id: "gemini", text: geminiOut.value });
-  }
-  if (chatgptOut.status === "fulfilled" && isUsableReply(chatgptOut.value)) {
-    synthesized.push({ id: "chatgpt", text: chatgptOut.value });
-  }
-  if (grokOut.status === "fulfilled" && isUsableReply(grokOut.value)) {
-    synthesized.push({ id: "grok", text: grokOut.value });
-  }
+  /** Only a usable reply counts, so Promise.any skips duds instead of picking one. */
+  const usableOnly = (promise: Promise<string>) =>
+    promise.then((text) => {
+      if (!isUsableReply(text)) throw new Error("Unusable synthesis.");
+      return text;
+    });
 
-  const chosen = pickBestCandidate(synthesized.length > 0 ? synthesized : candidates);
-  return { reply: chosen.text, providers };
+  // Take the first good merge rather than waiting on all three — this step used
+  // to add several seconds for a reply only one model's output survives anyway.
+  try {
+    const merged = await Promise.any(
+      [
+        configured("gemini")
+          ? usableOnly(
+              withTimeout(
+                generateGeminiPlainReply(OUTPUT_LAYER_RULES, synthesisUser),
+                HIDDEN_LAYER_TIMEOUT_MS
+              )
+            )
+          : null,
+        configured("chatgpt")
+          ? usableOnly(
+              withTimeout(
+                generateChatGptReply(OUTPUT_LAYER_RULES, synthesisUser),
+                HIDDEN_LAYER_TIMEOUT_MS
+              )
+            )
+          : null,
+        configured("claude")
+          ? usableOnly(
+              withTimeout(
+                generateClaudeReply(OUTPUT_LAYER_RULES, synthesisUser),
+                HIDDEN_LAYER_TIMEOUT_MS
+              )
+            )
+          : null,
+      ].filter((item): item is Promise<string> => item !== null)
+    );
+    return { reply: merged, providers };
+  } catch {
+    // Every merge attempt failed — fall back to the best raw candidate.
+    return { reply: pickBestCandidate(candidates).text, providers };
+  }
 }
 
 export async function generateCouncilReply(options: CouncilRequest): Promise<CouncilChatOutcome> {
-  const { gemini, candidates } = await runHiddenLayers(options);
+  const { gemini, candidates } = await runCascade(options);
 
   if (gemini?.kind === "tool_calls") {
     return { ...gemini, providers: ["gemini", ...candidates.map((item) => item.id).filter((id) => id !== "gemini")] };
@@ -350,7 +590,7 @@ export async function generateCouncilReply(options: CouncilRequest): Promise<Cou
   }
 
   if (candidates.length === 0) {
-    throw new Error("Gemini, ChatGPT, and Grok all failed to answer.");
+    throw new Error("Gemini, ChatGPT, and Claude all failed to answer.");
   }
 
   const blockFake = shouldBlockFakeMoneySave(options);
@@ -360,6 +600,7 @@ export async function generateCouncilReply(options: CouncilRequest): Promise<Cou
   );
   const reply =
     blockFake && claimsMoneyWasSaved(output.reply) ? HONEST_SAVE_PROMPT : output.reply;
+  options.progress?.onStage?.("output");
   return { kind: "reply", reply, providers: output.providers };
 }
 
@@ -422,7 +663,7 @@ export async function continueCouncilWithToolResults(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const, value: null })
     ),
-    runHiddenLayers(
+    runCascade(
       { ...options, message: options.userMessage },
       `App tools already ran. Results:\n${toolSummary}\nWrite the user-facing reply only. Do not call tools.`,
       true
@@ -455,5 +696,6 @@ export async function continueCouncilWithToolResults(
   );
   const reply =
     blockFake && claimsMoneyWasSaved(output.reply) ? HONEST_SAVE_PROMPT : output.reply;
+  options.progress?.onStage?.("output");
   return { kind: "reply", reply, providers: output.providers };
 }

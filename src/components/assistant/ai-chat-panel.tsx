@@ -5,10 +5,13 @@ import { Bot, Loader2, MessageSquarePlus, Send, Trash2 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getClientFinancePayload } from "@/lib/ai/client-finance-context";
 import { getBehaviorInstructionsForAssistant, getRemindersForAssistant } from "@/store/assistant-preferences-store";
+import { AssistantMessageBody } from "@/components/assistant/assistant-message-body";
 import { executeAssistantTools } from "@/lib/ai/execute-assistant-tool";
 import {
+  asProposedWrite,
   buildToolConfirmationPreview,
   isWriteTool,
   spokenSaveConfirmation,
@@ -24,12 +27,13 @@ import {
 } from "@/lib/ai/assistant-confirmation";
 import type { AssistantToolCall } from "@/lib/ai/tools";
 import type { Part } from "@google/generative-ai";
-import { AiProviderTeam } from "@/components/assistant/ai-provider-team";
+import { CouncilLayerAnimation } from "@/components/assistant/council-layer-animation";
+import type { CouncilStage, LayerStatus } from "@/lib/ai/council";
 import { formatChatWhen } from "@/lib/ai/chat-time";
 import type { Person } from "@/types";
 import { PERSON_LABELS } from "@/types";
 import { inferSpeakerFromUtterance, SPEAKER_CHIPS } from "@/lib/ai/person";
-import { applySpeakerToWrite } from "@/lib/ai/infer-write-intent";
+import { applySpeakerToWrite, isShortAffirmation } from "@/lib/ai/infer-write-intent";
 import { useFinanceStore } from "@/store/finance-store";
 
 interface ChatMessage {
@@ -112,7 +116,11 @@ export function AiChatPanel({
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeProviders, setActiveProviders] = useState<string[]>([]);
+  const [pendingChatDelete, setPendingChatDelete] = useState<"all" | string | null>(null);
+  const [councilStage, setCouncilStage] = useState<CouncilStage>("input");
+  const [layerStates, setLayerStates] = useState<Record<string, LayerStatus>>({});
+  const [reviewed, setReviewed] = useState<boolean | null>(null);
+  const [reviewReason, setReviewReason] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<AssistantToolCall | null>(null);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [accountChoices, setAccountChoices] = useState<Array<{ id: string; name: string }>>([]);
@@ -281,7 +289,7 @@ export function AiChatPanel({
   }
 
   async function handleClearHistory() {
-    if (!window.confirm("Delete all text chats? This cannot be undone.")) return;
+    setPendingChatDelete(null);
     try {
       const response = await fetch(`/api/ai/sessions?user_id=${person}&all=1`, {
         method: "DELETE",
@@ -299,14 +307,64 @@ export function AiChatPanel({
     }
   }
 
+  /**
+   * Streams NDJSON progress events so the council graph reflects what the
+   * server is actually doing, then resolves with the final payload.
+   */
   async function runChatRequest(body: Record<string, unknown>) {
     const response = await fetch("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error ?? "Assistant request failed.");
+
+    if (!response.body) {
+      throw new Error("Assistant request failed — no response stream.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let final: Record<string, unknown> | null = null;
+
+    const handleLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(trimmed);
+      } catch {
+        return;
+      }
+
+      if (event.type === "stage") {
+        setCouncilStage(event.stage as CouncilStage);
+      } else if (event.type === "layer") {
+        setLayerStates((current) => ({
+          ...current,
+          [String(event.id)]: event.status as LayerStatus,
+        }));
+      } else if (event.type === "cascade") {
+        setReviewed(event.reviewed === true);
+        setReviewReason(typeof event.reason === "string" ? event.reason : null);
+      } else if (event.type === "done") {
+        final = event.payload as Record<string, unknown>;
+      }
+    };
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      lines.forEach(handleLine);
+    }
+    handleLine(buffer);
+
+    const payload = final as Record<string, unknown> | null;
+    if (!payload) throw new Error("Assistant stream ended without a reply.");
+    if (!payload.ok) throw new Error((payload.error as string) ?? "Assistant request failed.");
     return payload as {
       ok: true;
       session_id: string;
@@ -334,6 +392,10 @@ export function AiChatPanel({
     setError(null);
     setInput("");
     setSavedBanner(null);
+    setCouncilStage("input");
+    setLayerStates({});
+    setReviewed(null);
+    setReviewReason(null);
 
     const optimistic: ChatMessage = {
       id: `local-${Date.now()}`,
@@ -372,11 +434,15 @@ export function AiChatPanel({
           setError("Who am I talking to — Kushvanth or Grishma?");
           break;
         }
-        const preparedCalls = payload.tool_calls.map((call) =>
-          isWriteTool(call.name) && activeSpeaker
+        // asProposedWrite: a tool call from the model can arrive already claiming
+        // user_confirmed. Strip it so every money write goes through the confirm
+        // card below and the person agrees to the amount they can actually see.
+        const preparedCalls = payload.tool_calls.map((raw) => {
+          const call = asProposedWrite(raw);
+          return isWriteTool(call.name) && activeSpeaker
             ? applySpeakerToWrite(call, activeSpeaker)
-            : call
-        );
+            : call;
+        });
         const toolResults = executeAssistantTools(activeSpeaker ?? person, preparedCalls);
         const needsConfirm = toolResults.some(
           (result) => result.result?.status === "needs_confirmation"
@@ -448,9 +514,6 @@ export function AiChatPanel({
       } else {
         void loadSessions(person);
       }
-      if (payload.providers?.length) {
-        setActiveProviders(payload.providers);
-      }
     } catch (err) {
       setMessages((current) => current.filter((item) => item.id !== optimistic.id));
       setInput(trimmed);
@@ -462,6 +525,27 @@ export function AiChatPanel({
 
   const content = (
     <>
+      <ConfirmDialog
+        open={pendingChatDelete !== null}
+        title={pendingChatDelete === "all" ? "Delete all chats?" : "Delete this chat?"}
+        message={
+          pendingChatDelete === "all"
+            ? "Every saved text conversation will be removed. Your money records are not affected."
+            : "This conversation will be removed. Your money records are not affected."
+        }
+        confirmLabel={pendingChatDelete === "all" ? "Delete all" : "Delete chat"}
+        onConfirm={() => {
+          if (pendingChatDelete === "all") {
+            void handleClearHistory();
+          } else if (pendingChatDelete) {
+            const id = pendingChatDelete;
+            setPendingChatDelete(null);
+            void handleDeleteSession(id);
+          }
+        }}
+        onCancel={() => setPendingChatDelete(null)}
+      />
+
       <GlassCard className="!p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs text-muted">
@@ -469,7 +553,6 @@ export function AiChatPanel({
             <span className={embedded ? "sr-only" : undefined}>
               Text chat · <strong>household</strong>
             </span>
-            <AiProviderTeam active={activeProviders} />
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 || sessions.length > 0 ? (
@@ -477,7 +560,7 @@ export function AiChatPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => void handleClearHistory()}
+                onClick={() => setPendingChatDelete("all")}
                 aria-label="Delete all text chats"
               >
                 <Trash2 className="w-4 h-4" />
@@ -551,7 +634,7 @@ export function AiChatPanel({
                 <button
                   type="button"
                   aria-label="Delete this chat"
-                  onClick={() => void handleDeleteSession(session.id)}
+                  onClick={() => setPendingChatDelete(session.id)}
                   className="text-muted hover:text-[#ff3b30] text-sm leading-none"
                 >
                   ×
@@ -607,13 +690,17 @@ export function AiChatPanel({
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                   message.role === "user"
-                    ? "bg-[#007aff] text-white"
+                    ? "bg-[#007aff] text-white whitespace-pre-wrap"
                     : "bg-black/[0.04] dark:bg-white/[0.06]"
                 }`}
               >
-                {message.content}
+                {message.role === "user" ? (
+                  message.content
+                ) : (
+                  <AssistantMessageBody content={message.content} />
+                )}
                 {message.created_at ? (
                   <p
                     className={`mt-1 text-[10px] ${
@@ -628,10 +715,13 @@ export function AiChatPanel({
           ))
         )}
         {loading && !pendingConfirm ? (
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Working…
-          </div>
+          <CouncilLayerAnimation
+            active
+            stage={councilStage}
+            layers={layerStates}
+            reviewed={reviewed}
+            reviewReason={reviewReason}
+          />
         ) : null}
         <div ref={bottomRef} />
       </div>
@@ -789,7 +879,8 @@ export function AiChatPanel({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              if (!input.trim() && pendingConfirm) {
+              if (pendingConfirm && (!input.trim() || isShortAffirmation(input))) {
+                setInput("");
                 void confirmPending();
                 return;
               }

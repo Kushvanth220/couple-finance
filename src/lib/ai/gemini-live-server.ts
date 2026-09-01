@@ -37,6 +37,7 @@ export async function createLiveEphemeralToken(
     assistantName,
     behaviorInstructions,
     reminders,
+    voice: true,
   });
   const voiceName = resolveAssistantLiveVoice(voiceGender);
 

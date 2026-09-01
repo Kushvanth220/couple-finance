@@ -45,7 +45,7 @@ export function DesktopNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
+              "tap-card focus-ring flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap",
               active
                 ? "bg-[#007aff] text-white shadow-md shadow-[#007aff]/20"
                 : "text-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
@@ -83,7 +83,7 @@ export function DesktopNav() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+                    "tap-card focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
                     active
                       ? "bg-[#007aff]/12 text-[#007aff]"
                       : "hover:bg-black/5 dark:hover:bg-white/5 text-foreground"

@@ -278,29 +278,43 @@ body.grik-splash-active {
     radial-gradient(ellipse 45% 35% at 82% 68%, rgba(175, 82, 222, 0.14), transparent 72%);
 }
 
+/*
+ * Exit on the ROOT, not the scrim — fading only the backdrop left the monogram
+ * and wordmark floating over the live page for the last ~650ms.
+ * Easing slightly past 1 on scale reads as pushing through into the app.
+ */
+.grik-splash-root-launch {
+  animation: grik-splash-exit 0.7s cubic-bezier(0.55, 0, 0.85, 0.3) 2.5s forwards;
+}
+
 .grik-splash-root-launch .grik-splash-scrim {
-  animation: grik-splash-scrim-in 0.4s ease-out both,
-    grik-splash-scrim-out 0.65s ease-in 2.55s forwards;
+  animation: grik-splash-scrim-in 0.4s ease-out both;
 }
 
 .grik-splash-root-launch .grik-splash-mesh {
   animation: grik-splash-mesh-pulse 2.8s ease-in-out both;
 }
 
+.grik-splash-root-route {
+  animation: grik-splash-exit 0.4s cubic-bezier(0.55, 0, 0.85, 0.3) 0.55s forwards;
+}
+
 .grik-splash-root-route .grik-splash-scrim {
   background: rgba(3, 3, 5, 0.78);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  animation: grik-splash-route-in 0.2s ease-out both,
-    grik-splash-route-out 0.35s ease-in 0.6s forwards;
+  animation: grik-splash-route-in 0.2s ease-out both;
+}
+
+.grik-splash-root-return {
+  animation: grik-splash-exit 0.5s cubic-bezier(0.55, 0, 0.85, 0.3) 1.2s forwards;
 }
 
 .grik-splash-root-return .grik-splash-scrim {
   background: rgba(3, 3, 5, 0.86);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  animation: grik-splash-route-in 0.25s ease-out both,
-    grik-splash-route-out 0.45s ease-in 1.25s forwards;
+  animation: grik-splash-route-in 0.25s ease-out both;
 }
 
 .grik-splash-root-return .grik-splash-mesh {
@@ -409,13 +423,24 @@ body.grik-splash-active {
 .grik-splash-monogram {
   position: relative;
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.04em;
-  font-size: clamp(4.5rem, 22vw, 7rem);
-  font-weight: 800;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
-  letter-spacing: -0.08em;
   filter: drop-shadow(0 14px 34px rgba(88, 86, 214, 0.45));
+}
+
+/* Rings mark inside the splash — sized off the viewport like the old wordmark was. */
+.grik-splash-rings {
+  width: clamp(7rem, 34vw, 10.5rem);
+  height: auto;
+}
+
+.grik-splash-root-route .grik-splash-rings {
+  width: clamp(4.5rem, 21vw, 6.5rem);
+}
+
+.grik-splash-root-return .grik-splash-rings {
+  width: clamp(5.5rem, 25vw, 7.5rem);
 }
 
 .grik-splash-monogram-letter {
@@ -450,7 +475,6 @@ body.grik-splash-active {
 }
 
 .grik-splash-root-route .grik-splash-monogram {
-  font-size: clamp(3rem, 14vw, 4.5rem);
   animation: grik-splash-route-g 0.78s cubic-bezier(0.34, 1.3, 0.64, 1) both;
 }
 
@@ -462,7 +486,6 @@ body.grik-splash-active {
 }
 
 .grik-splash-root-return .grik-splash-monogram {
-  font-size: clamp(3.5rem, 16vw, 5rem);
   animation: grik-splash-route-g 0.9s cubic-bezier(0.34, 1.2, 0.64, 1) both;
 }
 
@@ -577,6 +600,20 @@ body.grik-splash-active {
 
 @keyframes grik-splash-scrim-out {
   to { opacity: 0; }
+}
+
+/* Whole splash lifts away together — backdrop, mesh and mark. */
+@keyframes grik-splash-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.09);
+    filter: blur(3px);
+  }
 }
 
 @keyframes grik-splash-mesh-pulse {
@@ -807,13 +844,20 @@ body.grik-splash-active {
     animation: none !important;
   }
 
-  .grik-splash-root-launch .grik-splash-scrim {
+  /* Fade the whole splash, so the mark can't outlive its backdrop. */
+  .grik-splash-root-launch {
     animation: grik-splash-scrim-out 0.2s ease-in 0.35s forwards !important;
   }
 
+  .grik-splash-root-route,
+  .grik-splash-root-return {
+    animation: grik-splash-route-out 0.2s ease-in 0.25s forwards !important;
+  }
+
+  .grik-splash-root-launch .grik-splash-scrim,
   .grik-splash-root-route .grik-splash-scrim,
   .grik-splash-root-return .grik-splash-scrim {
-    animation: grik-splash-route-out 0.2s ease-in 0.25s forwards !important;
+    animation: none !important;
   }
 
   .grik-letter {
@@ -1407,7 +1451,7 @@ input[type="number"] {
 }
 
 .assistant-gemini-orb-caption {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1470,6 +1514,31 @@ input[type="number"] {
   display: none;
 }
 
+
+/* ===== Particle-network core =====
+ * Canvas-drawn constellation: cyan nodes that drift in 3D and link to their
+ * neighbours. Rotation speed, cloud radius, link brightness and node size all
+ * scale off the live mic / TTS level, so it churns while speaking and drifts
+ * while listening.
+ */
+.orb-net-scene {
+  position: relative;
+  width: calc(var(--orb-size) * 1.55);
+  height: calc(var(--orb-size) * 1.55);
+  display: grid;
+  place-items: center;
+}
+
+.orb-net-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.assistant-gemini-orb-wrap[data-state="idle"] .orb-net-scene {
+  opacity: 0.3;
+}
+
 .assistant-live-orb-stage {
   position: relative;
   display: flex;
@@ -1479,14 +1548,13 @@ input[type="number"] {
   min-height: 260px;
   padding: 1.25rem 0.75rem 1rem;
   border-radius: 1.5rem;
-  overflow: hidden;
-  background: #050508;
-  box-shadow: inset 0 0 80px rgba(139, 156, 247, 0.06);
+  overflow: visible;
+  background: transparent;
 }
 
 .assistant-live-orb-stage-compact {
-  min-height: 148px;
-  padding: 0.5rem 0.75rem 0.75rem;
+  min-height: 190px;
+  padding: 0.75rem 0.75rem 0.75rem;
 }
 
 .assistant-live-orb-stage::before {
@@ -1499,9 +1567,53 @@ input[type="number"] {
   pointer-events: none;
 }
 
+
+/* HUD reticle — concentric rings that orbit the orb during a call. */
+.assistant-live-orb-stage::before,
+.assistant-live-orb-stage::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.assistant-live-orb-stage::before {
+  width: min(74vw, 300px);
+  height: min(74vw, 300px);
+  border: 1px solid rgba(90, 200, 250, 0.22);
+  border-top-color: rgba(90, 200, 250, 0.55);
+  border-right-color: rgba(90, 200, 250, 0.04);
+  animation: hud-spin 14s linear infinite;
+}
+
+.assistant-live-orb-stage::after {
+  width: min(58vw, 232px);
+  height: min(58vw, 232px);
+  border: 1px dashed rgba(168, 180, 255, 0.20);
+  border-bottom-color: rgba(192, 132, 252, 0.45);
+  animation: hud-spin 9s linear infinite reverse;
+}
+
+.assistant-live-orb-stage-compact::before { width: min(48vw, 190px); height: min(48vw, 190px); }
+.assistant-live-orb-stage-compact::after  { width: min(38vw, 150px); height: min(38vw, 150px); }
+
+@keyframes hud-spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-live-orb-stage::before,
+  .assistant-live-orb-stage::after {
+    animation: none;
+  }
+}
+
 .assistant-live-orb-stage > * {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 @media (prefers-color-scheme: light) {
@@ -1519,6 +1631,469 @@ input[type="number"] {
   .assistant-gemini-orb-sphere,
   .assistant-gemini-orb-ripple {
     animation: none !important;
+  }
+}
+
+
+/* Council neural-net animation — neon wires over a transparent stage */
+.nn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.25rem 0.4rem;
+  background: transparent;
+}
+
+.nn-svg {
+  width: 100%;
+  height: auto;
+  max-height: 132px;
+  overflow: visible;
+}
+
+/* ---- edges ---- */
+.nn-edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  opacity: 0.14;
+  transition: opacity 320ms ease, stroke-width 320ms ease;
+}
+
+.nn-edge-live {
+  stroke: url(#nnWire);
+  stroke-width: 1.1;
+  opacity: 0.85;
+  stroke-dasharray: 3 8;
+  filter: url(#nnGlowSoft);
+  animation: nn-flow 0.85s linear infinite;
+}
+
+/* A layer that failed — its wires stay dark and dead */
+.nn-edge-dead {
+  stroke: #ff4d6d;
+  opacity: 0.12;
+}
+
+/* ---- travelling signal ---- */
+.nn-particle {
+  fill: #b9f6ff;
+  filter: url(#nnGlow);
+}
+
+/* ---- nodes ---- */
+.nn-node {
+  fill: var(--muted);
+  opacity: 0.28;
+  transition: fill 320ms ease, opacity 320ms ease;
+}
+
+.nn-node-live {
+  fill: #00e5ff;
+  opacity: 1;
+  filter: url(#nnGlow);
+}
+
+/* Layer is still thinking */
+.nn-node-pending {
+  fill: var(--tint, #00e5ff);
+  opacity: 1;
+  filter: url(#nnGlow);
+  animation: nn-throb 1.15s ease-in-out infinite;
+}
+
+.nn-node-live-merge {
+  fill: #c084fc;
+  opacity: 1;
+  filter: url(#nnGlow);
+  animation: nn-throb 1.35s ease-in-out infinite;
+}
+
+.nn-node-out {
+  fill: #39ff88;
+  opacity: 1;
+  filter: url(#nnGlow);
+}
+
+/* Layer produced a usable answer */
+.nn-node-answered {
+  fill: #39ff88;
+  opacity: 1;
+  filter: url(#nnGlowSoft);
+}
+
+/* Layer errored, timed out, or has no key */
+.nn-node-failed {
+  fill: #ff4d6d;
+  opacity: 0.5;
+}
+
+.nn-node-idle {
+  fill: var(--muted);
+  opacity: 0.28;
+}
+
+/* ---- expanding halos ---- */
+.nn-halo {
+  fill: none;
+  stroke-width: 1.2;
+  animation: nn-ring 1.9s ease-out infinite;
+}
+
+.nn-halo-in {
+  stroke: #00e5ff;
+}
+
+.nn-halo-out {
+  stroke: #39ff88;
+}
+
+.nn-halo-tint {
+  stroke: var(--tint, #00e5ff);
+}
+
+.nn-axis {
+  fill: var(--muted);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+}
+
+/* ---- footer ---- */
+.nn-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+}
+
+.nn-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.nn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0.5;
+  transition: opacity 260ms ease, color 260ms ease;
+}
+
+.nn-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.nn-chip-pending {
+  color: var(--tint, #00e5ff);
+  opacity: 1;
+  text-shadow: 0 0 8px currentColor;
+  animation: nn-throb 1.15s ease-in-out infinite;
+}
+
+.nn-chip-pending .nn-chip-dot {
+  box-shadow: 0 0 6px currentColor;
+}
+
+.nn-chip-answered {
+  color: #39ff88;
+  opacity: 1;
+}
+
+.nn-chip-failed {
+  color: #ff4d6d;
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.nn-caption {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+@keyframes nn-flow {
+  to {
+    stroke-dashoffset: -11;
+  }
+}
+
+@keyframes nn-throb {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes nn-ring {
+  0% {
+    r: 6;
+    opacity: 0.55;
+  }
+  100% {
+    r: 17;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nn-edge-live,
+  .nn-node-pending,
+  .nn-chip-pending,
+  .nn-node-live-merge,
+  .nn-halo {
+    animation: none !important;
+  }
+
+  .nn-halo {
+    display: none;
+  }
+}
+
+
+
+
+/*
+ * In-call HUD. Deliberately translucent — the app stays visible behind the
+ * call so you can watch balances and History update while you talk. Dark
+ * enough (plus blur) that transcript text stays readable over busy charts.
+ */
+.assistant-call {
+  background:
+    radial-gradient(ellipse 85% 55% at 50% 32%, rgba(0, 180, 255, 0.12), transparent 72%),
+    radial-gradient(ellipse 65% 45% at 18% 84%, rgba(88, 86, 214, 0.10), transparent 74%),
+    rgba(4, 7, 16, 0.45);
+  backdrop-filter: blur(13px) saturate(150%);
+  -webkit-backdrop-filter: blur(13px) saturate(150%);
+  border: none;
+  animation: assistant-call-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes assistant-call-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Thin cyan HUD frame — reads as an overlay, not a solid page. */
+.assistant-call::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(90, 200, 250, 0.28);
+  border-radius: 20px;
+  box-shadow:
+    0 0 24px rgba(0, 180, 255, 0.10) inset,
+    0 0 18px rgba(0, 180, 255, 0.07);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Slow drift so the overlay feels live while listening. */
+.assistant-call::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(circle at 32% 30%, rgba(90, 200, 250, 0.13), transparent 55%),
+    radial-gradient(circle at 70% 64%, rgba(192, 132, 252, 0.10), transparent 58%);
+  filter: blur(40px);
+  animation: assistant-call-drift 16s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes assistant-call-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(3%, -3%) scale(1.06); }
+}
+
+.assistant-call > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 640px) {
+  .assistant-live-orb-stage { min-height: 210px; }
+  .assistant-live-orb-stage-compact { min-height: 160px; }
+  .assistant-live-orb-stage::before { width: 210px; height: 210px; }
+  .assistant-live-orb-stage::after { width: 165px; height: 165px; }
+
+  .assistant-call {
+    border: 1px solid rgba(90, 200, 250, 0.22);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
+
+  .assistant-call::after {
+    inset: 6px;
+    border-radius: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-call,
+  .assistant-call::before {
+    animation: none;
+  }
+}
+
+/*
+ * Voice dock sits directly over the dashboard with no scrim, so a 72%-opaque
+ * glass surface let the donut charts bleed through and made the call UI
+ * unreadable. This surface is near-solid while keeping a soft lifted edge.
+ */
+.assistant-dock {
+  background: rgba(252, 252, 254, 0.975);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 -18px 48px rgba(0, 0, 0, 0.18),
+    0 -1px 0 rgba(255, 255, 255, 0.5) inset;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .assistant-dock {
+    background: rgba(18, 18, 23, 0.975);
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow:
+      0 -18px 48px rgba(0, 0, 0, 0.55),
+      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  }
+}
+
+/* Grab handle so it reads as a sheet you can dismiss. */
+.assistant-dock-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.22;
+  margin: 8px auto 0;
+}
+
+/* ---------- Interaction system ---------- */
+
+/*
+ * Press physics: a quick, slightly overshooting settle reads as physical.
+ * Transform is separated from color so hover and press can ease differently.
+ */
+.btn-press {
+  transform: translateZ(0);
+  transition:
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 220ms ease,
+    background-color 180ms ease,
+    opacity 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.btn-press:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-press:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+  transition-duration: 90ms;
+}
+
+/* Ripple grows from the pointer and fades — centred via its own transform. */
+.btn-ripple {
+  position: absolute;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.28;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: -1;
+  animation: btn-ripple-out 500ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes btn-ripple-out {
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Tappable cards / rows — subtle lift, same press feel as buttons. */
+.tap-card {
+  transition:
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 220ms ease,
+    background-color 180ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.tap-card:hover {
+  transform: translateY(-2px);
+}
+
+.tap-card:active {
+  transform: translateY(0) scale(0.985);
+  transition-duration: 90ms;
+}
+
+/* Icon-only controls — grow slightly, then dip on press. */
+.tap-icon {
+  transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.tap-icon:hover {
+  transform: scale(1.12);
+}
+
+.tap-icon:active {
+  transform: scale(0.9);
+  transition-duration: 80ms;
+}
+
+/* Keyboard users get a clear ring everywhere; mouse users never see it. */
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-press,
+  .tap-card,
+  .tap-icon {
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .btn-press:hover:not(:disabled),
+  .btn-press:active:not(:disabled),
+  .tap-card:hover,
+  .tap-card:active,
+  .tap-icon:hover,
+  .tap-icon:active {
+    transform: none;
+  }
+
+  .btn-ripple {
+    animation: none;
+    display: none;
   }
 }
 
@@ -1567,3 +2142,315 @@ input[type="number"] {
   }
 }
 
+
+/* ---- cascade: free draft -> gate -> paid review (or bypass) ---- */
+
+/* Wires to paid layers when the review was skipped: present, but clearly unused. */
+.nn-edge-idle {
+  stroke: var(--muted);
+  opacity: 0.07;
+  stroke-dasharray: 2 6;
+}
+
+/* The bypass wire only exists to show credits being saved, so keep it quiet. */
+.nn-edge-bypass {
+  stroke: var(--muted);
+  opacity: 0.09;
+  stroke-dasharray: 2 7;
+}
+
+.nn-edge-live-free {
+  stroke: #39ff88;
+  stroke-width: 1.1;
+  opacity: 0.7;
+  stroke-dasharray: 3 8;
+  filter: url(#nnGlowSoft);
+  animation: nn-flow 0.85s linear infinite;
+}
+
+.nn-particle-free {
+  fill: #9dffc8;
+}
+
+/* A layer that was deliberately not called — dimmed, never red. */
+.nn-node-skipped {
+  fill: var(--muted);
+  opacity: 0.16;
+}
+
+.nn-chip-skipped {
+  opacity: 0.4;
+}
+
+.nn-chip-skipped .nn-chip-dot {
+  box-shadow: none;
+}
+
+/* The routing decision itself */
+.nn-gate {
+  fill: var(--muted);
+  opacity: 0.25;
+  transition: fill 320ms ease, opacity 320ms ease;
+}
+
+.nn-gate-live {
+  fill: #c084fc;
+  opacity: 0.9;
+  filter: url(#nnGlowSoft);
+}
+
+/* Base .nn-halo already supplies the nn-ring animation — only the colour differs. */
+.nn-halo-gate {
+  stroke: #c084fc;
+}
+
+/* free / paid badge on each legend chip */
+.nn-tag {
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.nn-tag-free {
+  background: rgba(57, 255, 136, 0.16);
+  color: #39ff88;
+}
+
+.nn-tag-paid {
+  background: rgba(255, 157, 92, 0.16);
+  color: #ff9d5c;
+}
+
+/* Caption when the turn cost nothing */
+.nn-caption-saved {
+  color: #39ff88;
+  opacity: 0.85;
+}
+
+/* =========================================================================
+   Motion system
+   The assistant had all the life while the app's own screens were static.
+   These are the shared primitives those screens use. Everything here is
+   disabled under prefers-reduced-motion at the bottom of the block.
+   ========================================================================= */
+
+/* ---- entrance: cards cascade in instead of all appearing at once ---- */
+@keyframes kg-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.kg-rise {
+  animation: kg-rise 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- pointer-reactive glass ----
+   A soft highlight follows the cursor across a card, so the glass actually
+   catches light instead of being a flat translucent rectangle. Driven by
+   --kg-mx / --kg-my from JS; falls back to the card centre. */
+.kg-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+
+.kg-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 380ms ease;
+  background: radial-gradient(
+    260px circle at var(--kg-mx, 50%) var(--kg-my, 50%),
+    rgba(120, 170, 255, 0.16),
+    transparent 68%
+  );
+}
+
+.kg-spotlight:hover::before,
+.kg-spotlight:focus-within::before {
+  opacity: 1;
+}
+
+/* Keep real content above the wash. */
+.kg-spotlight > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- lift: cards rise slightly toward the pointer ---- */
+.kg-lift {
+  transition:
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .kg-lift:hover {
+    transform: translate3d(0, -3px, 0);
+    box-shadow:
+      0 18px 40px -18px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  }
+}
+
+/* ---- numbers ---- */
+.kg-figure {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
+/* ---- honour the OS setting: no motion, no exceptions ---- */
+@media (prefers-reduced-motion: reduce) {
+  .kg-rise {
+    animation: none !important;
+  }
+  .kg-lift {
+    transition: none !important;
+  }
+  .kg-lift:hover {
+    transform: none !important;
+  }
+}
+
+/* ---- live voice pipeline (You -> Gemini -> Tools -> Jarvis) ---- */
+.vp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vp-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.vp-seg {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+/* Only the wire flexes, so the nodes stay evenly spread at any width. */
+.vp-seg:not(:last-child) {
+  flex: 1 1 auto;
+}
+
+.vp-node {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: border-color 260ms ease, box-shadow 260ms ease;
+}
+
+.vp-node i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 260ms ease;
+}
+
+.vp-node-live {
+  border-color: rgba(77, 208, 255, 0.85);
+  box-shadow: 0 0 8px rgba(77, 208, 255, 0.5);
+}
+
+.vp-node-live i {
+  background: #7fe4ff;
+}
+
+/* Waiting on the socket — pulse rather than sit lit. */
+.vp-node-wait {
+  animation: vp-wait 1.1s ease-in-out infinite;
+}
+
+@keyframes vp-wait {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+.vp-label {
+  font-size: 8.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
+  transition: color 260ms ease;
+}
+
+.vp-label-live {
+  color: rgba(190, 235, 255, 0.9);
+}
+
+.vp-wire {
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: 10px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 260ms ease;
+}
+
+.vp-wire-live {
+  background: linear-gradient(90deg, rgba(77, 208, 255, 0.15), #4dd0ff, rgba(77, 208, 255, 0.15));
+  background-size: 220% 100%;
+  animation: vp-flow 1.1s linear infinite;
+}
+
+@keyframes vp-flow {
+  to { background-position: -220% 0; }
+}
+
+.vp-caption {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.42);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-wire-live,
+  .vp-node-wait {
+    animation: none;
+  }
+}
+
+/* Inline orb for the voice status strip: no caption, no reserved gap.
+   The default wrap is a centred hero block with a label underneath, which is
+   what made the panel feel cramped when the orb lived there full size.
+   The scene renders at --orb-size * 1.55, so 44px yields a ~68px circle. */
+.assistant-gemini-orb-inline {
+  --orb-size: 44px;
+  width: auto;
+  gap: 0;
+}
+
+.assistant-gemini-orb-inline .assistant-gemini-orb-caption {
+  display: none;
+}
+
+/* Idle dims the network to 0.3, which is invisible on this dark panel. Keep it
+   clearly present before a call so you can see the connection is there at all,
+   still quieter than when it is live. */
+.assistant-gemini-orb-wrap.assistant-gemini-orb-inline[data-state="idle"] .orb-net-scene {
+  opacity: 0.7;
+}

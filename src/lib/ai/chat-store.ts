@@ -239,6 +239,18 @@ export interface AssistantPreferencesRow {
   updated_at: string;
 }
 
+/**
+ * assistant_preferences is optional — the app works without it (prefs stay local).
+ * Postgres reports a missing table as 42P01; PostgREST reports PGRST205.
+ */
+function isMissingTableError(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    /could not find the table/i.test(error.message ?? "")
+  );
+}
+
 export async function fetchAssistantPreferences(
   householdId = getHouseholdId()
 ): Promise<AssistantPreferencesRow | null> {
@@ -250,7 +262,7 @@ export async function fetchAssistantPreferences(
     .maybeSingle();
 
   if (error) {
-    if (error.code === "42P01") return null;
+    if (isMissingTableError(error)) return null;
     throw new Error(error.message);
   }
   if (!data) return null;
@@ -291,6 +303,10 @@ export async function upsertAssistantPreferences(
     .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Table not migrated yet — keep prefs working locally instead of failing the save.
+    if (isMissingTableError(error)) return null;
+    throw new Error(error.message);
+  }
   return data as AssistantPreferencesRow;
 }

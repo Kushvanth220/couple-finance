@@ -130,7 +130,7 @@ export function MobileBottomNav() {
                       key={link.href}
                       href={link.href}
                       className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-xl px-2 py-2.5 transition-all text-center",
+                        "tap-card focus-ring flex flex-col items-center gap-1.5 rounded-xl px-2 py-2.5 text-center",
                         active
                           ? "bg-[#007aff]/12 ring-1 ring-[#007aff]/25"
                           : "glass hover:bg-black/5 dark:hover:bg-white/5"
@@ -168,7 +168,7 @@ export function MobileBottomNav() {
                   >
                     <span
                       className={cn(
-                        "bottom-nav-fab flex h-14 w-14 items-center justify-center rounded-[22px] text-white shadow-lg transition-transform active:scale-95",
+                        "bottom-nav-fab tap-card flex h-14 w-14 items-center justify-center rounded-[22px] text-white shadow-lg",
                         active && "ring-4 ring-[#007aff]/25"
                       )}
                     >

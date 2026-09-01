@@ -16,7 +16,12 @@ export function readOpenAiApiKey(): string {
   return firstEnv("OPENAI_API_KEY", "CHATGPT_API_KEY");
 }
 
-/** Grok / xAI */
-export function readXaiApiKey(): string {
-  return firstEnv("XAI_API_KEY", "GROK_API_KEY");
+/** Claude / Anthropic */
+export function readAnthropicApiKey(): string {
+  return firstEnv("ANTHROPIC_API_KEY", "CLAUDE_API_KEY");
+}
+
+/** Only required for identity-linked Anthropic keys (not plain workspace API keys). */
+export function readAnthropicWorkspaceId(): string {
+  return firstEnv("ANTHROPIC_WORKSPACE_ID");
 }

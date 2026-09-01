@@ -40,7 +40,9 @@ export const LIVE_REALTIME_INPUT_CONFIG = {
     startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
     endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
     prefixPaddingMs: 40,
-    silenceDurationMs: 800,
+    // 800ms of dead air after every sentence was the main "why is it slow" feeling.
+    // 550ms still rides through natural pauses without cutting Kushvanth off.
+    silenceDurationMs: 550,
   },
   turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
 };

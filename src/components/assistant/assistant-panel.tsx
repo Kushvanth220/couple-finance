@@ -8,7 +8,6 @@ import { AssistantLiveOrb } from "@/components/assistant/assistant-live-orb";
 import { AssistantNameSetup } from "@/components/assistant/assistant-name-setup";
 import { useAssistant } from "@/components/assistant/assistant-context";
 import { formatWakeHint } from "@/lib/ai/assistant-wake";
-import type { AssistantVoiceGender } from "@/lib/ai/assistant-voice";
 import { getVoiceGenderLabel } from "@/lib/ai/assistant-voice";
 import { useAssistantPreferencesStore } from "@/store/assistant-preferences-store";
 import { AiProviderTeam } from "@/components/assistant/ai-provider-team";
@@ -87,7 +86,11 @@ export function AssistantPanel({ open, onVoiceLiveChange }: AssistantPanelProps)
       className={cn(
         "fixed z-[80] flex justify-center",
         liveDock
-          ? "inset-x-0 bottom-0 items-end pointer-events-none pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-4"
+          // pointer-events-none so a live call does not swallow every click on
+          // the site behind it — the dock itself re-enables them. It also docks
+          // to a corner instead of covering the screen, so the page stays usable
+          // while you talk.
+          ? "inset-x-0 bottom-0 pointer-events-none items-end justify-center p-3 sm:inset-y-0 sm:left-auto sm:right-0 sm:items-center sm:justify-end sm:p-5"
           : "inset-0 items-end sm:items-center p-3 sm:p-4"
       )}
     >
@@ -101,10 +104,10 @@ export function AssistantPanel({ open, onVoiceLiveChange }: AssistantPanelProps)
 
       <div
         className={cn(
-          "relative w-full max-w-lg glass-strong overflow-hidden outline-none pointer-events-auto flex flex-col shadow-2xl shadow-[#007aff]/10",
+          "relative w-full max-w-lg overflow-hidden outline-none pointer-events-auto flex flex-col shadow-2xl shadow-[#007aff]/10",
           liveDock
-            ? "rounded-t-3xl max-h-[min(48dvh,440px)] border-t border-white/15"
-            : "rounded-3xl max-h-[min(92dvh,820px)] animate-scale-in"
+            ? "assistant-call w-full max-w-md rounded-3xl max-h-[min(62dvh,460px)] sm:w-[23rem] sm:max-w-none sm:max-h-[min(78dvh,560px)]"
+            : "glass-strong rounded-3xl max-h-[min(92dvh,820px)] animate-scale-in"
         )}
         ref={dialogRef}
         tabIndex={-1}
@@ -219,7 +222,16 @@ export function AssistantPanel({ open, onVoiceLiveChange }: AssistantPanelProps)
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div
+          className={cn(
+            "flex-1 min-h-0 px-4 py-3",
+            // Voice fills the panel and scrolls inside the transcript;
+            // text chat keeps scrolling as a single block.
+            !needsNaming && mode === "voice"
+              ? "flex flex-col"
+              : "overflow-y-auto"
+          )}
+        >
           {needsNaming ? (
             <AssistantNameSetup onComplete={handleNamingComplete} />
           ) : mode === "voice" ? (

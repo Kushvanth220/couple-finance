@@ -1,4 +1,5 @@
 import { compareByDateTimeAsc } from "@/lib/formatters";
+import { roundMoney } from "@/lib/money";
 import type {
   Account,
   Debt,
@@ -77,12 +78,18 @@ export function recalculateInterCoupleState(entries: InterCoupleEntry[]) {
     } else if (entry.paidBy === "grishma" && entry.benefited === "kushvanth") {
       balance -= entry.amount;
     }
-    return { ...entry, runningBalance: balance };
+    // Round for DISPLAY only — the accumulator stays raw. Rounding the running
+    // total at every step would re-round legacy half-cent entries (12.105) and
+    // silently move the historical balance; here each entry still contributes
+    // its exact stored amount.
+    return { ...entry, runningBalance: roundMoney(balance) };
   });
 
   return {
     interCoupleHistory: [...withBalances].reverse(),
-    interCoupleBalance: balance,
+    // Only the final total is snapped, which removes accumulated float dust
+    // (7220.620000000004) without changing what any entry contributed.
+    interCoupleBalance: roundMoney(balance),
   };
 }
 
@@ -223,6 +230,21 @@ function findRelatedTransactionIds(
   }
 
   return ids;
+}
+
+/** Inverse of findMatchingIncomeEntry — the History row an income entry created. */
+export function findIncomeTransactionForEntry(
+  entry: IncomeEntry,
+  transactions: Transaction[]
+): Transaction | undefined {
+  return transactions.find(
+    (transaction) =>
+      transaction.type === "income" &&
+      transaction.person === entry.person &&
+      transaction.amount === entry.amount &&
+      transaction.date === entry.date &&
+      transaction.accountId === entry.depositAccountId
+  );
 }
 
 function findMatchingIncomeEntry(

@@ -15,6 +15,42 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
     },
   },
   {
+    name: "add_account",
+    description:
+      "Create a new bank account, credit card, or cash wallet in the app (e.g. 'add my DD Crimson debit card'). Needs a verbal yes first, like any money change. Use list_accounts first so you do not create a duplicate.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Account name exactly as the user says it, e.g. 'DD Crimson'." },
+        account_type: {
+          type: "string",
+          description: "debit, credit, or cash.",
+        },
+        for_person: {
+          type: "string",
+          description: "kushvanth or grishma — whose account this is. Defaults to the current user.",
+        },
+        starting_balance: {
+          type: "number",
+          description: "Current balance. For a credit card this is the amount owed. Defaults to 0.",
+        },
+        credit_limit: {
+          type: "number",
+          description: "Credit limit — only for a credit card.",
+        },
+        shared: {
+          type: "boolean",
+          description: "True when both of them use this account (like the shared GreenDot).",
+        },
+        user_confirmed: {
+          type: "boolean",
+          description: "Only true after the user said yes to the exact account being created.",
+        },
+      },
+      required: ["name", "account_type"],
+    },
+  },
+  {
     name: "list_spend_categories",
     description: "List spend categories (Groceries, Gas, etc.) available in the app.",
   },

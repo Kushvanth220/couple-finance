@@ -20,6 +20,7 @@ export default function SyncPage() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [householdId, setHouseholdId] = useState(getHouseholdSyncKey());
   const [cloudTransactions, setCloudTransactions] = useState<number | null>(null);
+  const [cloudChecking, setCloudChecking] = useState(true);
   const [supabaseUrl, setSupabaseUrl] = useState<string | null>(null);
   const [cloudHealthError, setCloudHealthError] = useState<string | null>(null);
   const [householdRows, setHouseholdRows] = useState<
@@ -29,7 +30,10 @@ export default function SyncPage() {
   useEffect(() => {
     void loadSyncConfig().then(async (config) => {
       setConfigured(Boolean(config));
-      if (!config) return;
+      if (!config) {
+        setCloudChecking(false);
+        return;
+      }
 
       setHouseholdId(config.householdKey);
       setSupabaseUrl(config.supabaseUrl);
@@ -73,6 +77,8 @@ export default function SyncPage() {
           setCloudTransactions(null);
           setCloudHealthError("Could not reach Supabase from this device.");
         }
+      } finally {
+        setCloudChecking(false);
       }
     });
 
@@ -146,9 +152,11 @@ export default function SyncPage() {
             </p>
             <p>
               Cloud:{" "}
-              {cloudTransactions === null
-                ? "could not read"
-                : `${cloudTransactions} transactions`}
+              {cloudChecking
+                ? "checking…"
+                : cloudTransactions === null
+                  ? "could not read"
+                  : `${cloudTransactions} transactions`}
             </p>
             {supabaseUrl ? <p className="truncate">Project: {supabaseUrl}</p> : null}
             {householdRows.length > 0 ? (

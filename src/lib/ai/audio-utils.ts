@@ -298,8 +298,8 @@ export class LiveAudioPlayer {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private levelDecayTimer: ReturnType<typeof setTimeout> | null = null;
   private onLevel?: (level: number) => void;
-  /** ~120ms at 24kHz — small enough to start speech quickly. */
-  private readonly minBatchSamples = 2880;
+  /** ~80ms at 24kHz — smaller batch means the reply starts sooner. */
+  private readonly minBatchSamples = 1920;
 
   constructor(options?: { onLevel?: (level: number) => void; audioContext?: AudioContext }) {
     this.onLevel = options?.onLevel;
@@ -338,7 +338,7 @@ export class LiveAudioPlayer {
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
       void this.schedule();
-    }, 70);
+    }, 45);
   }
 
   private takeBatch(): Float32Array | null {

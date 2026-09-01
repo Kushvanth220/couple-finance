@@ -237,6 +237,12 @@ export interface PersonAccountActivity {
   earnedAllTime: number;
   spentAllTime: number;
   netAllTime: number;
+  /**
+   * Balance corrections attributed to this person. Exposed so the UI can show
+   * why net != earned - spent; without it the three numbers visibly disagree.
+   */
+  adjustmentsThisMonth: number;
+  adjustmentsAllTime: number;
 }
 
 export interface GreenDotActivitySummary {
@@ -342,6 +348,8 @@ export function getGreenDotActivitySummary(
       earnedAllTime,
       spentAllTime,
       netAllTime: earnedAllTime - spentAllTime + adjustmentsAllTime,
+      adjustmentsThisMonth,
+      adjustmentsAllTime,
     };
   };
 

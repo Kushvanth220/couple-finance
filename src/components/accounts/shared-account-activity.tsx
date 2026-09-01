@@ -21,14 +21,19 @@ function PersonActivityRow({
   earnedThisMonth,
   spentThisMonth,
   netThisMonth,
+  adjustmentsThisMonth,
   onViewHistory,
 }: {
   person: Person;
   earnedThisMonth: number;
   spentThisMonth: number;
   netThisMonth: number;
+  adjustmentsThisMonth: number;
   onViewHistory: (person: Person) => void;
 }) {
+  // Net folds in balance corrections, so show them whenever they exist —
+  // otherwise earned - spent visibly fails to equal the net underneath it.
+  const hasAdjustment = Math.abs(adjustmentsThisMonth) > 0.009;
   return (
     <button
       type="button"
@@ -59,6 +64,22 @@ function PersonActivityRow({
           </p>
         </div>
       </div>
+      {hasAdjustment ? (
+        <div className="flex items-center justify-between text-[10px] border-t border-black/5 dark:border-white/10 pt-1.5">
+          <span className="text-muted flex items-center gap-1">
+            <SlidersHorizontal className="w-3 h-3" />
+            Balance fixes
+          </span>
+          <span
+            className={`font-semibold tabular-nums ${
+              adjustmentsThisMonth >= 0 ? "text-[#34c759]" : "text-[#ff3b30]"
+            }`}
+          >
+            {adjustmentsThisMonth >= 0 ? "+" : "-"}
+            {formatCurrency(Math.abs(adjustmentsThisMonth))}
+          </span>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between text-[10px] border-t border-black/5 dark:border-white/10 pt-1.5">
         <span className="text-muted">Net this month</span>
         <span

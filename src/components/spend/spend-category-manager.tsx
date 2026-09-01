@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useFinanceStore } from "@/store/finance-store";
 import type { SpendCategory } from "@/types";
 
@@ -24,6 +25,7 @@ export function SpendCategoryManager({
   const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
   const [catName, setCatName] = useState("");
   const [catKeywords, setCatKeywords] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<SpendCategory | null>(null);
 
   const resetForm = () => {
     setEditCategoryId(null);
@@ -66,7 +68,21 @@ export function SpendCategoryManager({
     if (editCategoryId === id) {
       resetForm();
     }
+    setPendingDelete(null);
   };
+
+  if (pendingDelete) {
+    return (
+      <ConfirmDialog
+        open
+        title="Delete category?"
+        message={`"${pendingDelete.name}" will be removed from the category list. Past spending keeps its category name in History.`}
+        confirmLabel="Delete category"
+        onConfirm={() => handleDelete(pendingDelete.id)}
+        onCancel={() => setPendingDelete(null)}
+      />
+    );
+  }
 
   return (
     <GlassModal open={open} onClose={handleClose} title="Edit categories">
@@ -89,15 +105,15 @@ export function SpendCategoryManager({
                 <button
                   type="button"
                   onClick={() => handleEdit(category)}
-                  className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                  className="tap-icon focus-ring p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
                   aria-label={`Edit ${category.name}`}
                 >
                   <Pencil className="w-3.5 h-3.5 text-[#007aff]" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(category.id)}
-                  className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                  onClick={() => setPendingDelete(category)}
+                  className="tap-icon focus-ring p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
                   aria-label={`Delete ${category.name}`}
                 >
                   <Trash2 className="w-3.5 h-3.5 text-[#ff3b30]" />

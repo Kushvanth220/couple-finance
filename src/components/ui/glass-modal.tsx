@@ -65,7 +65,7 @@ export function GlassModal({ open, onClose, title, children, className }: GlassM
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            className="tap-icon focus-ring p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
