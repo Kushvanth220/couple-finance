@@ -27,6 +27,7 @@ interface ChatRequestBody {
   assistant_name?: string;
   finance_state?: FinanceState;
   behavior_instructions?: string[];
+  rules?: string[];
   reminders?: string[];
   speaking_with?: string;
   /** Opt out of the NDJSON progress stream and get one plain JSON body back. */
@@ -91,6 +92,7 @@ async function runChat(
     ? body.behavior_instructions
     : [];
   const reminders = Array.isArray(body.reminders) ? body.reminders : [];
+  const rules = Array.isArray(body.rules) ? body.rules : [];
   const speakingWith = parseAiUserId(body.speaking_with);
 
   if (continuation) {
@@ -100,6 +102,7 @@ async function runChat(
       assistantName,
       behaviorInstructions,
       reminders,
+      rules,
       speakingWith,
       history,
       message: continuation.user_message,
@@ -166,6 +169,7 @@ async function runChat(
     assistantName,
     behaviorInstructions,
     reminders,
+    rules,
     speakingWith,
     history,
     message,

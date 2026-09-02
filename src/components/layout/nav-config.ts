@@ -1,5 +1,6 @@
 import {
   Brain,
+  ScrollText,
   Cloud,
   CreditCard,
   Heart,
@@ -17,6 +18,7 @@ export const primaryNavItems = [
 
 export const moreNavItems = [
   { href: "/memory", label: "Memory", icon: Brain, tint: "#af52de" },
+  { href: "/rules", label: "Rules", icon: ScrollText, tint: "#007aff" },
   { href: "/accounts", label: "Accounts", icon: CreditCard, tint: "#34c759" },
   { href: "/debts", label: "Debts", icon: Landmark, tint: "#ff3b30" },
   { href: "/history", label: "History", icon: History, tint: "#ff9500" },

@@ -91,6 +91,7 @@ interface CouncilRequest {
   assistantName?: string;
   behaviorInstructions?: string[];
   reminders?: string[];
+  rules?: string[];
   speakingWith?: AiUserId | null;
   history: GeminiChatTurn[];
   message: string;
@@ -277,6 +278,7 @@ async function runCascade(
       assistantName: options.assistantName,
       behaviorInstructions: options.behaviorInstructions,
       reminders: options.reminders,
+      rules: options.rules,
       speakingWith: options.speakingWith,
     }),
     HIDDEN_LAYER_RULES,

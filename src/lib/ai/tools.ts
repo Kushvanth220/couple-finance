@@ -449,6 +449,155 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
     description:
       "Get today's date plus due/pending reminders. Call this when the user asks what's up, any updates, or after greeting before mentioning reminders.",
   },
+  {
+    name: "list_rules",
+    description:
+      "List the household's rules - the standing instructions Kushvanth wrote for how something works (e.g. Amazon Flex blocks). Read this before answering anything the rules might govern, and before creating a rule so you do not duplicate one.",
+    parameters: {
+      type: "object",
+      properties: {
+        for_person: { type: "string", description: "kushvanth, grishma, or household. Omit for all." },
+      },
+    },
+  },
+  {
+    name: "read_rule_table",
+    description:
+      "Read one rule's recorded entries back as a table, with column totals. Use whenever they ask to see the data a rule has collected, or ask for it 'in a table'.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the rule's name, e.g. 'amazon flex'." },
+        limit: { type: "number", description: "How many rows. Default 20, newest first." },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "list_due_followups",
+    description:
+      "Questions a rule says to ask NOW - e.g. an Amazon Flex block logged 27 hours ago whose tips are still unknown. Call this in the daily briefing and whenever they ask what is pending. Ask these one at a time.",
+  },
+  {
+    name: "create_rule",
+    description:
+      "Write down a new rule: what to ask, when, what to record, what to work out, and what to chart. Build the WHOLE rule in one call from what they described - fields are what to RECORD each time, so never ask what the amounts are first. Call it as soon as you understand the shape: the app shows them the rule and takes the yes. Do not describe the rule in a message and wait.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short name, e.g. 'Amazon Flex blocks'." },
+        scope: { type: "string", description: "kushvanth, grishma, or household." },
+        description: { type: "string", description: "The rule in their own words." },
+        trigger_kind: { type: "string", description: "daily, weekly, monthly, or manual." },
+        trigger_question: { type: "string", description: "What you ask, e.g. 'Any Amazon Flex blocks today?'" },
+        trigger_time: { type: "string", description: "HH:mm to ask at." },
+        trigger_weekday: { type: "number", description: "0=Sunday..6=Saturday, for weekly." },
+        trigger_day_of_month: { type: "number", description: "1-31, for monthly." },
+        fields: {
+          type: "array",
+          description:
+            "What to record. Each: {key, label, type (money/number/text/date/time), ask_at ('start' or 'follow_up'), question, required}. Keys are lowercase with underscores and are used in calculations.",
+          items: { type: "object" },
+        },
+        follow_ups: {
+          type: "array",
+          description:
+            "Delayed questions. Each: {after_hours, question, fields:[field keys]}. Amazon Flex tips are after_hours 27.",
+          items: { type: "object" },
+        },
+        calculations: {
+          type: "array",
+          description:
+            "Numbers to work out. Each: {key, label, expression, money}. Expressions use field keys and + - * / ( ), e.g. 'base_pay + tips'.",
+          items: { type: "object" },
+        },
+        charts: {
+          type: "array",
+          description:
+            "Charts for the dashboard. Each: {title, type (bar/line/area/pie/donut/scatter/bubble), x, y, size}. x is 'date' or a field key.",
+          items: { type: "object" },
+        },
+        show_on_dashboard: { type: "boolean", description: "Put its table and charts on the dashboard." },
+        payout_kind: { type: "string", description: "income, expense, or none - whether the total is real money." },
+        payout_amount_key: { type: "string", description: "Which calculation carries the amount, e.g. 'total'." },
+        payout_target: { type: "string", description: "Income source or spend category name." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes to this exact rule." },
+      },
+      required: ["name", "trigger_question"],
+    },
+  },
+  {
+    name: "update_rule",
+    description:
+      "Change an existing rule - its question, timing, fields, calculations, or charts. Call directly with words from its name in match. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the rule's name." },
+        name: { type: "string", description: "New name." },
+        description: { type: "string" },
+        enabled: { type: "boolean", description: "false pauses the rule without deleting it." },
+        trigger_kind: { type: "string" },
+        trigger_question: { type: "string" },
+        trigger_time: { type: "string" },
+        trigger_weekday: { type: "number" },
+        trigger_day_of_month: { type: "number" },
+        fields: { type: "array", description: "Replaces all fields.", items: { type: "object" } },
+        follow_ups: { type: "array", description: "Replaces all follow-ups.", items: { type: "object" } },
+        calculations: { type: "array", description: "Replaces all calculations.", items: { type: "object" } },
+        charts: { type: "array", description: "Replaces all charts.", items: { type: "object" } },
+        show_on_dashboard: { type: "boolean" },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes to this exact change." },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "delete_rule",
+    description:
+      "Delete a rule and every entry recorded under it. Needs a yes. Prefer update_rule with enabled false if they only want it to stop asking.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the rule's name." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes to removing it." },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "log_rule_entry",
+    description:
+      "Record one occurrence under a rule - a single Amazon Flex block with its base pay. Pass the values you have; the rule's follow-up will collect the rest later. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Words from the rule's name." },
+        values: {
+          type: "object",
+          description: "Field key to value, e.g. {\"base_pay\": 62.50}.",
+        },
+        date: { type: "string", description: "yyyy-MM-dd. Defaults to today." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes." },
+      },
+      required: ["match", "values"],
+    },
+  },
+  {
+    name: "answer_rule_followup",
+    description:
+      "Fill in the values a follow-up was waiting for - the tips on a block logged 27 hours ago. Use the entry_id from list_due_followups. Needs a yes, because it usually completes a money figure.",
+    parameters: {
+      type: "object",
+      properties: {
+        entry_id: { type: "string", description: "From list_due_followups." },
+        values: { type: "object", description: "Field key to value, e.g. {\"tips\": 11.25}." },
+        follow_up_id: { type: "string", description: "From list_due_followups." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes." },
+      },
+      required: ["entry_id", "values"],
+    },
+  },
 ];
 
 export const ASSISTANT_TOOLS = [{ functionDeclarations: ASSISTANT_FUNCTION_DECLARATIONS }];

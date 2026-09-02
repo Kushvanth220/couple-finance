@@ -18,6 +18,14 @@ export const ASSISTANT_WRITE_TOOLS = new Set([
   "delete_reminder",
   "save_behavior_preference",
   "delete_behavior_preference",
+  // Rules are the standing instructions the app and the assistant both obey.
+  // A wrong one keeps being wrong every day until someone notices, so it gets
+  // the same read-back-and-agree treatment as money.
+  "create_rule",
+  "update_rule",
+  "delete_rule",
+  "log_rule_entry",
+  "answer_rule_followup",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -36,6 +44,14 @@ export const HOUSEHOLD_WRITE_TOOLS = new Set([
   "delete_reminder",
   "save_behavior_preference",
   "delete_behavior_preference",
+  // A rule names its own scope, and rule entries live in the rules store
+  // rather than in anyone's accounts, so none of these need to know who is
+  // speaking before they can be filed.
+  "create_rule",
+  "update_rule",
+  "delete_rule",
+  "log_rule_entry",
+  "answer_rule_followup",
 ]);
 
 export function writeNeedsSpeaker(name: string): boolean {
@@ -230,6 +246,27 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
   const args = call.args;
 
   switch (call.name) {
+    case "create_rule": {
+      // The name is already the lead of the sentence; describing it again
+      // would read "New rule "X" — rename it to "X"".
+      const rest = { ...args };
+      delete rest.name;
+      return `New rule "${String(args.name ?? "untitled")}" — ${describeRuleArgs(rest)}`;
+    }
+    case "update_rule": {
+      return `Change the rule matching "${String(args.match ?? "")}" — ${describeRuleArgs(args)}`;
+    }
+    case "delete_rule": {
+      return `Delete the rule matching "${String(args.match ?? "")}", and every entry recorded under it. This cannot be undone.`;
+    }
+    case "log_rule_entry": {
+      const values = describeValueBag(args.values);
+      const on = args.date ? ` on ${String(args.date)}` : "";
+      return `Log under "${String(args.match ?? "")}"${on}: ${values}.`;
+    }
+    case "answer_rule_followup": {
+      return `Fill in ${describeValueBag(args.values)} on that entry.`;
+    }
     case "record_income": {
       return `Record ${moneyLabel(args.amount)} income from ${String(args.source_name ?? "income")} into ${String(args.deposit_account_name ?? args.deposit_account_id ?? "an account")}.`;
     }
@@ -302,8 +339,121 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
   }
 }
 
+/** "base_pay $62.50, tips $11.25" from a loose values object. */
+function describeValueBag(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "nothing";
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length === 0) return "nothing";
+  return entries
+    .map(([key, value]) => {
+      const label = key.replace(/_/g, " ");
+      const num = Number(value);
+      return Number.isFinite(num) ? `${label} ${moneyLabel(num)}` : `${label} ${String(value)}`;
+    })
+    .join(", ");
+}
+
+/**
+ * The whole rule in one sentence, built from the raw tool arguments rather
+ * than a saved Rule — this runs BEFORE the rule exists, which is the point.
+ */
+function describeRuleArgs(args: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  const kind = String(args.trigger_kind ?? "").toLowerCase();
+  const when =
+    kind === "weekly"
+      ? "every week"
+      : kind === "monthly"
+        ? "every month"
+        : kind === "manual"
+          ? "when you say so"
+          : kind === "daily"
+            ? "every day"
+            : "";
+  const time = args.trigger_time ? `at ${String(args.trigger_time)}` : "";
+
+  // An update may touch only ONE of these. Describing the trigger only when a
+  // question or a cadence was supplied left a time-only change reading "no
+  // changes described" — a card asking to approve a blank.
+  if (args.trigger_question) {
+    parts.push(
+      [when, `I ask "${String(args.trigger_question)}"`, time].filter(Boolean).join(" ")
+    );
+  } else if (when || time) {
+    parts.push([when ? `ask ${when}` : "ask", time].filter(Boolean).join(" "));
+  }
+  if (args.trigger_weekday != null) {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    parts.push(`on ${days[Number(args.trigger_weekday)] ?? String(args.trigger_weekday)}`);
+  }
+  if (args.trigger_day_of_month != null) {
+    parts.push(`on day ${Number(args.trigger_day_of_month)} of the month`);
+  }
+  if (args.name != null && String(args.name).trim()) {
+    parts.push(`rename it to "${String(args.name).trim()}"`);
+  }
+  if (args.description != null && String(args.description).trim()) {
+    parts.push("update the description");
+  }
+
+  const fields = Array.isArray(args.fields) ? args.fields : [];
+  const start = fields.filter(
+    (f) => !f || typeof f !== "object" || String((f as Record<string, unknown>).ask_at ?? "start") === "start"
+  );
+  if (start.length > 0) {
+    parts.push(
+      `record ${start
+        .map((f) => String((f as Record<string, unknown>).label ?? (f as Record<string, unknown>).key ?? "").toLowerCase())
+        .filter(Boolean)
+        .join(", ")}`
+    );
+  }
+
+  const followUps = Array.isArray(args.follow_ups) ? args.follow_ups : [];
+  for (const raw of followUps) {
+    if (!raw || typeof raw !== "object") continue;
+    const followUp = raw as Record<string, unknown>;
+    parts.push(`${Number(followUp.after_hours ?? 0)}h later ask "${String(followUp.question ?? "")}"`);
+  }
+
+  const calculations = Array.isArray(args.calculations) ? args.calculations : [];
+  for (const raw of calculations) {
+    if (!raw || typeof raw !== "object") continue;
+    const calculation = raw as Record<string, unknown>;
+    parts.push(
+      `${String(calculation.label ?? calculation.key ?? "total").toLowerCase()} = ${String(calculation.expression ?? "")}`
+    );
+  }
+
+  const charts = Array.isArray(args.charts) ? args.charts : [];
+  if (charts.length > 0) {
+    parts.push(
+      `chart it as ${charts
+        .map((c) => String((c as Record<string, unknown>).type ?? "bar"))
+        .join(" + ")}`
+    );
+  }
+
+  if (args.enabled === false) parts.push("pause it");
+  if (args.show_on_dashboard === true) parts.push("show it on the dashboard");
+  if (args.show_on_dashboard === false) parts.push("keep it off the dashboard");
+
+  return parts.length > 0 ? parts.join(", ") + "." : "no changes described.";
+}
+
 export function spokenSaveConfirmation(call: AssistantToolCall): string {
   switch (call.name) {
+    case "create_rule":
+      return "The rule is saved.";
+    case "update_rule":
+      return "The rule is updated.";
+    case "delete_rule":
+      return "The rule is deleted.";
+    case "log_rule_entry":
+      return "Logged.";
+    case "answer_rule_followup":
+      return "Got it, that entry is complete.";
     case "record_expense":
       return "The expenses are recorded.";
     case "record_income":

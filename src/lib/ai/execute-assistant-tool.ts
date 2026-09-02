@@ -20,6 +20,19 @@ import {
   stripConfirmationArg,
 } from "@/lib/ai/assistant-confirmation";
 import type { AssistantToolCall, AssistantToolResult } from "@/lib/ai/tools";
+import { useRulesStore } from "@/store/rules-store";
+import {
+  buildRuleTable,
+  describeRule,
+  renderTableMarkdown,
+  resolveEntry,
+  summariseTable,
+} from "@/lib/rules/engine";
+import {
+  ruleDraftFromArgs,
+  ruleUpdatesFromArgs,
+  describeRuleValues,
+} from "@/lib/rules/from-assistant";
 import {
   matchSpendCategoryFromNote,
   resolveSpendCategoryLabel,
@@ -1175,6 +1188,291 @@ export function executeAssistantTool(
             ok: true,
             saved: true,
             message: `Marked done: ${marked.replace(/^\[DONE\]\s*/i, "")}`,
+          },
+        };
+      }
+
+      case "list_rules": {
+        const scope = String(args.for_person ?? "").trim().toLowerCase();
+        const store = useRulesStore.getState();
+        const rules =
+          scope === "kushvanth" || scope === "grishma" || scope === "household"
+            ? store.rulesFor(scope as "kushvanth" | "grishma" | "household")
+            : store.rules;
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            count: rules.length,
+            rules: rules.map((rule) => ({
+              name: rule.name,
+              scope: rule.scope,
+              enabled: rule.enabled,
+              description: rule.description,
+              how_it_works: describeRule(rule),
+              records: rule.fields.map((field) => field.key),
+              works_out: rule.calculations.map((calc) => `${calc.key} = ${calc.expression}`),
+              entries: store.entriesFor(rule.id).length,
+            })),
+            summary:
+              rules.length === 0
+                ? "No rules yet. Offer to write one down when they describe how something works."
+                : rules.map((rule) => `${rule.name}: ${describeRule(rule)}`).join(" "),
+          },
+        };
+      }
+
+      case "read_rule_table": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useRulesStore.getState();
+        const hits = store.findRule(match);
+        if (hits.length === 0) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: `No rule matched "${args.match ?? ""}".` },
+          };
+        }
+        if (hits.length > 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `"${args.match ?? ""}" matches ${hits.map((r) => `"${r.name}"`).join(", ")}. Ask which one.`,
+            },
+          };
+        }
+        const rule = hits[0]!;
+        const table = buildRuleTable(rule, store.entriesFor(rule.id));
+        const limit = Number(args.limit);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            rule: rule.name,
+            row_count: table.rows.length,
+            table_markdown: renderTableMarkdown(table, Number.isFinite(limit) ? limit : 20),
+            totals: summariseTable(table),
+          },
+        };
+      }
+
+      case "list_due_followups": {
+        const store = useRulesStore.getState();
+        const due = store.dueNow();
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            count: due.length,
+            due: due.map((item) => ({
+              entry_id: item.entry.id,
+              follow_up_id: item.followUp.id,
+              rule: item.rule.name,
+              question: item.followUp.question,
+              asks_for: item.followUp.fields,
+              logged_on: item.entry.date,
+              overdue_hours: item.overdueHours,
+              already_recorded: resolveEntry(item.rule, item.entry),
+            })),
+            summary:
+              due.length === 0
+                ? "Nothing a rule is waiting on."
+                : due
+                    .map((item) => `${item.rule.name} (${item.entry.date}): ${item.followUp.question}`)
+                    .join(" "),
+          },
+        };
+      }
+
+      case "create_rule": {
+        const built = ruleDraftFromArgs(args);
+        if (!built.ok) {
+          return { id: call.id, name: call.name, result: { ok: false, error: built.error } };
+        }
+        const store = useRulesStore.getState();
+        const clash = store.rules.find(
+          (rule) => rule.name.toLowerCase() === built.draft.name.toLowerCase()
+        );
+        if (clash) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `A rule called "${clash.name}" already exists. Use update_rule instead.`,
+            },
+          };
+        }
+        const rule = store.addRule(built.draft);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            rule: rule.name,
+            how_it_works: describeRule(rule),
+            message: `Rule saved: ${rule.name}.`,
+          },
+        };
+      }
+
+      case "update_rule": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useRulesStore.getState();
+        const hits = store.findRule(match);
+        if (hits.length === 0) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: `No rule matched "${args.match ?? ""}".` },
+          };
+        }
+        if (hits.length > 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `"${args.match ?? ""}" matches ${hits.map((r) => `"${r.name}"`).join(", ")}. Ask which one.`,
+            },
+          };
+        }
+        const target = hits[0]!;
+        const built = ruleUpdatesFromArgs(args, target);
+        if (!built.ok) {
+          return { id: call.id, name: call.name, result: { ok: false, error: built.error } };
+        }
+        store.updateRule(target.id, built.updates);
+        const updated = useRulesStore.getState().getRule(target.id)!;
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            rule: updated.name,
+            how_it_works: describeRule(updated),
+            message: `Updated: ${updated.name}.`,
+          },
+        };
+      }
+
+      case "delete_rule": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useRulesStore.getState();
+        const hits = store.findRule(match);
+        if (hits.length === 0) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: `No rule matched "${args.match ?? ""}".` },
+          };
+        }
+        if (hits.length > 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error: `"${args.match ?? ""}" matches ${hits.map((r) => `"${r.name}"`).join(", ")}. Ask which one.`,
+            },
+          };
+        }
+        const target = hits[0]!;
+        const lost = store.entriesFor(target.id).length;
+        store.deleteRule(target.id);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            message: `Deleted "${target.name}" and ${lost} recorded ${lost === 1 ? "entry" : "entries"}.`,
+          },
+        };
+      }
+
+      case "log_rule_entry": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const store = useRulesStore.getState();
+        const hits = store.findRule(match);
+        if (hits.length !== 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error:
+                hits.length === 0
+                  ? `No rule matched "${args.match ?? ""}".`
+                  : `"${args.match ?? ""}" matches ${hits.map((r) => `"${r.name}"`).join(", ")}. Ask which one.`,
+            },
+          };
+        }
+        const rule = hits[0]!;
+        const values = (args.values ?? {}) as Record<string, string | number>;
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(String(args.date ?? ""))
+          ? String(args.date)
+          : undefined;
+        const entry = store.openEntry(rule.id, values, date);
+        if (!entry) {
+          return { id: call.id, name: call.name, result: { ok: false, error: "Could not record that." } };
+        }
+        const resolved = resolveEntry(rule, entry);
+        const waiting = rule.followUps
+          .filter((followUp) => !entry.answered.includes(followUp.id))
+          .map((followUp) => `${followUp.question} in ${followUp.afterHours}h`);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            entry_id: entry.id,
+            rule: rule.name,
+            recorded: resolved,
+            waiting_on: waiting,
+            message: `Logged under ${rule.name}: ${describeRuleValues(rule, resolved)}.`,
+          },
+        };
+      }
+
+      case "answer_rule_followup": {
+        const entryId = String(args.entry_id ?? "").trim();
+        const store = useRulesStore.getState();
+        const entry = store.entries.find((item) => item.id === entryId);
+        if (!entry) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: "That entry is gone. Call list_due_followups again." },
+          };
+        }
+        const rule = store.getRule(entry.ruleId);
+        if (!rule) {
+          return { id: call.id, name: call.name, result: { ok: false, error: "That rule is gone." } };
+        }
+        const values = (args.values ?? {}) as Record<string, string | number>;
+        const followUpId = String(args.follow_up_id ?? "").trim() || undefined;
+        store.answerEntry(entryId, values, followUpId);
+        const updated = useRulesStore.getState().entries.find((item) => item.id === entryId)!;
+        const resolved = resolveEntry(rule, updated);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            rule: rule.name,
+            complete: updated.complete,
+            recorded: resolved,
+            message: `${rule.name} for ${updated.date}: ${describeRuleValues(rule, resolved)}.`,
           },
         };
       }

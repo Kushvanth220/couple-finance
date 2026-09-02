@@ -217,16 +217,123 @@ export function dueLabel(reminder: Reminder, from: Date = new Date()): string {
 }
 
 /**
- * Adopt a legacy plain-string reminder. The text is kept exactly as written —
- * guessing a schedule out of prose would invent data the user never entered.
+ * Parse a schedule phrase that `describeSchedule` produced.
+ *
+ * Only our own output is recognised. Freeform prose a person typed ("due
+ * around the 24th-26th") deliberately does NOT match — guessing there would
+ * invent data nobody entered.
+ */
+function parseRenderedSchedule(
+  phrase: string
+): Pick<Reminder, "repeat" | "date" | "dayOfMonth" | "month" | "weekday" | "time"> | null {
+  let rest = phrase.trim();
+  let time: string | undefined;
+
+  const at = /\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(rest);
+  if (at) {
+    let hour = Number(at[1]);
+    const minute = Number(at[2]);
+    const suffix = at[3]?.toUpperCase();
+    if (suffix === "PM" && hour < 12) hour += 12;
+    if (suffix === "AM" && hour === 12) hour = 0;
+    if (hour <= 23 && minute <= 59) {
+      time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      rest = rest.slice(0, at.index).trim();
+    }
+  }
+
+  const withTime = time ? { time } : {};
+
+  const weekly = new RegExp(`^every (${WEEKDAYS.join("|")})$`, "i").exec(rest);
+  if (weekly) {
+    const weekday = WEEKDAYS.findIndex(
+      (day) => day.toLowerCase() === weekly[1]!.toLowerCase()
+    );
+    return { repeat: "weekly", weekday, ...withTime };
+  }
+  if (/^every week$/i.test(rest)) return { repeat: "weekly", ...withTime };
+
+  const monthly = /^the (\d{1,2})(?:st|nd|rd|th) of each month$/i.exec(rest);
+  if (monthly) {
+    const dayOfMonth = Number(monthly[1]);
+    if (dayOfMonth >= 1 && dayOfMonth <= 31) {
+      return { repeat: "monthly", dayOfMonth, ...withTime };
+    }
+  }
+  if (/^every month$/i.test(rest)) return { repeat: "monthly", ...withTime };
+
+  const yearly = new RegExp(
+    `^every (${MONTHS.join("|")}) (\\d{1,2})(?:st|nd|rd|th)$`,
+    "i"
+  ).exec(rest);
+  if (yearly) {
+    const month =
+      MONTHS.findIndex((name) => name.toLowerCase() === yearly[1]!.toLowerCase()) + 1;
+    const dayOfMonth = Number(yearly[2]);
+    if (month >= 1 && dayOfMonth >= 1 && dayOfMonth <= 31) {
+      return { repeat: "yearly", month, dayOfMonth, ...withTime };
+    }
+  }
+  if (/^every year$/i.test(rest)) return { repeat: "yearly", ...withTime };
+
+  const once = /^on (\d{4}-\d{2}-\d{2})$/i.exec(rest);
+  if (once) return { repeat: "once", date: once[1], ...withTime };
+
+  return null;
+}
+
+/**
+ * Adopt a plain-string reminder.
+ *
+ * This is the exact inverse of `renderReminderLine`, and it has to be: the
+ * rendered line is what gets synced, so anything this function fails to peel
+ * back off becomes part of the stored text and gets rendered AGAIN next time.
+ * That is how live reminders ended up reading
+ *   "Room rent — due the 3rd of each month — remind 5 days before
+ *    — remind 5 days before — remind 5 days before"
+ * with a fresh suffix accumulating on every sync.
+ *
+ * Freeform prose a person wrote is still kept verbatim as the text, with no
+ * schedule guessed from it.
  */
 export function reminderFromLegacyLine(line: string, id: string): Reminder {
   const done = /^\[DONE\]\s*/i.test(line);
+  let rest = line.replace(/^\[DONE\]\s*/i, "").trim();
+
+  // Strip every trailing lead-time suffix, however many have piled up, and
+  // keep the FIRST one written — that was the real value before the repeats.
+  let leadDays: number | undefined;
+  for (;;) {
+    const match = /\s*—\s*remind (\d+) days? before\s*$/i.exec(rest);
+    if (!match) break;
+    leadDays = Number(match[1]);
+    rest = rest.slice(0, match.index).trim();
+  }
+
+  // Then the schedule, likewise possibly repeated.
+  let schedule: ReturnType<typeof parseRenderedSchedule> = null;
+  for (;;) {
+    const match = /\s*—\s*due\s+(.+?)\s*$/i.exec(rest);
+    if (!match) break;
+    const parsed = parseRenderedSchedule(match[1]!);
+    if (!parsed) break;
+    schedule = parsed;
+    rest = rest.slice(0, match.index).trim();
+  }
+
   return {
     id,
-    text: line.replace(/^\[DONE\]\s*/i, "").trim(),
+    text: rest,
     done,
-    repeat: "once",
-    leadDays: DEFAULT_LEAD_DAYS,
+    repeat: schedule?.repeat ?? "once",
+    ...(schedule?.date ? { date: schedule.date } : {}),
+    ...(schedule?.dayOfMonth ? { dayOfMonth: schedule.dayOfMonth } : {}),
+    ...(schedule?.month ? { month: schedule.month } : {}),
+    ...(schedule?.weekday != null ? { weekday: schedule.weekday } : {}),
+    ...(schedule?.time ? { time: schedule.time } : {}),
+    // A recognised schedule means this line is our own rendered output, where
+    // no lead suffix means a lead of zero ("on the day") — not "unspecified".
+    // Only genuine freeform prose falls back to the household default.
+    leadDays: leadDays ?? (schedule ? 0 : DEFAULT_LEAD_DAYS),
   };
 }

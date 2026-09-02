@@ -8,6 +8,8 @@ import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getClientFinancePayload } from "@/lib/ai/client-finance-context";
 import { getBehaviorInstructionsForAssistant, getRemindersForAssistant } from "@/store/assistant-preferences-store";
+import { getRulesForAssistant } from "@/store/rules-store";
+import { describeRule } from "@/lib/rules/engine";
 import { AssistantMessageBody } from "@/components/assistant/assistant-message-body";
 import { executeAssistantTools } from "@/lib/ai/execute-assistant-tool";
 import {
@@ -411,6 +413,12 @@ export function AiChatPanel({
       const financeState = await getClientFinancePayload(person);
       const behaviorInstructions = getBehaviorInstructionsForAssistant();
       const reminders = getRemindersForAssistant();
+      // Rules go up as plain sentences, so the model follows them the way it
+      // follows a behaviour preference — without a tool call just to learn
+      // that a rule exists at all.
+      const rules = getRulesForAssistant().map(
+        (rule) => `${rule.name} (${rule.scope}): ${describeRule(rule)}`
+      );
 
       let payload = await runChatRequest({
         user_id: person,
@@ -420,6 +428,7 @@ export function AiChatPanel({
         finance_state: financeState,
         behavior_instructions: behaviorInstructions,
         reminders,
+        rules,
         speaking_with: activeSpeaker ?? undefined,
       });
 
@@ -491,6 +500,7 @@ export function AiChatPanel({
           finance_state: financeState,
           behavior_instructions: behaviorInstructions,
           reminders,
+          rules,
           speaking_with: activeSpeaker ?? undefined,
           tool_continuation: {
             user_message: payload.user_message ?? trimmed,

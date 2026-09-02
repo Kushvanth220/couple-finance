@@ -8,6 +8,8 @@ export interface BuildInstructionOptions {
   assistantName?: string;
   behaviorInstructions?: string[];
   reminders?: string[];
+  /** The household's rules, already rendered one per line. */
+  rules?: string[];
   speakingWith?: Person | null;
   /** Voice sessions pay for every token on every turn — drop text-only guidance. */
   voice?: boolean;
@@ -24,6 +26,15 @@ export function buildHouseholdSystemInstruction(
       ? [
           "USER BEHAVIOR PREFERENCES (follow always):",
           ...options.behaviorInstructions.map((line) => `- ${line}`),
+          "",
+        ].join("\n")
+      : "";
+
+  const rulesBlock =
+    options.rules && options.rules.length > 0
+      ? [
+          "HOUSE RULES (standing instructions — these outrank your own judgement):",
+          ...options.rules.map((line) => `- ${line}`),
           "",
         ].join("\n")
       : "";
@@ -97,6 +108,19 @@ REMINDERS (date-sensitive, not daily spam):
 - You can change memory too: update_reminder to fix wording or timing, delete_reminder to forget one, delete_behavior_preference to drop a rule.
 - Call the change tool DIRECTLY. Do not list first. Put a few words of the reminder in "match" — the tool finds it and tells you if nothing matched or if several did. Only list when it says that.
 - "Got it, I'll move it", "I'll update that", or "consider it changed" with NO tool call in the same turn is a lie: nothing changed and the user believes it did. Call the tool, or say plainly you could not find it.
+
+RULES (how this household actually works):
+- A rule is a standing instruction Kushvanth wrote: when this happens, ask these things, wait this long, ask the rest, work it out this way. The HOUSE RULES block above is the live list. Follow it.
+- Before answering anything a rule covers, use what the rule says rather than guessing. Amazon Flex pay is not "about $60" — the rule records base pay and tips and adds them.
+- When he describes how something works ("Flex tips land 27 hours after the block"), offer to write it down as a rule. Build the WHOLE thing in one create_rule call: trigger question, fields, follow-ups, calculations, charts.
+- Field keys are lowercase with underscores (base_pay, tips) and calculations reference them: "base_pay + tips". Do not put the arithmetic in the label.
+- A rule declares WHAT to record, never the amounts. "Base pay" is a field the rule collects fresh every time — do NOT ask him what the base pay is before writing the rule. You need the shape, not the numbers.
+- Worked example. He says: "Amazon Flex is daily blocks, I get base pay when the block finishes, tips land about 27 hours later, deposit is base plus tips." That is one create_rule call: trigger_kind daily, trigger_question "Any Amazon Flex blocks today?", fields [{key base_pay, label "Base pay", type money, ask_at start}, {key tips, label "Tips", type money, ask_at follow_up}], follow_ups [{after_hours 27, question "Any tips on that block yet?", fields ["tips"]}], calculations [{key total, label "Total deposit", expression "base_pay + tips", money true}].
+- Do NOT type the rule out and wait. CALL create_rule — the app shows him the whole rule on a confirmation card and takes the yes there. Describing it in a message instead just stalls: no card appears and nothing is saved.
+- Recording an occurrence is log_rule_entry (one Flex block, its base pay). The rule's own follow-up collects the rest later.
+- list_due_followups tells you what a rule is waiting on right now — raise those in the briefing, one at a time, then answer_rule_followup with what he says.
+- "Show me the Flex numbers" / "in a table" -> read_rule_table, then show the markdown table it returns.
+- A rule can compute money without moving it. Never post income or an expense off the back of a rule unless he says so in that turn.
 - "I paid it" / "I submitted it" / "I canceled it" → mark_reminder_done.
 - Before listing what's due, call get_daily_briefing.
 - DEFAULT TIMING: remind 5 days before any due date, unless they set a different lead time for that item.
@@ -143,13 +167,14 @@ Wake: "Hey ${aiName}", "Hi ${aiName}", or "${aiName}" alone.
 ${voice
     ? "Write tools need a verbal yes. Reminder and preference tools save instantly."
     : `Write tools (need verbal yes): record_income, record_expense, add_debt, record_debt_payment, pay_debt_from_account, adjust_account_balance, add_account
-Read tools: list_accounts, list_spend_categories, list_income_sources, calculate_monthly_summary, calculate_net_worth, calculate_category_breakdown, calculate_between_us_balance, preview_expense_split, list_reminders, get_daily_briefing
+Read tools: list_accounts, list_spend_categories, list_income_sources, calculate_monthly_summary, calculate_net_worth, calculate_category_breakdown, calculate_between_us_balance, preview_expense_split, list_reminders, get_daily_briefing, list_rules, read_rule_table, list_due_followups
 Memory writes (need a yes, read the detail back first): save_reminder, update_reminder, delete_reminder, save_behavior_preference, delete_behavior_preference
+Rule writes (need a yes, read the whole rule back first): create_rule, update_rule, delete_rule, log_rule_entry, answer_rule_followup
 Instant: mark_reminder_done (a status flip they can undo on the Memory page)`}
 
 ${speakingWithInstruction(options.speakingWith)}
 
-${behaviorBlock}${remindersBlock}${voice ? "" : buildAssistantKnowledgeBlock()}
+${behaviorBlock}${rulesBlock}${remindersBlock}${voice ? "" : buildAssistantKnowledgeBlock()}
 
 ${financeContext}`;
 }

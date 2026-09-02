@@ -283,7 +283,11 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
           // Push back when our derived lines differ from the server's. Without
           // this a device that migrated but never edited left the server on the
           // old strings, so the other phone kept reading stale reminders.
-          const derived = get().reminders;
+          // Derive fresh from the structured source rather than trusting the
+          // persisted `reminders` array. A stale copy here is what pushed a
+          // re-rendered (and therefore longer) line back to the server on every
+          // load, growing "— remind 5 days before" one suffix at a time.
+          const derived = get().structuredReminders.map(renderReminderLine);
           const remote = prefs.reminders ?? [];
           const drifted =
             derived.length !== remote.length ||
@@ -344,6 +348,13 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
           } as AssistantPreferencesState;
         }
         return state as AssistantPreferencesState;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // `reminders` is a projection of `structuredReminders`, but both were
+        // written to storage. Recompute on load so an old or hand-edited copy
+        // can never be mistaken for the truth.
+        state.reminders = state.structuredReminders.map(renderReminderLine);
       },
     }
   )
