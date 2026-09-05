@@ -116,7 +116,7 @@ export default function RulesPage() {
       {visible.map((rule) => {
         const ruleEntries = entries.filter((entry) => entry.ruleId === rule.id);
         const table = buildRuleTable(rule, ruleEntries);
-        const totals = summariseTable(table);
+        const totals = summariseTable(table, rule);
         const expanded = openRuleId === rule.id;
 
         return (

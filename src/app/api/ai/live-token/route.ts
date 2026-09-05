@@ -11,6 +11,7 @@ interface LiveTokenRequestBody {
   finance_state?: FinanceState;
   behavior_instructions?: string[];
   reminders?: string[];
+  rules?: string[];
 }
 
 function parseVoiceGender(value: unknown): AssistantVoiceGender | undefined {
@@ -26,7 +27,8 @@ export async function POST(request: Request) {
       parseVoiceGender(body.voice_gender),
       body.finance_state,
       Array.isArray(body.behavior_instructions) ? body.behavior_instructions : [],
-      Array.isArray(body.reminders) ? body.reminders : []
+      Array.isArray(body.reminders) ? body.reminders : [],
+      Array.isArray(body.rules) ? body.rules : []
     );
 
     return NextResponse.json({

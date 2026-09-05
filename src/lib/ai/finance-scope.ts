@@ -1,6 +1,8 @@
 import type { AiUserId } from "@/lib/ai/person";
 import { getAiUserDisplayName } from "@/lib/ai/person";
 import type { FinanceState, Person, Transaction } from "@/types";
+import { householdMonth, householdToday } from "@/lib/household-date";
+import { OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
 
 function transactionBelongsToUser(transaction: Transaction, userId: Person): boolean {
   if (transaction.person === userId) return true;
@@ -52,7 +54,7 @@ function monthKey(date: string) {
 }
 
 function sumExpensesThisMonth(transactions: Transaction[]) {
-  const key = monthKey(new Date().toISOString().slice(0, 10));
+  const key = householdMonth();
   return transactions
     .filter((tx) => tx.type === "expense" && tx.date.startsWith(key))
     .reduce((sum, tx) => sum + tx.amount, 0);
@@ -64,7 +66,7 @@ export function buildFinanceContextSummary(
   options?: { compact?: boolean }
 ): string {
   const name = getAiUserDisplayName(userId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = householdToday();
   const compact = Boolean(options?.compact);
   const txLimit = compact ? 6 : 25;
   const incomeLimit = compact ? 3 : 8;
@@ -127,7 +129,7 @@ export function buildFinanceContextSummary(
     `Recent transactions (${state.transactions.length} total in scope):`,
     recentTx || "- none",
     "",
-    `Inter-couple balance (positive = Grishma owes Kushvanth): $${state.interCoupleBalance.toFixed(2)}`,
+    `Inter-couple balance (positive = ${PARTNER_LABEL} owes ${OWNER_LABEL}): $${state.interCoupleBalance.toFixed(2)}`,
   ].join("\n");
 }
 
@@ -135,7 +137,7 @@ export function buildHouseholdFinanceContextSummary(
   state: FinanceState,
   options?: { compact?: boolean }
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = householdToday();
   const kushScoped = scopeFinanceStateForUser(state, "kushvanth");
   const grishScoped = scopeFinanceStateForUser(state, "grishma");
 
@@ -148,6 +150,6 @@ export function buildHouseholdFinanceContextSummary(
     "",
     buildFinanceContextSummary(grishScoped, "grishma", options),
     "",
-    `Shared inter-couple balance (positive = Grishma owes Kushvanth): $${state.interCoupleBalance.toFixed(2)}`,
+    `Shared inter-couple balance (positive = ${PARTNER_LABEL} owes ${OWNER_LABEL}): $${state.interCoupleBalance.toFixed(2)}`,
   ].join("\n");
 }

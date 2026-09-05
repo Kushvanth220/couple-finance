@@ -1,3 +1,4 @@
+import { PARTNER_LABEL } from "@/lib/branding";
 export const ENGLISH_ONLY_REPLY = "Sorry, I didn't get you. I can speak only English.";
 
 /** Indic, Arabic, CJK, Hangul — strip from voice captions. */
@@ -99,7 +100,7 @@ function repairSpokenEnglish(text: string): string {
       .replace(/\b(Green)(Dot)\b/gi, "Green Dot")
       .replace(/\bgreen\s+dog\b/gi, "Green Dot")
       .replace(/\bgreendog\b/gi, "Green Dot")
-      .replace(/\bkrishna\b/gi, "Grishma")
+      .replace(/\bkrishna\b/gi, PARTNER_LABEL)
       .replace(/\bManogreen\b/gi, "Green Dot")
       .replace(/\bMano\s*green\b/gi, "Green Dot")
   );

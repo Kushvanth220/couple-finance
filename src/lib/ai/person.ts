@@ -1,5 +1,6 @@
 import type { Person } from "@/types";
 import { PERSON_LABELS } from "@/types";
+import { OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
 
 export const AI_USER_IDS = ["kushvanth", "grishma"] as const;
 export type AiUserId = Person;
@@ -20,6 +21,9 @@ const USER_ALIASES: Record<string, AiUserId> = {
   kush: "kushvanth",
   guzman: "kushvanth",
   grishma: "grishma",
+  // She is shown as "G" at the moment, so that has to identify her too.
+  g: "grishma",
+  gee: "grishma",
   greeshma: "grishma",
   grisma: "grishma",
   krishma: "grishma",
@@ -160,8 +164,8 @@ export function inferSpeakerFromUtterance(
 export function speakingWithInstruction(speaker?: Person | null): string {
   if (!speaker) {
     return `WHO IS SPEAKING:
-- You do not know who is talking until they say Kushvanth or Grishma.
-- Ask "Who am I talking to — Kushvanth or Grishma?" before recording MONEY: income, expenses, debts, debt payments, account balances, new accounts. Money belongs to a person, so it cannot be filed without one.
+- You do not know who is talking until they say ${OWNER_LABEL} or ${PARTNER_LABEL}.
+- Ask "Who am I talking to — ${OWNER_LABEL} or ${PARTNER_LABEL}?" before recording MONEY: income, expenses, debts, debt payments, account balances, new accounts. Money belongs to a person, so it cannot be filed without one.
 - If they already described an expense, remember it, then ask who is speaking.
 - Do NOT ask before reminders, behaviour rules, or anything else in memory. Those belong to the household, not to one person — asking for a name there is a question with no purpose. Handle them right away.
 - Reading anything is always fine without a name.
@@ -176,7 +180,7 @@ export function speakingWithInstruction(speaker?: Person | null): string {
 }
 
 export function askWhoIsSpeakingPrompt(): string {
-  return `The user just woke you. Say only: "Hey — who am I talking to, Kushvanth or Grishma?" Do not call tools. Do not list questions. Do not greet twice. Do not record money until they answer.`;
+  return `The user just woke you. Say only: "Hey — who am I talking to, ${OWNER_LABEL} or ${PARTNER_LABEL}?" Do not call tools. Do not list questions. Do not greet twice. Do not record money until they answer.`;
 }
 
 export function speakingWithConfirmedPrompt(speaker: Person): string {

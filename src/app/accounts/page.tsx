@@ -1,5 +1,6 @@
 "use client";
 
+import { displayText } from "@/lib/branding";
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
@@ -381,7 +382,7 @@ export default function AccountsPage() {
                     <p className="text-[10px] text-muted truncate">
                       {formatDateTime(entry.date, entry.time, entry.timestamp)} ·{" "}
                       {getDepositLabel(entry.depositAccountId, entry.depositType)}
-                      {entry.notes ? ` · ${entry.notes}` : ""}
+                      {entry.notes ? ` · ${displayText(entry.notes)}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">

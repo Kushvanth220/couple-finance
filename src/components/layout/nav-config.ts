@@ -3,7 +3,7 @@ import {
   ScrollText,
   Cloud,
   CreditCard,
-  Heart,
+  ArrowLeftRight,
   History,
   Landmark,
   LayoutDashboard,
@@ -13,7 +13,7 @@ import {
 export const primaryNavItems = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/spend", label: "Spend", icon: Wallet, primary: true as const },
-  { href: "/between", label: "Between", icon: Heart },
+  { href: "/between", label: "Between", icon: ArrowLeftRight },
 ] as const;
 
 export const moreNavItems = [

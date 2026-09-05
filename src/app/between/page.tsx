@@ -1,5 +1,6 @@
 "use client";
 
+import { displayText } from "@/lib/branding";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Plus } from "lucide-react";
@@ -98,7 +99,7 @@ export default function BetweenPage() {
           automatically.
         </p>
         <p className="mt-1">
-          <strong>Add button</strong> — for cash or money from outside your accounts (e.g. Grishma
+          <strong>Add button</strong> — for cash or money from outside your accounts (e.g. {PERSON_LABELS.grishma}
           gave you $1,000 from another source). Requires a note and shows in History.
         </p>
       </div>
@@ -155,12 +156,12 @@ export default function BetweenPage() {
                       )}
                     </div>
                     <p className="text-xs font-medium leading-snug">
-                      {entry.autoMessage ??
+                      {displayText(entry.autoMessage) ??
                         `${PERSON_LABELS[entry.paidBy]} paid ${formatCurrency(entry.amount)} for ${PERSON_LABELS[entry.benefited]}`}
                     </p>
                     {entry.notes && entry.notes !== entry.autoMessage && (
                       <p className="text-[10px] text-muted mt-0.5 line-clamp-2">
-                        Note: {entry.notes}
+                        Note: {displayText(entry.notes)}
                       </p>
                     )}
                     <p className="text-[10px] text-muted mt-0.5">
@@ -256,7 +257,7 @@ export default function BetweenPage() {
               label="What is this for? (required)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Grishma gave me $1,000 from her other account"
+              placeholder={`e.g. ${PERSON_LABELS.grishma} gave me $1,000 from her other account`}
             />
             {!notesValid && notes.length > 0 && (
               <p className="text-[10px] text-muted mt-1">Please add at least a few words</p>

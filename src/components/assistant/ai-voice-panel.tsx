@@ -37,6 +37,8 @@ import {
 import type { AssistantToolCall } from "@/lib/ai/tools";
 import { getClientFinancePayload } from "@/lib/ai/client-finance-context";
 import { getBehaviorInstructionsForAssistant, getRemindersForAssistant } from "@/store/assistant-preferences-store";
+import { getRulesForAssistant } from "@/store/rules-store";
+import { describeRule } from "@/lib/rules/engine";
 import type { AssistantVoiceGender } from "@/lib/ai/assistant-voice";
 import type { Person } from "@/types";
 import { PERSON_LABELS } from "@/types";
@@ -105,7 +107,7 @@ function householdCategoryChips(): AccountChip[] {
 }
 
 const VOICE_STEPS = [
-  "First say who you are — or tap Kushvanth / Grishma.",
+  `First say who you are — or tap ${PERSON_LABELS.kushvanth} / ${PERSON_LABELS.grishma}.`,
   "Talk like a person — it asks one thing at a time.",
   "Say the amount, then the account (Green Dot, cash, Chime).",
   "Say yes — or tap Yes, save. It will tell you the expenses are recorded.",
@@ -301,7 +303,7 @@ export function AiVoicePanel({
         if (expenseWriteNeedsPayer(merged)) {
           showWritePreview(buildToolConfirmationPreview(merged));
           setAwaitingConfirmation(true);
-          setLiveHint("Who paid — Kushvanth, Grishma, or both?");
+          setLiveHint(`Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`);
         } else if (writeToolNeedsAccount(merged)) {
           setAccountChoiceKind("pay-from");
           setAccountChoices(householdAccountChips());
@@ -327,7 +329,7 @@ export function AiVoicePanel({
           setAwaitingConfirmation(true);
           setLiveHint(
             expenseWriteNeedsPayer(pending)
-              ? "Who paid — Kushvanth, Grishma, or both?"
+              ? `Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`
               : buildToolConfirmationPreview(pending)
           );
         }
@@ -374,14 +376,14 @@ export function AiVoicePanel({
       const runSave = () => {
         const actor = speakerRef.current;
         if (!actor) {
-          setLiveHint("Who am I talking to — Kushvanth or Grishma?");
+          setLiveHint(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
           playerRef.current?.interrupt();
           connectionRef.current?.sendGreeting(
             `App result (do not call tools): ${JSON.stringify({
               ok: false,
               needs_speaker: true,
               saved: false,
-            })}. Ask who you are talking to — Kushvanth or Grishma — in one short English sentence. Do not say it was recorded.`
+            })}. Ask who you are talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma} — in one short English sentence. Do not say it was recorded.`
           );
           return;
         }
@@ -408,14 +410,14 @@ export function AiVoicePanel({
         if (expenseWriteNeedsPayer(call)) {
           showWritePreview(buildToolConfirmationPreview(call));
           setAwaitingConfirmation(true);
-          setLiveHint("Who paid — Kushvanth, Grishma, or both?");
+          setLiveHint(`Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`);
           playerRef.current?.interrupt();
           connectionRef.current?.sendGreeting(
             `App result (do not call tools): ${JSON.stringify({
               ok: false,
               needs_payer: true,
               saved: false,
-            })}. Ask who paid — Kushvanth, Grishma, or both — in one short English sentence. Do not say it was recorded.`
+            })}. Ask who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both — in one short English sentence. Do not say it was recorded.`
           );
           return;
         }
@@ -473,7 +475,7 @@ export function AiVoicePanel({
             showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
           }
           setAwaitingConfirmation(true);
-          setLiveHint("Who paid — Kushvanth, Grishma, or both?");
+          setLiveHint(`Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`);
         } else if (result?.result?.needs_cash_source === true) {
           setAccountChoiceKind("cash-source");
           setAccountChoices(chipsFromToolAccounts(result.result.accounts, true));
@@ -599,6 +601,12 @@ export function AiVoicePanel({
       const financeState = await financePromise;
       const behaviorInstructions = getBehaviorInstructionsForAssistant();
       const reminders = getRemindersForAssistant();
+      // Voice needs the rule book too. Without it a live session answered
+      // "I don't see any rules linked to Flex" about a rule that plainly
+      // exists, then tried to create a duplicate of it.
+      const rules = getRulesForAssistant().map(
+        (rule) => `${rule.name} (${rule.scope}): ${describeRule(rule)}`
+      );
       if (startId !== startGenerationRef.current) {
         dropUnusedMic();
         return;
@@ -611,6 +619,7 @@ export function AiVoicePanel({
         finance_state: financeState,
         behavior_instructions: behaviorInstructions,
         reminders,
+        rules,
       });
 
       setLiveHint("Unlocking microphone…");
@@ -711,7 +720,7 @@ export function AiVoicePanel({
               pendingWriteRef.current = mergePendingWrite(pendingWriteRef.current, writeCall);
               showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
               setAwaitingConfirmation(true);
-              setLiveHint("Who am I talking to — Kushvanth or Grishma?");
+              setLiveHint(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
               setToolBusy(false);
               connectionRef.current?.sendToolResponse(
                 calls.map((call) => ({
@@ -722,7 +731,7 @@ export function AiVoicePanel({
                         ok: false,
                         needs_speaker: true,
                         saved: false,
-                        error: "Who am I talking to — Kushvanth or Grishma?",
+                        error: `Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`,
                       }
                     : { ok: true },
                 }))
@@ -801,7 +810,7 @@ export function AiVoicePanel({
                   (pendingWriteRef.current
                     ? expenseWriteNeedsPayer(pendingWriteRef.current)
                     : false)
-                  ? "Who paid — Kushvanth, Grishma, or both?"
+                  ? `Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`
                   : 'Say "yes" to save, or "no" to change it.'
               );
             } else if (cashSourceNeed && !savedMoney) {
@@ -928,7 +937,7 @@ export function AiVoicePanel({
         mic.setSending(false);
         player.interrupt();
         connection.sendGreeting(askWhoIsSpeakingPrompt());
-        setLiveHint("Who am I talking to — Kushvanth or Grishma?");
+        setLiveHint(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
       }
     } catch (err) {
       dropUnusedMic();

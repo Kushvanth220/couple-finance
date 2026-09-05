@@ -1,5 +1,6 @@
 "use client";
 
+import { displayText } from "@/lib/branding";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { resolveAccountLabel } from "@/lib/deleted-history";
 import { getTransactionDisplayMessage, getTransactionActor } from "@/lib/transaction-messages";
@@ -90,8 +91,8 @@ function TransactionDetails({
         />
       )}
       <DetailRow label="Payment" value={transaction.paymentMethod} />
-      <DetailRow label="Notes" value={transaction.notes} />
-      <DetailRow label="Auto message" value={transaction.autoMessage} />
+      <DetailRow label="Notes" value={displayText(transaction.notes)} />
+      <DetailRow label="Auto message" value={displayText(transaction.autoMessage)} />
       <DetailRow
         label="Budget left"
         value={
@@ -143,7 +144,7 @@ export function DeletedHistoryCard({ record }: { record: DeletedHistoryRecord })
               Removed {formatDateTime(record.deletedAt.slice(0, 10), record.deletedAt.slice(11, 19), record.deletedAt)}
             </span>
           </div>
-          <p className="font-medium mt-2 text-sm leading-snug">{record.summary}</p>
+          <p className="font-medium mt-2 text-sm leading-snug">{displayText(record.summary)}</p>
           {primary && (
             <p className="text-xs text-muted mt-1">
               Originally recorded{" "}
@@ -203,8 +204,8 @@ export function DeletedHistoryCard({ record }: { record: DeletedHistoryRecord })
                   <DetailRow label="Paid by" value={PERSON_LABELS[entry.paidBy]} />
                   <DetailRow label="Benefited" value={PERSON_LABELS[entry.benefited]} />
                   <DetailRow label="Running balance" value={formatCurrency(entry.runningBalance)} />
-                  <DetailRow label="Notes" value={entry.notes} />
-                  <DetailRow label="Auto message" value={entry.autoMessage} />
+                  <DetailRow label="Notes" value={displayText(entry.notes)} />
+                  <DetailRow label="Auto message" value={displayText(entry.autoMessage)} />
                   <DetailRow label="Source txn" value={entry.sourceTransactionId} />
                   <DetailRow label="Entry ID" value={entry.id} />
                 </div>

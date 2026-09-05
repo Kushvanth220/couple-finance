@@ -1,5 +1,6 @@
 "use client";
 
+import { displayText } from "@/lib/branding";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { getTransactionDisplayMessage, getTransactionActor } from "@/lib/transaction-messages";
 import { useFinanceStore } from "@/store/finance-store";
@@ -22,7 +23,7 @@ function DetailRow({ label, value }: { label: string; value?: string | number | 
   return (
     <div className="flex gap-2 text-[10px] leading-relaxed">
       <span className="text-muted shrink-0 w-24">{label}</span>
-      <span className="break-words">{value}</span>
+      <span className="break-words">{displayText(value)}</span>
     </div>
   );
 }
@@ -57,7 +58,7 @@ export function ActiveTransactionDetails({ transaction }: { transaction: Transac
           value={formatDateTime(transaction.date, transaction.time, transaction.timestamp)}
         />
         <DetailRow label="Category" value={transaction.category} />
-        <DetailRow label="Note" value={transaction.notes} />
+        <DetailRow label="Note" value={displayText(transaction.notes)} />
         <DetailRow label="Account" value={resolveAccountLabel(transaction.accountId, accounts)} />
         <DetailRow
           label="From"

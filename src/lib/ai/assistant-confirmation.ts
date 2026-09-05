@@ -26,6 +26,8 @@ export const ASSISTANT_WRITE_TOOLS = new Set([
   "delete_rule",
   "log_rule_entry",
   "answer_rule_followup",
+  "update_rule_entry",
+  "delete_rule_entry",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -52,6 +54,8 @@ export const HOUSEHOLD_WRITE_TOOLS = new Set([
   "delete_rule",
   "log_rule_entry",
   "answer_rule_followup",
+  "update_rule_entry",
+  "delete_rule_entry",
 ]);
 
 export function writeNeedsSpeaker(name: string): boolean {
@@ -106,7 +110,7 @@ export function withExpensePerson(
 
 export const EXPENSE_PAID_BY_CHIPS = [
   { id: "kushvanth" as const, label: "Kushvanth paid" },
-  { id: "grishma" as const, label: "Grishma paid" },
+  { id: "grishma" as const, label: `${PERSON_LABELS.grishma} paid` },
   { id: "split" as const, label: "Both paid" },
 ];
 
@@ -267,6 +271,17 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
     case "answer_rule_followup": {
       return `Fill in ${describeValueBag(args.values)} on that entry.`;
     }
+    case "update_rule_entry": {
+      const parts: string[] = [];
+      if (args.values && Object.keys(args.values as object).length > 0) {
+        parts.push(`set ${describeValueBag(args.values)}`);
+      }
+      if (args.date) parts.push(`move it to ${String(args.date)}`);
+      return `Change that recorded entry — ${parts.join(", ") || "no change described"}.`;
+    }
+    case "delete_rule_entry": {
+      return "Remove that recorded entry. This cannot be undone.";
+    }
     case "record_income": {
       return `Record ${moneyLabel(args.amount)} income from ${String(args.source_name ?? "income")} into ${String(args.deposit_account_name ?? args.deposit_account_id ?? "an account")}.`;
     }
@@ -339,7 +354,12 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
   }
 }
 
-/** "base_pay $62.50, tips $11.25" from a loose values object. */
+/**
+ * "base_pay $62.50, tips $11.25" from a loose values object.
+ *
+ * A key that names a time is never money — the card once read "start time
+ * $1245.00" for 12:45, which is not a figure anyone should be asked to approve.
+ */
 function describeValueBag(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "nothing";
   const entries = Object.entries(raw as Record<string, unknown>);
@@ -347,6 +367,7 @@ function describeValueBag(raw: unknown): string {
   return entries
     .map(([key, value]) => {
       const label = key.replace(/_/g, " ");
+      if (/time|date|hour/i.test(key)) return `${label} ${String(value)}`;
       const num = Number(value);
       return Number.isFinite(num) ? `${label} ${moneyLabel(num)}` : `${label} ${String(value)}`;
     })
@@ -454,6 +475,10 @@ export function spokenSaveConfirmation(call: AssistantToolCall): string {
       return "Logged.";
     case "answer_rule_followup":
       return "Got it, that entry is complete.";
+    case "update_rule_entry":
+      return "That entry is updated.";
+    case "delete_rule_entry":
+      return "That entry is removed.";
     case "record_expense":
       return "The expenses are recorded.";
     case "record_income":

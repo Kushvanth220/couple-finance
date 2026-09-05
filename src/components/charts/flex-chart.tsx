@@ -146,7 +146,7 @@ export function FlexChart({
             style={{ fontSize: 10, fill: "currentColor" }}
           >
             {data.map((point, index) => (
-              <Cell key={point.label} fill={chartColor(index)} />
+              <Cell key={`${point.label}-${index}`} fill={chartColor(index)} />
             ))}
           </Pie>
           <Tooltip content={<TooltipBox money={money} />} />
@@ -210,7 +210,7 @@ export function FlexChart({
               />
             ) : null}
             {points.map((point, index) => (
-              <Cell key={point.label} fill={chartColor(index)} />
+              <Cell key={`${point.label}-${index}`} fill={chartColor(index)} />
             ))}
           </Scatter>
         </ScatterChart>
@@ -292,7 +292,7 @@ export function FlexChart({
             />
           ) : null}
           {data.map((point, index) => (
-            <Cell key={point.label} fill={chartColor(index)} />
+            <Cell key={`${point.label}-${index}`} fill={chartColor(index)} />
           ))}
         </Bar>
       </BarChart>

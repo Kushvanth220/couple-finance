@@ -1,5 +1,6 @@
 "use client";
 
+import { displayText } from "@/lib/branding";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Filter, RotateCcw, Trash2 } from "lucide-react";
@@ -396,7 +397,7 @@ function HistoryPageContent() {
           Removed from active History and saved in the deleted log.
         </p>
         {pendingDelete ? (
-          <p className="text-sm font-medium mt-3 leading-snug">{pendingDelete.message}</p>
+          <p className="text-sm font-medium mt-3 leading-snug">{displayText(pendingDelete.message)}</p>
         ) : null}
         <div className="mt-4">
           <p className="text-sm font-medium mb-2">Who deleted this?</p>

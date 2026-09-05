@@ -1,3 +1,4 @@
+import { displayText } from "@/lib/branding";
 import { isSameMonth } from "date-fns";
 import { parseAppDateTime } from "@/lib/formatters";
 import type { Account, Person, Transaction } from "@/types";
@@ -183,11 +184,16 @@ export function getTransactionActor(transaction: Transaction): Person {
   return transaction.paidByPerson ?? transaction.person;
 }
 
-function appendNotesIfMissing(message: string, notes?: string): string {
+function appendNotesIfMissingRaw(message: string, notes?: string): string {
+  // Notes are his own words and can name her; swap on display like the rest.
   const note = notes?.trim();
   if (!note) return message;
   if (message.toLowerCase().includes(note.toLowerCase())) return message;
   return `${message} — ${note}`;
+}
+
+function appendNotesIfMissing(message: string, notes?: string): string {
+  return displayText(appendNotesIfMissingRaw(message, notes));
 }
 
 export function getTransactionDisplayMessage(transaction: Transaction): string {
@@ -195,9 +201,11 @@ export function getTransactionDisplayMessage(transaction: Transaction): string {
   const actorLabel = PERSON_LABELS[actor];
 
   if (transaction.autoMessage) {
-    let message = transaction.autoMessage.includes(actorLabel)
-      ? transaction.autoMessage
-      : `${actorLabel} — ${transaction.autoMessage}`;
+    // Stored records carry the name as it was when they were written; the swap
+    // happens here so every screen that shows a transaction agrees, without
+    // rewriting a single row.
+    const stored = displayText(transaction.autoMessage);
+    let message = stored.includes(actorLabel) ? stored : `${actorLabel} — ${stored}`;
 
     if (
       transaction.type === "inter_couple" &&

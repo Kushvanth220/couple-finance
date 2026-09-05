@@ -1,3 +1,5 @@
+import { OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
+
 export type Person = "kushvanth" | "grishma";
 
 export type AccountType = "credit" | "debit" | "cash";
@@ -163,6 +165,6 @@ export interface FinanceState {
 }
 
 export const PERSON_LABELS: Record<Person, string> = {
-  kushvanth: "Kushvanth",
-  grishma: "Grishma",
+  kushvanth: OWNER_LABEL,
+  grishma: PARTNER_LABEL,
 };

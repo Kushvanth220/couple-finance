@@ -1,5 +1,7 @@
 "use client";
 
+import { HOUSEHOLD_LABEL } from "@/lib/branding";
+
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import type { AssistantVoiceGender } from "@/lib/ai/assistant-voice";
@@ -46,7 +48,7 @@ export function AssistantNameSetup({ onComplete }: AssistantNameSetupProps) {
             <div>
               <h3 className="text-lg font-bold tracking-tight">Meet your AI</h3>
               <p className="text-sm text-muted mt-2">
-                One shared AI for Kushvanth and Grishma — talk naturally about spending, bills,
+                One shared AI for {HOUSEHOLD_LABEL} — talk naturally about spending, bills,
                 reminders, and balances.
               </p>
             </div>

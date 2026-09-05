@@ -1,3 +1,4 @@
+import { HOUSEHOLD_LABEL } from "@/lib/branding";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ExpenseReminderProvider } from "@/components/notifications/expense-reminder-provider";
@@ -21,7 +22,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "KG Finance",
-  description: "Personal finance for Kushvanth & Grishma — KG Finance",
+  description: `Personal finance for ${HOUSEHOLD_LABEL} — KG Finance`,
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

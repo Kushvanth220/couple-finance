@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { AnimatedMoney } from "@/components/ui/animated-number";
+import { RuleDashboards } from "@/components/dashboard/rule-dashboard";
 import { GlassCard } from "@/components/ui/glass-card";
 import { PersonTabs } from "@/components/ui/person-tabs";
 import {
@@ -596,6 +597,9 @@ export function DashboardView() {
           </div>
         )}
       </GlassCard>
+
+      {/* Anything a rule collects, shown where he already looks. */}
+      <RuleDashboards person={person} />
 
       <SpendCategoryManager
         open={categoryManagerOpen}

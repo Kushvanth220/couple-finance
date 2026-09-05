@@ -1,5 +1,7 @@
 "use client";
 
+import { OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { GrikMark } from "@/components/layout/grik-mark";
@@ -82,9 +84,9 @@ export function GrikLogo({
               isHero ? "text-sm" : "text-[11px]"
             )}
           >
-            <span className="grik-name-kush">Kushvanth</span>
+            <span className="grik-name-kush">{OWNER_LABEL}</span>
             <span className="text-muted grik-amp">&</span>
-            <span className="grik-name-grish">Grishma</span>
+            <span className="grik-name-grish">{PARTNER_LABEL}</span>
           </p>
         )}
       </div>

@@ -30,13 +30,15 @@ export async function createLiveEphemeralToken(
   voiceGender?: AssistantVoiceGender,
   clientFinanceState?: FinanceState,
   behaviorInstructions: string[] = [],
-  reminders: string[] = []
+  reminders: string[] = [],
+  rules: string[] = []
 ) {
   const financeContext = await resolveHouseholdFinanceContext(clientFinanceState, true);
   const systemInstruction = buildHouseholdSystemInstruction(financeContext, {
     assistantName,
     behaviorInstructions,
     reminders,
+    rules,
     voice: true,
   });
   const voiceName = resolveAssistantLiveVoice(voiceGender);

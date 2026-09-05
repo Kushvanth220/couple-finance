@@ -310,7 +310,7 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
   {
     name: "save_behavior_preference",
     description:
-      "Save a user instruction to remember for future sessions (e.g. be more concise, format USD). Saves immediately — no confirmation needed.",
+      "Save a standing instruction to follow in future sessions (e.g. be more concise, always show cents). Call it as soon as they say to remember something - the app shows a confirmation card and takes the yes there. Saying you will remember, without this call, saves nothing.",
     parameters: {
       type: "object",
       properties: {
@@ -322,7 +322,7 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
   {
     name: "save_reminder",
     description:
-      "Save a reminder, bill, schedule, or to-do. Use when they say remind me, remember, don't forget, or describe a recurring bill. Saves immediately — no confirmation.",
+      "Save a reminder, bill, schedule, or to-do. Use when they say remind me, remember, don't forget, or describe a recurring bill. Call it straight away with the schedule filled in - the app shows a confirmation card and takes the yes there.",
     parameters: {
       type: "object",
       properties: {
@@ -542,9 +542,9 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         trigger_time: { type: "string" },
         trigger_weekday: { type: "number" },
         trigger_day_of_month: { type: "number" },
-        fields: { type: "array", description: "Replaces all fields.", items: { type: "object" } },
+        fields: { type: "array", description: "Fields to add or change, matched by key. Anything you leave out is kept. To remove one, tell them to use the Rules page.", items: { type: "object" } },
         follow_ups: { type: "array", description: "Replaces all follow-ups.", items: { type: "object" } },
-        calculations: { type: "array", description: "Replaces all calculations.", items: { type: "object" } },
+        calculations: { type: "array", description: "Calculations to add or change, matched by key. Anything you leave out is kept.", items: { type: "object" } },
         charts: { type: "array", description: "Replaces all charts.", items: { type: "object" } },
         show_on_dashboard: { type: "boolean" },
         user_confirmed: { type: "boolean", description: "Only true after they said yes to this exact change." },
@@ -568,7 +568,7 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
   {
     name: "log_rule_entry",
     description:
-      "Record one occurrence under a rule - a single Amazon Flex block with its base pay. Pass the values you have; the rule's follow-up will collect the rest later. Needs a yes.",
+      "Record one occurrence under a rule - a single Amazon Flex block with its base pay. Call this DIRECTLY as soon as you have an amount; do not list the rule first and do not ask for confirmation in words, because the app shows him a confirmation card. Near-miss field names are resolved for you (base -> base_pay) and the tool names the real keys if it cannot. This touches NO account and never moves money, so never ask which account to use. One call per occurrence - three blocks today is three calls. Needs a yes.",
     parameters: {
       type: "object",
       properties: {
@@ -586,7 +586,7 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
   {
     name: "answer_rule_followup",
     description:
-      "Fill in the values a follow-up was waiting for - the tips on a block logged 27 hours ago. Use the entry_id from list_due_followups. Needs a yes, because it usually completes a money figure.",
+      "Fill in the values a follow-up was waiting for - the tips on a block logged 27 hours ago. Use the entry_id from list_due_followups, and the rule's exact field keys. Touches no account. Needs a yes, because it usually completes a money figure.",
     parameters: {
       type: "object",
       properties: {
@@ -596,6 +596,37 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         user_confirmed: { type: "boolean", description: "Only true after they said yes." },
       },
       required: ["entry_id", "values"],
+    },
+  },
+  {
+    name: "update_rule_entry",
+    description:
+      "Correct an entry already recorded under a rule - a wrong amount, a wrong time, or the wrong DATE (a block logged today that actually happened yesterday). Get entry_id from read_rule_table. Never tell them a recorded entry cannot be changed. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        entry_id: { type: "string", description: "From read_rule_table." },
+        values: {
+          type: "object",
+          description: "Only the fields to change, by the rule's field names. Others stay as they are.",
+        },
+        date: { type: "string", description: "yyyy-MM-dd, to move it to a different day." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes to this exact change." },
+      },
+      required: ["entry_id"],
+    },
+  },
+  {
+    name: "delete_rule_entry",
+    description:
+      "Remove one entry recorded under a rule - something logged twice, or logged by mistake. Get entry_id from read_rule_table. Needs a yes.",
+    parameters: {
+      type: "object",
+      properties: {
+        entry_id: { type: "string", description: "From read_rule_table." },
+        user_confirmed: { type: "boolean", description: "Only true after they said yes to removing it." },
+      },
+      required: ["entry_id"],
     },
   },
 ];

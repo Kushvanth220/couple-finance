@@ -21,6 +21,7 @@ import {
 } from "@/lib/ai/assistant-confirmation";
 import type { AssistantToolCall, AssistantToolResult } from "@/lib/ai/tools";
 import { useRulesStore } from "@/store/rules-store";
+import { householdToday } from "@/lib/household-date";
 import {
   buildRuleTable,
   describeRule,
@@ -32,6 +33,7 @@ import {
   ruleDraftFromArgs,
   ruleUpdatesFromArgs,
   describeRuleValues,
+  normalizeRuleValues,
 } from "@/lib/rules/from-assistant";
 import {
   matchSpendCategoryFromNote,
@@ -184,7 +186,7 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
       result: {
         ok: false,
         needs_payer: true,
-        error: "Who paid — Kushvanth, Grishma, or both of you?",
+        error: `Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both of you?`,
       },
     };
   }
@@ -222,7 +224,7 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
         result: {
           ok: false,
           needs_expense_split: true,
-          error: "How should the expense be split between Kushvanth and Grishma?",
+          error: `How should the expense be split between ${PERSON_LABELS.kushvanth} and ${PERSON_LABELS.grishma}?`,
         },
       };
     }
@@ -297,7 +299,7 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
             ok: false,
             needs_account: true,
             for_person: entry.person,
-            error: `Which account did ${entry.person === "kushvanth" ? "Kushvanth" : "Grishma"} pay $${entry.paid.toFixed(2)} from?`,
+            error: `Which account did ${entry.person === "kushvanth" ? PERSON_LABELS.kushvanth : PERSON_LABELS.grishma} pay $${entry.paid.toFixed(2)} from?`,
             accounts: listAccountsForPerson(entry.person),
           },
         };
@@ -336,7 +338,7 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
         result: {
           ok: false,
           needs_payment_split: true,
-          error: "Who paid how much — Kushvanth, Grishma, or both?",
+          error: `Who paid how much — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`,
         },
       };
     }
@@ -382,7 +384,7 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
         ok: false,
         needs_account: true,
         for_person: payer,
-        error: `Which account did ${payer === "kushvanth" ? "Kushvanth" : "Grishma"} pay from?`,
+        error: `Which account did ${payer === "kushvanth" ? PERSON_LABELS.kushvanth : PERSON_LABELS.grishma} pay from?`,
         accounts: listAccountsForPerson(payer),
       },
     };
@@ -436,10 +438,10 @@ function recordExpenseTool(person: Person, call: AssistantToolCall): AssistantTo
 
   let message = `Recorded $${amount.toFixed(2)}`;
   if (category) message += ` for ${category}`;
-  message += ` paid by ${payer === "kushvanth" ? "Kushvanth" : "Grishma"} from ${account.name}.`;
+  message += ` paid by ${payer === "kushvanth" ? PERSON_LABELS.kushvanth : PERSON_LABELS.grishma} from ${account.name}.`;
   if (sharedExpense) message += " Split between both of you.";
   else if (beneficiaryPerson) {
-    message += ` Expense for ${beneficiaryPerson === "kushvanth" ? "Kushvanth" : "Grishma"}.`;
+    message += ` Expense for ${beneficiaryPerson === "kushvanth" ? PERSON_LABELS.kushvanth : PERSON_LABELS.grishma}.`;
   }
 
   return {
@@ -926,7 +928,7 @@ export function executeAssistantTool(
             total_usd: amount,
             kushvanth_share: kShare,
             grishma_share: gShare,
-            summary: `Split $${amount.toFixed(2)}: Kushvanth $${kShare.toFixed(2)}, Grishma $${gShare.toFixed(2)}.`,
+            summary: `Split $${amount.toFixed(2)}: ${PERSON_LABELS.kushvanth} $${kShare.toFixed(2)}, ${PERSON_LABELS.grishma} $${gShare.toFixed(2)}.`,
           },
         };
       }
@@ -1255,7 +1257,17 @@ export function executeAssistantTool(
             rule: rule.name,
             row_count: table.rows.length,
             table_markdown: renderTableMarkdown(table, Number.isFinite(limit) ? limit : 20),
-            totals: summariseTable(table),
+            totals: summariseTable(table, rule),
+            // Ids so a wrong row can actually be corrected afterwards.
+            entries: table.rows
+              .slice(0, Number.isFinite(limit) ? limit : 20)
+              .map((row) => ({
+                entry_id: row.__entryId,
+                date: row.date,
+                values: Object.fromEntries(
+                  Object.entries(row).filter(([key]) => key !== "__entryId")
+                ),
+              })),
           },
         };
       }
@@ -1416,7 +1428,11 @@ export function executeAssistantTool(
           };
         }
         const rule = hits[0]!;
-        const values = (args.values ?? {}) as Record<string, string | number>;
+        const normalized = normalizeRuleValues(rule.fields, args.values ?? {});
+        if (!normalized.ok) {
+          return { id: call.id, name: call.name, result: { ok: false, error: normalized.error } };
+        }
+        const values = normalized.values;
         const date = /^\d{4}-\d{2}-\d{2}$/.test(String(args.date ?? ""))
           ? String(args.date)
           : undefined;
@@ -1438,6 +1454,12 @@ export function executeAssistantTool(
             rule: rule.name,
             recorded: resolved,
             waiting_on: waiting,
+            // Say this plainly. A rule with an income payout made the model
+            // ask "which account?" over and over, because it assumed logging
+            // moved money. It does not: the entry is a record, and posting it
+            // is a separate, explicit step.
+            no_account_needed: true,
+            note: "This is recorded under the rule only. No account changed, so do not ask which account to use.",
             message: `Logged under ${rule.name}: ${describeRuleValues(rule, resolved)}.`,
           },
         };
@@ -1458,9 +1480,12 @@ export function executeAssistantTool(
         if (!rule) {
           return { id: call.id, name: call.name, result: { ok: false, error: "That rule is gone." } };
         }
-        const values = (args.values ?? {}) as Record<string, string | number>;
+        const answered = normalizeRuleValues(rule.fields, args.values ?? {});
+        if (!answered.ok) {
+          return { id: call.id, name: call.name, result: { ok: false, error: answered.error } };
+        }
         const followUpId = String(args.follow_up_id ?? "").trim() || undefined;
-        store.answerEntry(entryId, values, followUpId);
+        store.answerEntry(entryId, answered.values, followUpId);
         const updated = useRulesStore.getState().entries.find((item) => item.id === entryId)!;
         const resolved = resolveEntry(rule, updated);
         return {
@@ -1477,9 +1502,89 @@ export function executeAssistantTool(
         };
       }
 
+      case "update_rule_entry": {
+        const entryId = String(args.entry_id ?? "").trim();
+        const store = useRulesStore.getState();
+        const entry = store.entries.find((item) => item.id === entryId);
+        if (!entry) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: "No entry with that id. Call read_rule_table for the ids." },
+          };
+        }
+        const rule = store.getRule(entry.ruleId);
+        if (!rule) {
+          return { id: call.id, name: call.name, result: { ok: false, error: "That rule is gone." } };
+        }
+
+        const updates: Partial<typeof entry> = {};
+        if (args.values && Object.keys(args.values as object).length > 0) {
+          const normalized = normalizeRuleValues(rule.fields, args.values);
+          if (!normalized.ok) {
+            return { id: call.id, name: call.name, result: { ok: false, error: normalized.error } };
+          }
+          // Merge: only the fields named are changed.
+          updates.values = { ...entry.values, ...normalized.values };
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(args.date ?? ""))) {
+          updates.date = String(args.date);
+        }
+        if (Object.keys(updates).length === 0) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: "Nothing in that changes the entry." },
+          };
+        }
+
+        const before = { date: entry.date, ...resolveEntry(rule, entry) };
+        store.updateEntry(entryId, updates);
+        const after = useRulesStore.getState().entries.find((item) => item.id === entryId)!;
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            rule: rule.name,
+            was: before,
+            now: { date: after.date, ...resolveEntry(rule, after) },
+            message: `Updated that ${rule.name} entry.`,
+          },
+        };
+      }
+
+      case "delete_rule_entry": {
+        const entryId = String(args.entry_id ?? "").trim();
+        const store = useRulesStore.getState();
+        const entry = store.entries.find((item) => item.id === entryId);
+        if (!entry) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: { ok: false, error: "No entry with that id. Call read_rule_table for the ids." },
+          };
+        }
+        const rule = store.getRule(entry.ruleId);
+        const summary = rule ? describeRuleValues(rule, resolveEntry(rule, entry)) : entry.date;
+        store.deleteEntry(entryId);
+        return {
+          id: call.id,
+          name: call.name,
+          result: {
+            ok: true,
+            saved: true,
+            message: `Removed the ${entry.date} entry (${summary}).`,
+          },
+        };
+      }
+
       case "get_daily_briefing": {
         const now = new Date();
-        const day = now.getDate();
+        // The day number has to be the household's, not the server's — a UTC
+        // getDate() is already tomorrow through the whole Central evening.
+        const day = Number(householdToday(now).slice(8, 10));
         const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
         const dateLabel = now.toLocaleDateString("en-US", {
           weekday: "long",

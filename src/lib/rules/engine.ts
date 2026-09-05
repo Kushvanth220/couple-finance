@@ -151,7 +151,9 @@ export function validateExpression(
   }
 
   const used = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) ?? [];
-  const unknown = used.filter((name) => !fieldKeys.includes(name));
+  // A time field also offers "<key>_minutes" for arithmetic.
+  const derived = fieldKeys.map((key) => `${key}_minutes`);
+  const unknown = used.filter((name) => !fieldKeys.includes(name) && !derived.includes(name));
   if (unknown.length > 0) {
     return {
       ok: false,
@@ -161,16 +163,95 @@ export function validateExpression(
   return { ok: true };
 }
 
-/** Every field plus every calculation, resolved for one entry. */
+/**
+ * Anything a person says for a time, as 24-hour "HH:mm".
+ *
+ * Voice hands over "12:45 PM", "2pm", "2.30 pm" — none of which parse as
+ * HH:mm, so they used to be stored verbatim and every calculation built on
+ * them silently became zero. Returns null when it genuinely is not a time.
+ */
+export function toClockTime(value: unknown): string | null {
+  const raw = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!raw) return null;
+
+  const match = /^(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/.exec(raw);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const suffix = match[3]?.replace(/\./g, "");
+
+  if (minutes > 59) return null;
+  if (suffix === "pm" && hours < 12) hours += 12;
+  if (suffix === "am" && hours === 12) hours = 0;
+  if (hours > 23) return null;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+/** "14:30" -> 870. Minutes since midnight, for arithmetic on time fields. */
+export function timeToMinutes(value: unknown): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/**
+ * Every field plus every calculation, resolved for one entry.
+ *
+ * Time fields also appear as `<key>_minutes` so calculations can do arithmetic
+ * on them — a block from 12:45 to 14:15 is `(finish_time_minutes -
+ * start_time_minutes) / 60` hours. The original "12:45" is kept for display;
+ * only the derived number is for maths. A finish before the start is treated
+ * as crossing midnight rather than going negative.
+ */
 export function resolveEntry(rule: Rule, entry: RuleEntry): Record<string, number | string> {
   const resolved: Record<string, number | string> = { ...entry.values };
 
+  // Calculations run against a separate context where a time is a NUMBER of
+  // minutes. The returned map keeps "12:45" for display, so a table still
+  // reads like a clock while "finish_time - start_time" is real arithmetic
+  // instead of NaN quietly collapsing to zero.
+  const math: Record<string, number | string> = { ...entry.values };
+  for (const field of rule.fields) {
+    if (field.type !== "time") continue;
+    const minutes = timeToMinutes(entry.values[field.key]);
+    if (minutes == null) continue;
+    math[field.key] = minutes;
+    math[`${field.key}_minutes`] = minutes;
+    resolved[`${field.key}_minutes`] = minutes;
+  }
+
+  // An overnight shift finishes "before" it started. Which field is the finish
+  // is decided by declaration order — the rule lists start then finish — so
+  // only the later one wraps past midnight, and only when it reads earlier.
+  const timeFields = rule.fields.filter((field) => field.type === "time");
+  for (let i = 1; i < timeFields.length; i += 1) {
+    const earlierKey = timeFields[i - 1]!.key;
+    const laterKey = timeFields[i]!.key;
+    const from = math[earlierKey];
+    const to = math[laterKey];
+    if (typeof from === "number" && typeof to === "number" && to < from) {
+      const wrapped = to + 24 * 60;
+      math[laterKey] = wrapped;
+      math[`${laterKey}_minutes`] = wrapped;
+      resolved[`${laterKey}_minutes`] = wrapped;
+    }
+  }
+
   for (const calculation of rule.calculations) {
     try {
-      const value = evaluateExpression(calculation.expression, resolved);
-      resolved[calculation.key] = calculation.money ? roundMoney(value) : value;
+      const value = evaluateExpression(calculation.expression, math);
+      const final = calculation.money ? roundMoney(value) : value;
+      resolved[calculation.key] = final;
+      // Later calculations can build on earlier ones.
+      math[calculation.key] = final;
     } catch {
       resolved[calculation.key] = 0;
+      math[calculation.key] = 0;
     }
   }
 
@@ -331,11 +412,30 @@ export function renderTableMarkdown(table: RuleTable, limit = 20): string {
   return [head, rule, ...body].join("\n") + more;
 }
 
-/** Totals per column, for the summary line under a rule's table. */
-export function summariseTable(table: RuleTable): Record<string, number> {
+/**
+ * Totals per column, for the summary line under a rule's table.
+ *
+ * Amounts add up. RATES do not: three blocks at $21, $21 and $22 an hour do
+ * not make $64 an hour, which is what a plain sum printed. A calculation that
+ * divides by another calculation is a rate, so its footer is worked out from
+ * the column totals instead — $106.50 over 5 hours is $21.30 an hour, which is
+ * the number actually worth knowing.
+ */
+export function summariseTable(table: RuleTable, rule?: Rule): Record<string, number> {
   const totals: Record<string, number> = {};
+  const calcKeys = new Set((rule?.calculations ?? []).map((calc) => calc.key));
+
+  const isRate = (key: string): boolean => {
+    const calculation = rule?.calculations.find((item) => item.key === key);
+    if (!calculation || !calculation.expression.includes("/")) return false;
+    const referenced = calculation.expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) ?? [];
+    return referenced.some((name) => name !== key && calcKeys.has(name));
+  };
+
   for (const column of table.columns) {
     if (column.key === "date") continue;
+    if (isRate(column.key)) continue;
+
     let sum = 0;
     let numeric = false;
     for (const row of table.rows) {
@@ -347,6 +447,19 @@ export function summariseTable(table: RuleTable): Record<string, number> {
     }
     if (numeric) totals[column.key] = column.money ? roundMoney(sum) : sum;
   }
+
+  // Second pass: rates, from the totals just computed.
+  for (const column of table.columns) {
+    if (!isRate(column.key)) continue;
+    const calculation = rule!.calculations.find((item) => item.key === column.key)!;
+    try {
+      const value = evaluateExpression(calculation.expression, totals);
+      totals[column.key] = calculation.money ? roundMoney(value) : value;
+    } catch {
+      // Leave it out rather than print something wrong.
+    }
+  }
+
   return totals;
 }
 

@@ -1,3 +1,4 @@
+import { HOUSEHOLD_LABEL, OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
 import {
   continueGeminiWithToolResults,
   generateGeminiPlainReply,
@@ -119,7 +120,7 @@ Never mention Gemini, ChatGPT, Claude, OpenAI, Anthropic, or that you are a hidd
  * ~5,000 input tokens, this one is ~235, so a review costs about an eighth of an
  * independent answer while still catching bad arithmetic and invented balances.
  */
-const REVIEW_LAYER_RULES = `You are checking one draft reply for a household finance assistant used by Kushvanth and Grishma.
+const REVIEW_LAYER_RULES = `You are checking one draft reply for a household finance assistant used by ${HOUSEHOLD_LABEL}.
 
 If the draft is correct, complete, and safe, reply with exactly: APPROVE
 Otherwise reply with the corrected message only — one or two short sentences, then at most one question. No preamble, no explanation of what you changed, no mention of a draft or a review.
@@ -620,10 +621,10 @@ function waitingOnUserReply(responses: GeminiToolResponseInput[]): string | null
       return String(result.error ?? "Cash wallet is low — which account did the cash come from?");
     }
     if (result.needs_payer === true) {
-      return String(result.error ?? "Who paid — Kushvanth, Grishma, or both?");
+      return String(result.error ?? `Who paid — ${OWNER_LABEL}, ${PARTNER_LABEL}, or both?`);
     }
     if (result.needs_speaker === true) {
-      return String(result.error ?? "Who am I talking to — Kushvanth or Grishma?");
+      return String(result.error ?? `Who am I talking to — ${OWNER_LABEL} or ${PARTNER_LABEL}?`);
     }
     if (result.needs_account === true) {
       return String(result.error ?? "Which account should I use?");

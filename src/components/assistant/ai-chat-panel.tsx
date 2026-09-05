@@ -125,6 +125,15 @@ export function AiChatPanel({
   const [reviewed, setReviewed] = useState<boolean | null>(null);
   const [reviewReason, setReviewReason] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<AssistantToolCall | null>(null);
+  /**
+   * Further writes from the SAME turn, waiting their turn for a card.
+   *
+   * "Three blocks today: $33, $31.50 and $42" is three log_rule_entry calls in
+   * one reply. Only the first used to get a confirmation card and the rest were
+   * dropped on the spot, so two of the three blocks silently never existed.
+   * Each one now gets its own card, approved or refused on its own.
+   */
+  const [pendingRest, setPendingRest] = useState<AssistantToolCall[]>([]);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [accountChoices, setAccountChoices] = useState<Array<{ id: string; name: string }>>([]);
   const [accountChoiceKind, setAccountChoiceKind] = useState<"pay-from" | "cash-source">("pay-from");
@@ -197,11 +206,11 @@ export function AiChatPanel({
   async function confirmPending() {
     if (!pendingConfirm || loading) return;
     if (!speaker && writeNeedsSpeaker(pendingConfirm.name)) {
-      setError("Who am I talking to — Kushvanth or Grishma?");
+      setError(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
       return;
     }
     if (expenseWriteNeedsPayer(pendingConfirm)) {
-      setError("Who paid — Kushvanth, Grishma, or both?");
+      setError(`Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`);
       return;
     }
     setLoading(true);
@@ -217,7 +226,10 @@ export function AiChatPanel({
       const saved = result?.result?.saved === true;
       if (saved) {
         const spoken = spokenSaveConfirmation(call);
-        setPendingConfirm(null);
+        // Move to the next write from the same turn, if there is one.
+        const [next, ...remaining] = pendingRest;
+        setPendingConfirm(next ?? null);
+        setPendingRest(remaining);
         setAccountChoices([]);
         setSavedBanner(spoken);
         const line: ChatMessage = {
@@ -241,7 +253,7 @@ export function AiChatPanel({
         }
         window.setTimeout(() => setSavedBanner(null), 8000);
       } else if (result?.result?.needs_payer === true) {
-        setError(String(result.result.error ?? "Who paid — Kushvanth, Grishma, or both?"));
+        setError(String(result.result.error ?? `Who paid — ${PERSON_LABELS.kushvanth}, ${PERSON_LABELS.grishma}, or both?`));
       } else if (result?.result?.needs_cash_source === true) {
         setAccountChoiceKind("cash-source");
         setAccountChoices(chipsFromToolAccounts(result.result.accounts, true));
@@ -262,6 +274,7 @@ export function AiChatPanel({
       if (event.key !== "Escape") return;
       event.preventDefault();
       setPendingConfirm(null);
+      setPendingRest([]);
       setAccountChoices([]);
     };
     window.addEventListener("keydown", onKey, true);
@@ -447,7 +460,7 @@ export function AiChatPanel({
         if (speakerCall && !activeSpeaker) {
           setPendingConfirm(speakerCall);
           waitingOnUser = true;
-          setError("Who am I talking to — Kushvanth or Grishma?");
+          setError(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
           break;
         }
         // asProposedWrite: a tool call from the model can arrive already claiming
@@ -480,6 +493,14 @@ export function AiChatPanel({
           setPendingConfirm(
             activeSpeaker ? applySpeakerToWrite(writeCall, activeSpeaker) : writeCall
           );
+          // Everything else this turn wanted to write, in order.
+          const rest = payload.tool_calls
+            .filter((call) => isWriteTool(call.name) && call !== writeCall)
+            .map((call) => {
+              const proposed = asProposedWrite(call);
+              return activeSpeaker ? applySpeakerToWrite(proposed, activeSpeaker) : proposed;
+            });
+          setPendingRest(rest);
           waitingOnUser = true;
           if (cashSourceNeed) {
             setAccountChoiceKind("cash-source");
@@ -759,6 +780,11 @@ export function AiChatPanel({
         >
           <p className="text-[11px] text-[#ff9500] text-center font-medium">
             {buildToolConfirmationPreview(pendingConfirm)}
+            {pendingRest.length > 0 ? (
+              <span className="mt-1 block text-[11px] text-muted">
+                {pendingRest.length} more after this one.
+              </span>
+            ) : null}
           </p>
           {accountChoices.length > 0 ? (
             <div className="space-y-2">
@@ -875,6 +901,7 @@ export function AiChatPanel({
                   disabled={loading}
                   onClick={() => {
                     setPendingConfirm(null);
+                    setPendingRest([]);
                     void handleSend("No");
                   }}
                   className="flex-1 min-h-11 rounded-lg bg-black/5 dark:bg-white/10 text-foreground py-2 text-[13px] font-semibold disabled:opacity-50"
@@ -929,7 +956,7 @@ export function AiChatPanel({
   return (
     <CompactPageShell
       title="AI Assistant"
-      subtitle="One AI for Kushvanth and Grishma"
+      subtitle={`One AI for ${PERSON_LABELS.kushvanth} and ${PERSON_LABELS.grishma}`}
     >
       {content}
     </CompactPageShell>

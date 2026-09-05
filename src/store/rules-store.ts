@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { dueFollowUps, isEntryComplete, triggerDueToday } from "@/lib/rules/engine";
 import type { DueFollowUp, Rule, RuleEntry, RuleScope } from "@/lib/rules/types";
-import { toIsoDate } from "@/lib/ai/reminders";
+import { householdToday } from "@/lib/household-date";
 
 const STORAGE_KEY = "couple-finance-rules-v1";
 
@@ -82,7 +82,7 @@ export const useRulesStore = create<RulesState>()(
         const entry: RuleEntry = {
           id: uuidv4(),
           ruleId,
-          date: date ?? toIsoDate(new Date()),
+          date: date ?? householdToday(),
           openedAt: stamp(),
           values,
           answered: [],
