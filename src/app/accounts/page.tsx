@@ -3,6 +3,7 @@
 import { displayText } from "@/lib/branding";
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
+import { householdToday, householdYesterday } from "@/lib/household-date";
 import {
   Banknote,
   CreditCard,
@@ -29,8 +30,10 @@ import { AnimatedMoney } from "@/components/ui/animated-number";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/formatters";
 import { getAccountsForPerson, isSharedAccount } from "@/lib/accounts";
 import { SharedAccountActivity } from "@/components/accounts/shared-account-activity";
+import { AccountEditor } from "@/components/accounts/account-editor";
 import { CREDIT_LABELS } from "@/lib/inter-couple";
 import { type Account, type Person } from "@/types";
+import { cn } from "@/lib/utils";
 
 const typeIcons = {
   credit: CreditCard,
@@ -45,6 +48,7 @@ export default function AccountsPage() {
     incomeSources,
     incomeEntries,
     adjustAccountBalance,
+    addAccount,
     updateAccount,
     deleteAccount,
     addIncome,
@@ -66,6 +70,12 @@ export default function AccountsPage() {
   const [depositAmount, setDepositAmount] = useState("");
   const [depositSourceId, setDepositSourceId] = useState("");
   const [depositNotes, setDepositNotes] = useState("");
+  // Money often gets logged a day or two after it landed, so the date is
+  // editable rather than assumed. Defaults to today in the household's
+  // timezone — a browser-local "today" is already tomorrow late in the evening.
+  const [depositDate, setDepositDate] = useState(householdToday());
+  // Creating a card used to be possible only by asking the assistant.
+  const [accountEditor, setAccountEditor] = useState<{ account?: Account } | null>(null);
 
   const [sourceName, setSourceName] = useState("");
   const [editSourceId, setEditSourceId] = useState<string | null>(null);
@@ -95,6 +105,7 @@ export default function AccountsPage() {
     setDepositAmount("");
     setDepositSourceId("");
     setDepositNotes("");
+    setDepositDate(householdToday());
     setDepositAccount(null);
   };
 
@@ -128,7 +139,7 @@ export default function AccountsPage() {
       person,
       sourceId: depositSourceId,
       amount,
-      date: format(new Date(), "yyyy-MM-dd"),
+      date: depositDate || householdToday(),
       notes: depositNotes.trim() || undefined,
       depositType: depositAccount.type === "cash" ? "cash" : "debit",
       depositAccountId: depositAccount.id,
@@ -194,9 +205,18 @@ export default function AccountsPage() {
   return (
     <CompactPageShell
       title="Accounts"
-      subtitle="Add money to debit or cash with an income source"
+      subtitle="Cards, banks and cash — and where income lands"
       person={person}
       onPersonChange={setPerson}
+      action={
+        <button
+          type="button"
+          onClick={() => setAccountEditor({})}
+          className="inline-flex items-center gap-1 rounded-lg bg-[#007aff] px-2.5 py-1.5 text-[11px] font-semibold text-white"
+        >
+          <Plus className="w-3 h-3" /> Add account
+        </button>
+      }
     >
       <GlassCard className="!p-3">
         <div className="flex items-center gap-1.5 mb-2">
@@ -306,6 +326,14 @@ export default function AccountsPage() {
                       </GlassButton>
                     )}
                     <button
+                      onClick={() => setAccountEditor({ account })}
+                      aria-label={`Edit ${account.name}`}
+                      title={`Rename ${account.name}`}
+                      className="tap-icon focus-ring p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-muted" />
+                    </button>
+                    <button
                       onClick={() => {
                         setEditAccount(account);
                         setNewBalance(String(account.balance));
@@ -404,6 +432,27 @@ export default function AccountsPage() {
         )}
       </div>
 
+      {accountEditor ? (
+        <AccountEditor
+          open
+          initial={accountEditor.account}
+          defaultPerson={person}
+          onClose={() => setAccountEditor(null)}
+          onSave={(draft) => {
+            if (accountEditor.account) {
+              // Renaming and reassigning only — the balance is left alone, so
+              // it can never be edited without an adjustment being recorded.
+              const rest = { ...draft };
+              delete (rest as Partial<typeof rest>).balance;
+              updateAccount(accountEditor.account.id, rest);
+            } else {
+              addAccount(draft);
+            }
+            setAccountEditor(null);
+          }}
+        />
+      ) : null}
+
       <GlassModal
         open={!!depositAccount}
         onClose={resetDepositForm}
@@ -442,6 +491,38 @@ export default function AccountsPage() {
               </button>
             )}
           </div>
+          <div>
+            <label className="text-sm font-medium text-muted px-1">When did you get it?</label>
+            <div className="mt-1.5 flex gap-2">
+              <input
+                type="date"
+                value={depositDate}
+                max={householdToday()}
+                onChange={(e) => setDepositDate(e.target.value)}
+                className="glass rounded-2xl px-4 py-3 flex-1 outline-none"
+              />
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              {[
+                { label: "Today", value: householdToday() },
+                { label: "Yesterday", value: householdYesterday() },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => setDepositDate(option.value)}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                    depositDate === option.value
+                      ? "bg-[#34c759] text-white"
+                      : "glass text-muted hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <GlassInput
             label="Note (optional)"
             value={depositNotes}
@@ -453,6 +534,9 @@ export default function AccountsPage() {
               <p>
                 {personSources.find((s) => s.id === depositSourceId)?.name} →{" "}
                 {formatCurrency(parseFloat(depositAmount))} into {depositAccount.name}
+                {depositDate && depositDate !== householdToday()
+                  ? ` on ${format(new Date(`${depositDate}T12:00:00`), "EEE d MMM")}`
+                  : ""}
               </p>
             </div>
           )}

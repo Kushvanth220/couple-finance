@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { toClockTime, validateExpression } from "./engine";
+import { defaultAggregates, toClockTime, validateExpression } from "./engine";
 import type {
   Rule,
   RuleCalculation,
@@ -29,7 +29,13 @@ type Failed = { ok: false; error: string };
 
 const CHART_TYPES: RuleChartType[] = ["bar", "line", "area", "pie", "donut", "scatter", "bubble"];
 const FIELD_TYPES: RuleFieldType[] = ["money", "number", "text", "date", "time"];
-const TRIGGER_KINDS: RuleTriggerKind[] = ["daily", "weekly", "monthly", "manual"];
+const TRIGGER_KINDS: RuleTriggerKind[] = [
+  "conversation_start",
+  "daily",
+  "weekly",
+  "monthly",
+  "manual",
+];
 
 /** "Base Pay" -> "base_pay". Calculations reference these, so they must be stable. */
 export function toKey(raw: string): string {
@@ -67,6 +73,12 @@ function parseFields(raw: unknown): RuleField[] {
     if (!key || !label) return [];
     const type = String(item.type ?? "money").toLowerCase() as RuleFieldType;
     const askAt = String(item.ask_at ?? item.askAt ?? "start").toLowerCase();
+    // "only ask this if X is yes" — accepted as either a nested object or the
+    // flatter form a model tends to produce.
+    const rawIf = (item.ask_if ?? item.askIf) as Record<string, unknown> | undefined;
+    const ifField = rawIf ? toKey(String(rawIf.field ?? rawIf.key ?? "")) : "";
+    const ifEquals = rawIf ? String(rawIf.equals ?? rawIf.value ?? "yes") : "";
+
     return [
       {
         key,
@@ -75,6 +87,7 @@ function parseFields(raw: unknown): RuleField[] {
         askAt: askAt === "follow_up" || askAt === "followup" ? "follow_up" : "start",
         required: asBool(item.required, true),
         ...(item.question ? { question: String(item.question) } : {}),
+        ...(ifField ? { askIf: { field: ifField, equals: ifEquals } } : {}),
       },
     ];
   });
@@ -126,11 +139,14 @@ function parseFollowUps(
       });
     }
 
+    const anchor = item.anchor_field ?? item.anchorField;
     followUps.push({
       id: String(item.id ?? uuidv4()),
       afterHours,
       question,
       fields: named.filter(Boolean),
+      // Anchoring to a recorded time gives each occurrence its own clock.
+      ...(anchor ? { anchorField: toKey(String(anchor)) } : {}),
     });
   }
 
@@ -191,7 +207,8 @@ function parseCharts(raw: unknown, known: string[]): RuleChart[] {
 }
 
 function parseTrigger(args: Record<string, unknown>, fallback?: RuleTrigger): RuleTrigger {
-  const kindRaw = String(args.trigger_kind ?? fallback?.kind ?? "daily").toLowerCase();
+  let kindRaw = String(args.trigger_kind ?? fallback?.kind ?? "daily").toLowerCase().trim();
+  if (/conversation|chat|open|session|talk/.test(kindRaw)) kindRaw = "conversation_start";
   const kind = TRIGGER_KINDS.includes(kindRaw as RuleTriggerKind)
     ? (kindRaw as RuleTriggerKind)
     : "daily";
@@ -273,6 +290,11 @@ export function ruleDraftFromArgs(
       followUps,
       calculations: calculations.calculations,
       charts,
+      // Sensible summaries from the start; the person edits them on the rule.
+      aggregates: defaultAggregates(
+        { fields, calculations: calculations.calculations },
+        () => uuidv4()
+      ),
       payout: {
         kind: payoutKind,
         amountKey,
@@ -281,6 +303,9 @@ export function ruleDraftFromArgs(
         // to it. This mirrors the confirmation gate on every other write.
         autoPost: false,
       },
+      // Several occurrences a day is the norm for shift work, so default on
+      // only when the rule collects something per-occurrence.
+      repeatable: asBool(args.repeatable, false),
       showOnDashboard: asBool(args.show_on_dashboard, true),
     },
   };
@@ -299,6 +324,9 @@ export function ruleUpdatesFromArgs(
   if (args.enabled != null) updates.enabled = asBool(args.enabled, current.enabled);
   if (args.show_on_dashboard != null) {
     updates.showOnDashboard = asBool(args.show_on_dashboard, current.showOnDashboard);
+  }
+  if (args.repeatable != null) {
+    updates.repeatable = asBool(args.repeatable, current.repeatable);
   }
 
   const touchesTrigger =

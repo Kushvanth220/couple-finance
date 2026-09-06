@@ -1,7 +1,10 @@
 import { roundMoney } from "@/lib/money";
+import { MONTHS } from "@/lib/ai/reminders";
 import type {
   DueFollowUp,
   Rule,
+  RuleAggregate,
+  RuleAggregatePeriod,
   RuleEntry,
   RuleField,
   RuleFollowUp,
@@ -286,8 +289,33 @@ export function isEntryComplete(rule: Rule, entry: RuleEntry): boolean {
 
 /** When a follow-up on this entry comes due. */
 export function followUpDueAt(entry: RuleEntry, followUp: RuleFollowUp): Date {
-  const opened = new Date(entry.openedAt);
-  return new Date(opened.getTime() + followUp.afterHours * 3_600_000);
+  const anchor = anchorInstant(entry, followUp);
+  return new Date(anchor.getTime() + followUp.afterHours * 3_600_000);
+}
+
+/**
+ * The moment a follow-up counts from: a stored time on the entry's own date
+ * when the rule names one, otherwise when the entry was logged.
+ */
+function anchorInstant(entry: RuleEntry, followUp: RuleFollowUp): Date {
+  const key = followUp.anchorField;
+  if (key) {
+    const minutes = timeToMinutes(entry.values[key]);
+    if (minutes != null && /^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
+      const at = new Date(`${entry.date}T00:00:00`);
+      if (!Number.isNaN(at.getTime())) {
+        at.setMinutes(at.getMinutes() + minutes);
+        return at;
+      }
+    }
+    // A date field can anchor too, e.g. "3 days after the invoice date".
+    const raw = String(entry.values[key] ?? "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const at = new Date(`${raw}T00:00:00`);
+      if (!Number.isNaN(at.getTime())) return at;
+    }
+  }
+  return new Date(entry.openedAt);
 }
 
 /**
@@ -499,4 +527,227 @@ export function describeRule(rule: Rule): string {
   }
 
   return parts.join(", ") + ".";
+}
+
+/* ------------------------------------------------------------------ *
+ * Aggregation
+ *
+ * Every rule stores the same shape — dated entries carrying numeric fields —
+ * so summarising one is the same job as summarising any other. This layer is
+ * deliberately generic: nothing here knows what a Flex block is.
+ * ------------------------------------------------------------------ */
+
+/** Monday-based week key, e.g. "2026-W36". */
+function weekKey(date: string): string {
+  const at = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(at.getTime())) return date;
+  const day = (at.getDay() + 6) % 7;
+  at.setDate(at.getDate() - day);
+  const monday = at;
+  const firstThursday = new Date(monday.getFullYear(), 0, 4);
+  const week =
+    1 +
+    Math.round(
+      (monday.getTime() - firstThursday.getTime()) / 604_800_000 +
+        ((firstThursday.getDay() + 6) % 7) / 7
+    );
+  return `${monday.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function periodKey(date: string, period: RuleAggregatePeriod): string {
+  if (period === "all") return "All";
+  if (period === "month") return date.slice(0, 7);
+  if (period === "week") return weekKey(date);
+  return date;
+}
+
+export interface AggregatePoint {
+  key: string;
+  label: string;
+  value: number;
+  /** How many entries fed this bucket — useful under an average. */
+  count: number;
+}
+
+export interface AggregateResult {
+  aggregate: RuleAggregate;
+  points: AggregatePoint[];
+  /** The single headline number across everything in range. */
+  total: number;
+  money: boolean;
+}
+
+function prettyPeriodLabel(key: string, period: RuleAggregatePeriod): string {
+  if (period === "all") return "Total";
+  if (period === "month") {
+    const [year, month] = key.split("-");
+    const index = Number(month) - 1;
+    return MONTHS[index] ? `${MONTHS[index]!.slice(0, 3)} ${year}` : key;
+  }
+  return key;
+}
+
+/**
+ * Run one aggregate over a rule's entries.
+ *
+ * The measure may be a field or a calculation — both resolve through
+ * `resolveEntry`, so a derived total aggregates exactly like a raw amount.
+ */
+export function runAggregate(
+  rule: Rule,
+  entries: RuleEntry[],
+  aggregate: RuleAggregate
+): AggregateResult {
+  const mine = entries.filter((entry) => entry.ruleId === rule.id);
+  const buckets = new Map<string, number[]>();
+
+  for (const entry of mine) {
+    const resolved = resolveEntry(rule, entry);
+    const raw = aggregate.method === "count" ? 1 : Number(resolved[aggregate.measure]);
+    if (!Number.isFinite(raw)) continue;
+    const key = periodKey(entry.date, aggregate.period);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(raw);
+    else buckets.set(key, [raw]);
+  }
+
+  const money =
+    aggregate.method !== "count" &&
+    (rule.fields.find((field) => field.key === aggregate.measure)?.type === "money" ||
+      rule.calculations.find((calc) => calc.key === aggregate.measure)?.money === true);
+
+  const reduce = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    switch (aggregate.method) {
+      case "count":
+        return values.length;
+      case "average":
+        return values.reduce((sum, value) => sum + value, 0) / values.length;
+      case "min":
+        return Math.min(...values);
+      case "max":
+        return Math.max(...values);
+      case "sum":
+      default:
+        return values.reduce((sum, value) => sum + value, 0);
+    }
+  };
+
+  const points = [...buckets.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, values]) => {
+      const value = reduce(values);
+      return {
+        key,
+        label: prettyPeriodLabel(key, aggregate.period),
+        value: money ? roundMoney(value) : Number(value.toFixed(2)),
+        count: values.length,
+      };
+    });
+
+  // The headline is computed across ALL values, not by re-reducing the buckets —
+  // an average of averages is not the average, and a max of maxes only happens
+  // to work.
+  const everything = [...buckets.values()].flat();
+  const total = reduce(everything);
+
+  return {
+    aggregate,
+    points,
+    total: money ? roundMoney(total) : Number(total.toFixed(2)),
+    money: Boolean(money),
+  };
+}
+
+/**
+ * Sensible starting summaries for a rule the moment it is created.
+ *
+ * `idFor` receives a stable slug describing each summary. A rule saved before
+ * summaries existed has none stored, so the dashboard derives them on the fly —
+ * and those ids must be the SAME on every render, or toggling one would act on
+ * a different summary than the one clicked.
+ */
+export function defaultAggregates(
+  rule: Pick<Rule, "fields" | "calculations">,
+  idFor: (slug: string) => string
+): RuleAggregate[] {
+  const money =
+    rule.calculations.find((calc) => calc.money) ??
+    rule.fields.find((field) => field.type === "money");
+  if (!money) return [];
+
+  const measure = money.key;
+  const label = "label" in money ? money.label : measure;
+  const duration = rule.calculations.find((calc) =>
+    /hour|duration|time/i.test(calc.label + calc.key)
+  );
+
+  const aggregates: RuleAggregate[] = [
+    { id: idFor(`${measure}-sum-day`), label: `${label} — daily`, measure, method: "sum", period: "day", chart: "bar", enabled: true },
+    { id: idFor(`${measure}-sum-week`), label: `${label} — weekly`, measure, method: "sum", period: "week", chart: "bar", enabled: true },
+    { id: idFor(`${measure}-sum-month`), label: `${label} — monthly`, measure, method: "sum", period: "month", chart: "bar", enabled: false },
+  ];
+
+  if (duration) {
+    aggregates.push({
+      id: idFor(`${duration.key}-sum-all`),
+      label: `${duration.label} — total`,
+      measure: duration.key,
+      method: "sum",
+      period: "all",
+      chart: "bar",
+      enabled: true,
+    });
+  }
+
+  return aggregates;
+}
+
+/**
+ * The questions to ask right now, in order, given what has been answered so far.
+ *
+ * A field with an `askIf` is skipped until its condition holds, so a rule can
+ * branch — "did you drive?" gates "how many miles?" — without the caller
+ * knowing anything about the rule's shape.
+ */
+export function fieldsToAsk(
+  rule: Rule,
+  when: RuleField["askAt"],
+  answered: Record<string, string | number> = {}
+): RuleField[] {
+  return rule.fields.filter((field) => {
+    if (field.askAt !== when) return false;
+    if (!field.askIf) return true;
+
+    const seen = answered[field.askIf.field];
+    if (seen === undefined || seen === null || seen === "") return false;
+
+    const want = field.askIf.equals.trim().toLowerCase();
+    const got = String(seen).trim().toLowerCase();
+    // "yes" is the common gate, and people say yes in several ways.
+    if (["yes", "y", "true"].includes(want)) {
+      return ["yes", "y", "true", "1"].includes(got) || Number(got) > 0;
+    }
+    return got === want;
+  });
+}
+
+/** Plain-English description of a rule's question flow, for the assistant. */
+export function describeQuestionFlow(rule: Rule): string {
+  const lines: string[] = [];
+  const start = fieldsToAsk(rule, "start");
+  const gated = rule.fields.filter((field) => field.askAt === "start" && field.askIf);
+
+  if (start.length > 0) {
+    lines.push(`ask for ${start.map((f) => f.label.toLowerCase()).join(", ")}`);
+  }
+  for (const field of gated) {
+    lines.push(
+      `only ask ${field.label.toLowerCase()} when ${field.askIf!.field} is ${field.askIf!.equals}`
+    );
+  }
+  if (rule.repeatable) {
+    lines.push("then ask whether there was another one, and repeat until they say no");
+  }
+  return lines.join("; ");
 }

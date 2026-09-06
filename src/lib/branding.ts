@@ -19,6 +19,15 @@ export const PARTNER_LABEL: string = "G";
 /** Hearts, sparkles and the couple framing. */
 export const SHOW_AFFECTION: boolean = false;
 
+/**
+ * Show the two names under the KG mark, in the header and the splash.
+ *
+ * Off: the brand stands on its own. The names still appear wherever they carry
+ * meaning — whose account, whose expense, who is speaking — this only removes
+ * them as decoration beneath the logo.
+ */
+export const SHOW_NAMES: boolean = false;
+
 /** "Kushvanth & G" — used in headers, titles and the assistant's own blurb. */
 export const HOUSEHOLD_LABEL = `${OWNER_LABEL} & ${PARTNER_LABEL}`;
 

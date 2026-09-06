@@ -35,6 +35,11 @@ interface RulesState {
   openEntriesFor: (ruleId: string) => RuleEntry[];
   dueNow: (now?: Date) => DueFollowUp[];
   triggersDueToday: (now?: Date) => Rule[];
+
+  /** Pull the household copy; adopts it when nothing is stored here yet. */
+  hydrateFromServer: () => Promise<void>;
+  /** Push the current rules and entries. Fire-and-forget after every change. */
+  syncToServer: () => Promise<void>;
 }
 
 function stamp(): string {
@@ -50,6 +55,7 @@ export const useRulesStore = create<RulesState>()(
       addRule: (draft) => {
         const rule: Rule = { ...draft, id: uuidv4(), createdAt: stamp(), updatedAt: stamp() };
         set({ rules: [...get().rules, rule] });
+        void get().syncToServer();
         return rule;
       },
 
@@ -59,6 +65,7 @@ export const useRulesStore = create<RulesState>()(
             rule.id === id ? { ...rule, ...updates, id: rule.id, updatedAt: stamp() } : rule
           ),
         });
+        void get().syncToServer();
       },
 
       deleteRule: (id) => {
@@ -68,6 +75,7 @@ export const useRulesStore = create<RulesState>()(
           rules: get().rules.filter((rule) => rule.id !== id),
           entries: get().entries.filter((entry) => entry.ruleId !== id),
         });
+        void get().syncToServer();
       },
 
       toggleRule: (id) => {
@@ -90,6 +98,7 @@ export const useRulesStore = create<RulesState>()(
         };
         entry.complete = isEntryComplete(rule, entry);
         set({ entries: [...get().entries, entry] });
+        void get().syncToServer();
         return entry;
       },
 
@@ -108,6 +117,7 @@ export const useRulesStore = create<RulesState>()(
           return merged;
         });
         set({ entries });
+        void get().syncToServer();
       },
 
       updateEntry: (entryId, updates) => {
@@ -120,10 +130,12 @@ export const useRulesStore = create<RulesState>()(
             return merged;
           }),
         });
+        void get().syncToServer();
       },
 
       deleteEntry: (entryId) => {
         set({ entries: get().entries.filter((entry) => entry.id !== entryId) });
+        void get().syncToServer();
       },
 
       getRule: (id) => get().rules.find((rule) => rule.id === id),
@@ -153,6 +165,72 @@ export const useRulesStore = create<RulesState>()(
       dueNow: (now) => dueFollowUps(get().rules, get().entries, now),
 
       triggersDueToday: (now) => get().rules.filter((rule) => triggerDueToday(rule, now)),
+
+      hydrateFromServer: async () => {
+        try {
+          const response = await fetch("/api/rules", { cache: "no-store" });
+          const payload = await response.json();
+          if (!payload.ok || !payload.synced) return;
+
+          // A rule arriving without a scope would match neither person on the
+          // Rules page — invisible, and so impossible to edit or delete while
+          // it kept syncing. Anything unrecognised is treated as household's,
+          // which at least puts it on screen where it can be dealt with.
+          const remoteRules = ((payload.rules ?? []) as Rule[])
+            .filter((rule) => rule && typeof rule.id === "string" && rule.id)
+            .map((rule) => ({
+              ...rule,
+              scope:
+                rule.scope === "kushvanth" || rule.scope === "grishma"
+                  ? rule.scope
+                  : ("household" as const),
+              enabled: rule.enabled !== false,
+              fields: Array.isArray(rule.fields) ? rule.fields : [],
+              followUps: Array.isArray(rule.followUps) ? rule.followUps : [],
+              calculations: Array.isArray(rule.calculations) ? rule.calculations : [],
+              charts: Array.isArray(rule.charts) ? rule.charts : [],
+            }));
+          const remoteEntries = ((payload.entries ?? []) as RuleEntry[]).filter(
+            (entry) => entry && typeof entry.id === "string" && entry.ruleId
+          );
+          const local = get();
+
+          // Local is the working copy and wins while it holds anything. The
+          // remote is here for the case that actually hurt: storage emptied,
+          // and the only surviving copy is the household one.
+          if (local.rules.length === 0 && remoteRules.length > 0) {
+            set({ rules: remoteRules, entries: remoteEntries });
+            return;
+          }
+
+          // Otherwise adopt only rules this device has never seen, so a rule
+          // written on the other phone appears without disturbing anything here.
+          const known = new Set(local.rules.map((rule) => rule.id));
+          const added = remoteRules.filter((rule) => !known.has(rule.id));
+          if (added.length === 0) return;
+
+          const addedIds = new Set(added.map((rule) => rule.id));
+          const addedEntries = remoteEntries.filter((entry) => addedIds.has(entry.ruleId));
+          set({
+            rules: [...local.rules, ...added],
+            entries: [...local.entries, ...addedEntries],
+          });
+        } catch {
+          // No cloud, or the table is not created yet — local still works.
+        }
+      },
+
+      syncToServer: async () => {
+        try {
+          await fetch("/api/rules", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rules: get().rules, entries: get().entries }),
+          });
+        } catch {
+          // Offline is fine; the next change pushes the whole document again.
+        }
+      },
     }),
     { name: STORAGE_KEY }
   )

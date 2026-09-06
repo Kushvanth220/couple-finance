@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { AnimatedMoney } from "@/components/ui/animated-number";
 import { RuleDashboards } from "@/components/dashboard/rule-dashboard";
+import { ChartTypePicker, useChartType } from "@/components/dashboard/chart-type-picker";
+import { FlexChart } from "@/components/charts/flex-chart";
 import { GlassCard } from "@/components/ui/glass-card";
 import { PersonTabs } from "@/components/ui/person-tabs";
 import {
@@ -53,6 +55,11 @@ export function DashboardView() {
     useFinanceStore();
   const { configured: syncConfigured, isLive, isSyncing, lastSyncedAt } = useLiveSync();
   const [person, setPerson] = useState<Person>("kushvanth");
+  // How each panel is drawn. Donut stays the default because its slices are
+  // clickable — the other shapes are for reading the numbers, and the list
+  // underneath still drills through.
+  const [incomeChart, setIncomeChart] = useChartType("income", "donut");
+  const [spendChart, setSpendChart] = useChartType("spend", "donut");
   const [incomeView, setIncomeView] = useState<"monthly" | "weekly">("monthly");
   const [expenseView, setExpenseView] = useState<"monthly" | "weekly">("monthly");
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
@@ -359,11 +366,22 @@ export function DashboardView() {
           <p className="text-[11px] text-muted text-center py-6">No income recorded yet</p>
         ) : (
           <div className="space-y-3">
-            <IncomeDonutChart
-              segments={incomeBySource.map((item) => ({ name: item.name, amount: item.amount }))}
-              onSliceClick={(source) => openIncomeHistory(source)}
-              onCenterClick={() => openIncomeHistory()}
-            />
+            <ChartTypePicker value={incomeChart} onChange={setIncomeChart} tint="#34c759" />
+
+            {incomeChart === "donut" ? (
+              <IncomeDonutChart
+                segments={incomeBySource.map((item) => ({ name: item.name, amount: item.amount }))}
+                onSliceClick={(source) => openIncomeHistory(source)}
+                onCenterClick={() => openIncomeHistory()}
+              />
+            ) : (
+              <FlexChart
+                type={incomeChart}
+                data={incomeBySource.map((item) => ({ label: item.name, value: item.amount }))}
+                height={210}
+                emptyMessage="No income recorded yet"
+              />
+            )}
 
             <div className="space-y-2 pt-1 border-t border-black/5 dark:border-white/10">
               {incomeBySource.map((item, index) => {
@@ -445,15 +463,28 @@ export function DashboardView() {
 
         {spentCategories.length > 0 ? (
           <>
-            <ExpenseCategoryDonutChart
-              compact
-              segments={spentCategories.map((item) => ({
-                name: item.name,
-                amount: item.amount,
-              }))}
-              onSliceClick={(category) => openCategoryHistory(category)}
-              onCenterClick={() => openCategoryHistory()}
-            />
+            <div className="mb-2">
+              <ChartTypePicker value={spendChart} onChange={setSpendChart} tint="#ff3b30" />
+            </div>
+
+            {spendChart === "donut" ? (
+              <ExpenseCategoryDonutChart
+                compact
+                segments={spentCategories.map((item) => ({
+                  name: item.name,
+                  amount: item.amount,
+                }))}
+                onSliceClick={(category) => openCategoryHistory(category)}
+                onCenterClick={() => openCategoryHistory()}
+              />
+            ) : (
+              <FlexChart
+                type={spendChart}
+                data={spentCategories.map((item) => ({ label: item.name, value: item.amount }))}
+                height={210}
+                emptyMessage="Nothing spent in this period"
+              />
+            )}
 
             <div className="mt-3 space-y-1.5">
               {spentCategories.slice(0, 6).map((item) => {

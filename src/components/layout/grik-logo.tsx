@@ -1,6 +1,6 @@
 "use client";
 
-import { OWNER_LABEL, PARTNER_LABEL } from "@/lib/branding";
+import { OWNER_LABEL, PARTNER_LABEL, SHOW_NAMES } from "@/lib/branding";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -75,7 +75,7 @@ export function GrikLogo({
           </span>
         </div>
 
-        {showSubtitle && (
+        {showSubtitle && SHOW_NAMES && (
           <p
             suppressHydrationWarning
             className={cn(

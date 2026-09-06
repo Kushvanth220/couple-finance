@@ -1,6 +1,6 @@
 "use client";
 
-import { OWNER_LABEL, PARTNER_LABEL, SHOW_AFFECTION } from "@/lib/branding";
+import { OWNER_LABEL, PARTNER_LABEL, SHOW_AFFECTION, SHOW_NAMES } from "@/lib/branding";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -83,7 +83,8 @@ function GrikSplashMark({ variant }: { variant: SplashVariant }) {
             ))}
             <span className="grik-splash-brand-finance">Finance</span>
           </p>
-          <p className="grik-splash-tagline">
+          {SHOW_NAMES ? (
+            <p className="grik-splash-tagline">
             {SHOW_AFFECTION ? (
               <span className="grik-splash-heart" aria-hidden>
                 💕
@@ -93,7 +94,10 @@ function GrikSplashMark({ variant }: { variant: SplashVariant }) {
             <span className="grik-splash-amp">&</span>
             <span className="grik-splash-name-grish">{PARTNER_LABEL}</span>
           </p>
-          <p className="grik-splash-motto">{SHOW_AFFECTION ? "Built for the two of you" : "Household finances"}</p>
+          ) : null}
+          {SHOW_AFFECTION ? (
+            <p className="grik-splash-motto">Built for the two of you</p>
+          ) : null}
         </div>
       )}
 

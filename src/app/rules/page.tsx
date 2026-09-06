@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Clock, Pause, Play, Plus, ScrollText, Table2, Trash2 } from "lucide-react";
 import { CompactPageShell } from "@/components/ui/compact-page-shell";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -37,6 +37,15 @@ export default function RulesPage() {
   const openEntry = useRulesStore((state) => state.openEntry);
   const answerEntry = useRulesStore((state) => state.answerEntry);
   const deleteEntry = useRulesStore((state) => state.deleteEntry);
+
+  const hydrateRules = useRulesStore((state) => state.hydrateFromServer);
+
+  // Pull the household copy on open. Local wins while it has anything; this is
+  // what brings a rule back after storage is cleared, and picks up one written
+  // on the other phone.
+  useEffect(() => {
+    void hydrateRules();
+  }, [hydrateRules]);
 
   const [person, setPerson] = useState<Person>("kushvanth");
   const [editing, setEditing] = useState<Rule | null>(null);
@@ -305,8 +314,18 @@ export default function RulesPage() {
         );
       })}
 
+      {/*
+        Mounted only while open, and keyed by what it is editing.
+
+        Left permanently mounted, its useState initialisers ran once — before a
+        rule was chosen — so opening it for a rule showed "Edit rule" above a
+        completely empty form, with the placeholder examples reading like real
+        content. Remounting per target is what makes the fields load.
+      */}
+      {creating || editing ? (
       <RuleEditor
-        open={creating || editing !== null}
+        key={editing?.id ?? "new-rule"}
+        open
         initial={editing ?? undefined}
         defaultScope={person}
         onClose={() => {
@@ -320,6 +339,7 @@ export default function RulesPage() {
           setEditing(null);
         }}
       />
+      ) : null}
 
       {loggingFor ? (
         <RuleEntryEditor

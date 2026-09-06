@@ -488,7 +488,16 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         name: { type: "string", description: "Short name, e.g. 'Amazon Flex blocks'." },
         scope: { type: "string", description: "kushvanth, grishma, or household." },
         description: { type: "string", description: "The rule in their own words." },
-        trigger_kind: { type: "string", description: "daily, weekly, monthly, or manual." },
+        trigger_kind: {
+          type: "string",
+          description:
+            "conversation_start, daily, weekly, monthly, or manual. Use conversation_start when it belongs to the catch-up at the top of a chat rather than to a clock time.",
+        },
+        repeatable: {
+          type: "boolean",
+          description:
+            "True when one trigger can produce several records in a day, like Flex blocks or shifts. You then keep asking 'any more?' until they say no.",
+        },
         trigger_question: { type: "string", description: "What you ask, e.g. 'Any Amazon Flex blocks today?'" },
         trigger_time: { type: "string", description: "HH:mm to ask at." },
         trigger_weekday: { type: "number", description: "0=Sunday..6=Saturday, for weekly." },
@@ -496,13 +505,13 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         fields: {
           type: "array",
           description:
-            "What to record. Each: {key, label, type (money/number/text/date/time), ask_at ('start' or 'follow_up'), question, required}. Keys are lowercase with underscores and are used in calculations.",
+            "What to record. Each: {key, label, type (money/number/text/date/time), ask_at ('start' or 'follow_up'), question, required, ask_if}. Keys are lowercase with underscores and are used in calculations. ask_if is {field, equals} and gates the question on an earlier answer - {field: 'used_own_car', equals: 'yes'} only asks it when they said yes.",
           items: { type: "object" },
         },
         follow_ups: {
           type: "array",
           description:
-            "Delayed questions. Each: {after_hours, question, fields:[field keys]}. Amazon Flex tips are after_hours 27.",
+            "Delayed questions. Each: {after_hours, question, fields:[field keys], anchor_field}. anchor_field counts the delay from a time RECORDED on the entry instead of from when it was logged - Amazon Flex tips are after_hours 27 with anchor_field start_time, so each block gets its own clock instead of all of them firing together.",
           items: { type: "object" },
         },
         calculations: {
@@ -537,7 +546,8 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
         name: { type: "string", description: "New name." },
         description: { type: "string" },
         enabled: { type: "boolean", description: "false pauses the rule without deleting it." },
-        trigger_kind: { type: "string" },
+        trigger_kind: { type: "string", description: "conversation_start, daily, weekly, monthly, or manual." },
+        repeatable: { type: "boolean", description: "Several records per trigger." },
         trigger_question: { type: "string" },
         trigger_time: { type: "string" },
         trigger_weekday: { type: "number" },

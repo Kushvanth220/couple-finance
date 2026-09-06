@@ -116,7 +116,9 @@ function ensureIncomeSource(person: Person, sourceName: string) {
 }
 
 function todayDate() {
-  return format(new Date(), "yyyy-MM-dd");
+  // The household's day, not the browser's. These dates go straight onto money
+  // records, so they must follow the same rule as every other date in the app.
+  return householdToday();
 }
 
 function parseExpenseFor(value: unknown, fallback: Person): ExpenseFor {

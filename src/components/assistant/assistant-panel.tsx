@@ -1,6 +1,5 @@
 "use client";
 
-import { HOUSEHOLD_LABEL } from "@/lib/branding";
 
 import { useEffect, useRef, useState } from "react";
 import { MessageSquareText, Mic, Pencil, X } from "lucide-react";
@@ -144,7 +143,7 @@ export function AssistantPanel({ open, onVoiceLiveChange }: AssistantPanelProps)
               <p className="text-[11px] text-muted mt-0.5">
                 {liveDock
                   ? "Website stays open — keep talking"
-                  : `One AI for ${HOUSEHOLD_LABEL} · household finances`}
+                  : "One AI for both of you"}
               </p>
               {liveDock ? null : (
                 <div className="mt-2">

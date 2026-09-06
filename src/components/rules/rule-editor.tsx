@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { GlassButton } from "@/components/ui/glass-button";
 import { CHART_TYPE_OPTIONS } from "@/components/charts/flex-chart";
-import { validateExpression } from "@/lib/rules/engine";
+import { defaultAggregates, validateExpression } from "@/lib/rules/engine";
 import { toKey } from "@/lib/rules/from-assistant";
 import {
   RULE_FIELD_TYPES,
@@ -37,6 +37,7 @@ const label = "text-[11px] font-medium text-muted";
 const chip = "rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors";
 
 const TRIGGERS: { value: RuleTriggerKind; label: string }[] = [
+  { value: "conversation_start", label: "On chat" },
   { value: "daily", label: "Daily" },
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
@@ -71,6 +72,7 @@ export function RuleEditor({
   const [calculations, setCalculations] = useState<RuleCalculation[]>(initial?.calculations ?? []);
   const [charts, setCharts] = useState<RuleChart[]>(initial?.charts ?? []);
   const [onDashboard, setOnDashboard] = useState(initial?.showOnDashboard ?? true);
+  const [repeatable, setRepeatable] = useState(initial?.repeatable ?? false);
 
   const fieldKeys = fields.map((item) => item.key);
   const knownKeys = [...fieldKeys, ...calculations.map((item) => item.key)];
@@ -105,7 +107,11 @@ export function RuleEditor({
       followUps,
       calculations,
       charts: charts.filter((chart) => knownKeys.includes(chart.y)),
+      aggregates:
+        initial?.aggregates ??
+        defaultAggregates({ fields, calculations }, () => uuidv4()),
       payout: initial?.payout ?? { kind: "none", amountKey: "", autoPost: false },
+      repeatable,
       showOnDashboard: onDashboard,
     });
   };
@@ -157,7 +163,7 @@ export function RuleEditor({
 
         <div className="rounded-xl border border-black/5 p-2.5 dark:border-white/10">
           <p className="text-[11px] font-semibold">When does it ask?</p>
-          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+          <div className="mt-1.5 grid grid-cols-5 gap-1.5">
             {TRIGGERS.map((option) => (
               <button
                 key={option.value}
@@ -299,6 +305,52 @@ export function RuleEditor({
                   <option value="follow_up">Ask later</option>
                 </select>
               </div>
+              {/* Gate the question on an earlier answer. */}
+              {fields.length > 1 ? (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted">Only ask if</span>
+                  <select
+                    value={item.askIf?.field ?? ""}
+                    onChange={(event) =>
+                      setFields((current) =>
+                        current.map((row, i) =>
+                          i === index
+                            ? event.target.value
+                              ? { ...row, askIf: { field: event.target.value, equals: row.askIf?.equals ?? "yes" } }
+                              : { ...row, askIf: undefined }
+                            : row
+                        )
+                      )
+                    }
+                    className="flex-1 glass rounded-lg px-2 py-1 text-[11px] outline-none"
+                  >
+                    <option value="">always ask</option>
+                    {fields
+                      .filter((other) => other.key && other.key !== item.key)
+                      .map((other) => (
+                        <option key={other.key} value={other.key}>
+                          {other.label || other.key}
+                        </option>
+                      ))}
+                  </select>
+                  {item.askIf ? (
+                    <input
+                      value={item.askIf.equals}
+                      onChange={(event) =>
+                        setFields((current) =>
+                          current.map((row, i) =>
+                            i === index && row.askIf
+                              ? { ...row, askIf: { ...row.askIf, equals: event.target.value } }
+                              : row
+                          )
+                        )
+                      }
+                      placeholder="yes"
+                      className="w-16 glass rounded-lg px-2 py-1 text-[11px] outline-none"
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               {item.key ? (
                 <p className="mt-1 text-[10px] text-muted">
                   Use <code>{item.key}</code> in calculations
@@ -355,6 +407,33 @@ export function RuleEditor({
                 placeholder="Any tips on that block yet?"
                 className="mt-1.5 w-full glass rounded-lg px-2 py-1.5 text-[12px] outline-none"
               />
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <span className="text-[10px] text-muted">counting from</span>
+                <select
+                  value={item.anchorField ?? ""}
+                  onChange={(event) =>
+                    setFollowUps((current) =>
+                      current.map((row, i) =>
+                        i === index
+                          ? event.target.value
+                            ? { ...row, anchorField: event.target.value }
+                            : { ...row, anchorField: undefined }
+                          : row
+                      )
+                    )
+                  }
+                  className="flex-1 glass rounded-lg px-2 py-1 text-[11px] outline-none"
+                >
+                  <option value="">when it was logged</option>
+                  {fields
+                    .filter((f) => f.type === "time" || f.type === "date")
+                    .map((f) => (
+                      <option key={f.key} value={f.key}>
+                        {f.label || f.key}
+                      </option>
+                    ))}
+                </select>
+              </div>
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {fields
                   .filter((f) => f.askAt === "follow_up")
@@ -528,6 +607,32 @@ export function RuleEditor({
             </div>
           ))}
         </Section>
+
+        <button
+          type="button"
+          onClick={() => setRepeatable((value) => !value)}
+          className="flex w-full items-center justify-between rounded-xl glass px-3 py-2.5 text-left"
+        >
+          <span>
+            <span className="block text-xs font-semibold">Happens more than once a day</span>
+            <span className="block text-[10px] text-muted">
+              Jarvis keeps asking &ldquo;any more?&rdquo; and logs each one separately
+            </span>
+          </span>
+          <span
+            className={cn(
+              "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+              repeatable ? "bg-[#34c759]" : "bg-black/15 dark:bg-white/20"
+            )}
+          >
+            <span
+              className={cn(
+                "block h-4 w-4 rounded-full bg-white transition-transform",
+                repeatable && "translate-x-4"
+              )}
+            />
+          </span>
+        </button>
 
         <button
           type="button"

@@ -310,3 +310,93 @@ export async function upsertAssistantPreferences(
   }
   return data as AssistantPreferencesRow;
 }
+
+/**
+ * Rules live in their own table, `household_rules`, holding one JSONB document
+ * per household.
+ *
+ * They used to exist ONLY in the browser. When that storage emptied, a rule and
+ * every block logged under it were gone with nothing to restore from — the one
+ * part of the app with a single copy. Like `assistant_preferences`, a missing
+ * table is not an error: the app keeps working locally until the migration is
+ * run.
+ */
+export interface HouseholdRulesRow {
+  household_id: string;
+  data: { rules: unknown[]; entries: unknown[] };
+  updated_at: string;
+}
+
+/**
+ * `available` says whether the TABLE is there; `row` whether anything has been
+ * saved yet. Collapsing both into null once made a brand-new empty table report
+ * itself as "not synced", which reads like the migration never ran.
+ */
+export async function fetchHouseholdRules(
+  householdId = getHouseholdId()
+): Promise<{ available: boolean; row: HouseholdRulesRow | null }> {
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from("household_rules")
+    .select("household_id, data, updated_at")
+    .eq("household_id", householdId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error)) return { available: false, row: null };
+    throw new Error(error.message);
+  }
+  if (!data) return { available: true, row: null };
+
+  const row = data as Record<string, unknown>;
+  const payload = (row.data ?? {}) as { rules?: unknown[]; entries?: unknown[] };
+  return {
+    available: true,
+    row: {
+      household_id: String(row.household_id),
+      data: {
+        rules: Array.isArray(payload.rules) ? payload.rules : [],
+        entries: Array.isArray(payload.entries) ? payload.entries : [],
+      },
+      updated_at: String(row.updated_at ?? new Date().toISOString()),
+    },
+  };
+}
+
+export async function upsertHouseholdRules(
+  payload: { rules: unknown[]; entries: unknown[] },
+  householdId = getHouseholdId()
+): Promise<HouseholdRulesRow | null> {
+  // An empty local copy must never overwrite a good remote one. This is the
+  // exact shape of the loss that prompted the table: storage cleared itself,
+  // and without this guard the next sync would have erased the backup too.
+  if (payload.rules.length === 0) {
+    const existing = await fetchHouseholdRules(householdId);
+    const saved = existing.row?.data.rules.length ?? 0;
+    if (saved > 0) {
+      throw new Error(
+        `Refusing to replace ${saved} saved rule(s) with an empty set. Delete rules individually if that is what you meant.`
+      );
+    }
+  }
+
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from("household_rules")
+    .upsert(
+      {
+        household_id: householdId,
+        data: payload,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "household_id" }
+    )
+    .select("household_id, data, updated_at")
+    .single();
+
+  if (error) {
+    if (isMissingTableError(error)) return null;
+    throw new Error(error.message);
+  }
+  return data as HouseholdRulesRow;
+}
