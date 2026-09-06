@@ -362,12 +362,17 @@ export function DashboardView() {
           </div>
         </div>
 
+        {/* The shape picker sits outside the empty check on purpose. Buried in
+            the has-data branch it vanished on any month without income —
+            which is most of them — so the control looked like it did not exist. */}
+        <div className="mb-2">
+          <ChartTypePicker value={incomeChart} onChange={setIncomeChart} tint="#34c759" />
+        </div>
+
         {incomeBySource.length === 0 ? (
           <p className="text-[11px] text-muted text-center py-6">No income recorded yet</p>
         ) : (
           <div className="space-y-3">
-            <ChartTypePicker value={incomeChart} onChange={setIncomeChart} tint="#34c759" />
-
             {incomeChart === "donut" ? (
               <IncomeDonutChart
                 segments={incomeBySource.map((item) => ({ name: item.name, amount: item.amount }))}
@@ -461,12 +466,12 @@ export function DashboardView() {
           </span>
         </p>
 
+        <div className="mb-2">
+          <ChartTypePicker value={spendChart} onChange={setSpendChart} tint="#ff3b30" />
+        </div>
+
         {spentCategories.length > 0 ? (
           <>
-            <div className="mb-2">
-              <ChartTypePicker value={spendChart} onChange={setSpendChart} tint="#ff3b30" />
-            </div>
-
             {spendChart === "donut" ? (
               <ExpenseCategoryDonutChart
                 compact
