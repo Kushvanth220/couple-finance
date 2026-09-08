@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { AnimatedMoney } from "@/components/ui/animated-number";
 import { RuleDashboards } from "@/components/dashboard/rule-dashboard";
+import { AccountBalances } from "@/components/dashboard/account-balances";
 import { ChartTypePicker, useChartType } from "@/components/dashboard/chart-type-picker";
 import { FlexChart } from "@/components/charts/flex-chart";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -305,6 +306,9 @@ export function DashboardView() {
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Reads the same store the Accounts page writes to, so the two agree. */}
+      <AccountBalances person={person} />
 
       <GlassCard strong className="!p-3 border border-[#34c759]/20">
         <div className="flex items-start justify-between gap-3 mb-3">

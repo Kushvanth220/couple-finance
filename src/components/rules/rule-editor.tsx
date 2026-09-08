@@ -79,8 +79,14 @@ export function RuleEditor({
 
   // A calculation naming a field that no longer exists is the one way this
   // form can save something that silently computes nothing.
-  const calcErrors = calculations.map((calculation) => {
-    const check = validateExpression(calculation.expression, fieldKeys);
+  //
+  // It may however build on a calculation declared ABOVE it — "pay per hour =
+  // base_pay / hours" is the whole point of having them. Validating against
+  // fields alone rejected that, and since Save is gated on this, the Flex rule
+  // could not be saved at all.
+  const calcErrors = calculations.map((calculation, index) => {
+    const known = [...fieldKeys, ...calculations.slice(0, index).map((item) => item.key)];
+    const check = validateExpression(calculation.expression, known);
     return check.ok ? null : check.error;
   });
 
@@ -522,7 +528,12 @@ export function RuleEditor({
               {calcErrors[index] ? (
                 <p className="mt-1 text-[10px] text-[#ff3b30]">{calcErrors[index]}</p>
               ) : fieldKeys.length > 0 ? (
-                <p className="mt-1 text-[10px] text-muted">Available: {fieldKeys.join(", ")}</p>
+                <p className="mt-1 text-[10px] text-muted">
+                  Available:{" "}
+                  {[...fieldKeys, ...calculations.slice(0, index).map((c) => c.key)]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
               ) : null}
             </div>
           ))}
