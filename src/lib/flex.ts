@@ -17,8 +17,12 @@ export const FLEX_BLUE = "#0077FF";
 export const FLEX_RULE_NAME = "Amazon Flex blocks";
 
 /** Recognise the tracker's rule however it was originally named. */
+export function isFlexRule(rule: Rule): boolean {
+  return /amazon\s*flex|flex\s*block/i.test(rule.name);
+}
+
 export function findFlexRule(rules: Rule[]): Rule | undefined {
-  return rules.find((rule) => /amazon\s*flex|flex\s*block/i.test(rule.name));
+  return rules.find(isFlexRule);
 }
 
 function flexDraft(): RuleDraft {

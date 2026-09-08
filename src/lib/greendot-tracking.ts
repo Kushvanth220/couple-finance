@@ -47,8 +47,8 @@ export function getGreenDotTrackingRange(date: Date, trackingStartDate?: string)
 export function formatGreenDotTrackingLabel(trackingStartDate?: string): string | null {
   if (!trackingStartDate) return null;
   return parseAppDateTime(trackingStartDate, "00:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     year: "numeric",
   });
 }

@@ -231,9 +231,9 @@ export function AiVoicePanel({
       const persistKey = `${line.role}:${line.text}`;
       if (lastPersistedRef.current === persistKey) return;
       lastPersistedRef.current = persistKey;
-      const title = `Voice · ${new Date().toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
+      const title = `Voice · ${new Date().toLocaleDateString("en-US", {
+        month: "2-digit",
+        day: "2-digit",
       })}`;
       void (async () => {
         try {

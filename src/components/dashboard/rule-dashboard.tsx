@@ -6,6 +6,7 @@ import { ChevronRight, ScrollText, SlidersHorizontal } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { FlexChart, type FlexChartType } from "@/components/charts/flex-chart";
 import { useRulesStore } from "@/store/rules-store";
+import { isFlexRule } from "@/lib/flex";
 import { defaultAggregates, runAggregate } from "@/lib/rules/engine";
 import type { Rule, RuleAggregate } from "@/lib/rules/types";
 import { formatCurrency } from "@/lib/formatters";
@@ -45,6 +46,8 @@ export function RuleDashboards({ person }: { person: Person | "overall" }) {
     () =>
       rules.filter((rule) => {
         if (!rule.showOnDashboard || !rule.enabled) return false;
+        // Flex has a page of its own; a second copy here says nothing new.
+        if (isFlexRule(rule)) return false;
         if (person === "overall") return true;
         return rule.scope === person || rule.scope === "household";
       }),

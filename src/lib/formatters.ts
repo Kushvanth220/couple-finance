@@ -41,33 +41,51 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
+/**
+ * One date shape and one clock shape for the whole app: MM/DD/YYYY and
+ * hh:mm AM/PM. Mixed formats made two screens showing the same moment look
+ * like two different records.
+ */
+const DATE_PARTS = { month: "2-digit", day: "2-digit", year: "numeric" } as const;
+const TIME_PARTS = { hour: "2-digit", minute: "2-digit", hour12: true } as const;
+
 export function formatDate(date: string, time?: string, timestamp?: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(parseAppDateTime(date, time, timestamp));
+  return new Intl.DateTimeFormat("en-US", DATE_PARTS).format(
+    parseAppDateTime(date, time, timestamp)
+  );
 }
 
 export function formatTime(date: string, time: string, timestamp?: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(parseAppDateTime(date, time, timestamp));
+  return new Intl.DateTimeFormat("en-US", TIME_PARTS).format(
+    parseAppDateTime(date, time, timestamp)
+  );
 }
 
 export function formatDateTime(date: string, time?: string, timestamp?: string): string {
-  const d = parseAppDateTime(date, time ?? "00:00:00", timestamp);
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(d);
+  const at = parseAppDateTime(date, time ?? "00:00:00", timestamp);
+  return new Intl.DateTimeFormat("en-US", { ...DATE_PARTS, ...TIME_PARTS }).format(at);
+}
+
+/**
+ * A stored 24-hour "HH:MM" clock string shown as 12-hour time.
+ *
+ * Time fields are kept as typed so they stay sortable and computable; only the
+ * reading of them changes here.
+ */
+export function formatClock(clock: string): string {
+  const [rawHour, rawMinute] = String(clock).split(":");
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return clock;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const shown = hour % 12 === 0 ? 12 : hour % 12;
+  return `${String(shown).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+/** MM/DD, for chart axes and ranges where the year is already established. */
+export function formatShortDate(date: string): string {
+  const [, month, day] = date.split("-");
+  return month && day ? `${month}/${day}` : date;
 }
 
 /** Compare two stored records for sorting (newest first) */

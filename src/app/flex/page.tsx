@@ -13,7 +13,12 @@ import { ensureFlexRule, FLEX_BLUE } from "@/lib/flex";
 import { roundMoney } from "@/lib/money";
 import { householdToday } from "@/lib/household-date";
 import type { RuleEntry } from "@/lib/rules/types";
-import { formatCurrency } from "@/lib/formatters";
+import {
+  formatClock,
+  formatCurrency,
+  formatDate,
+  formatShortDate,
+} from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 /**
@@ -78,9 +83,7 @@ function monthLabel(month: string): string {
 }
 
 function shortDate(date: string): string {
-  const at = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(at.getTime())) return date;
-  return at.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatShortDate(date);
 }
 
 /**
@@ -120,13 +123,15 @@ function windowFor(
 function prettyDate(date: string): string {
   const at = new Date(`${date}T00:00:00`);
   if (Number.isNaN(at.getTime())) return date;
-  return at.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+  // The weekday earns its place in a day-grouped history; the date stays MM/DD/YYYY.
+  return `${at.toLocaleDateString("en-US", { weekday: "short" })} ${formatDate(date)}`;
 }
 
 export default function FlexPage() {
   const rules = useRulesStore((state) => state.rules);
   const entries = useRulesStore((state) => state.entries);
   const addRule = useRulesStore((state) => state.addRule);
+  const updateRule = useRulesStore((state) => state.updateRule);
   const openEntry = useRulesStore((state) => state.openEntry);
   const answerEntry = useRulesStore((state) => state.answerEntry);
   const deleteEntry = useRulesStore((state) => state.deleteEntry);
@@ -146,6 +151,13 @@ export default function FlexPage() {
   }, [hydrate]);
 
   const flex = useMemo(() => ensureFlexRule(rules, addRule), [rules, addRule]);
+
+  // The saved rule predates the repeatable flag. Blocks plainly repeat — three
+  // in a day is normal — and the flag is what lets several be logged at once
+  // and what tells the assistant to keep asking "any more?".
+  useEffect(() => {
+    if (flex && flex.repeatable !== true) updateRule(flex.id, { repeatable: true });
+  }, [flex, updateRule]);
 
   const blocks = useMemo(() => {
     if (!flex) return [];
@@ -398,8 +410,12 @@ export default function FlexPage() {
                 >
                   <div className="min-w-0">
                     <p className="text-[13px]">
-                      {prettyDate(item.entry.date)} · {String(values.start_time ?? "")}–
-                      {String(values.finish_time ?? "")}
+                      {prettyDate(item.entry.date)}
+                      <span className="text-muted">
+                        {" · "}
+                        {formatClock(String(values.start_time ?? ""))} –{" "}
+                        {formatClock(String(values.finish_time ?? ""))}
+                      </span>
                     </p>
                     <p className="text-[10px] text-muted">
                       Base {formatCurrency(Number(values.base_pay ?? 0))} · due{" "}
@@ -502,7 +518,7 @@ export default function FlexPage() {
                         >
                           <div className="min-w-0 flex-1">
                             <p className="text-[12px] tabular-nums">
-                              {block.start}–{block.finish}
+                              {formatClock(block.start)} – {formatClock(block.finish)}
                               <span className="text-muted"> · {block.hours}h</span>
                             </p>
                             <p className="text-[10px] text-muted">
