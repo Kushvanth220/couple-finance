@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 interface RulesBody {
   rules?: unknown[];
   entries?: unknown[];
+  /** Removed ids, so a delete on one device is not undone by another's merge. */
+  deleted?: Record<string, string>;
 }
 
 export async function GET() {
@@ -19,6 +21,7 @@ export async function GET() {
       synced: available,
       rules: row?.data.rules ?? [],
       entries: row?.data.entries ?? [],
+      deleted: row?.data.deleted ?? {},
       updated_at: row?.updated_at ?? null,
     });
   } catch (error) {
@@ -33,6 +36,8 @@ export async function POST(request: Request) {
     const saved = await upsertHouseholdRules({
       rules: Array.isArray(body.rules) ? body.rules : [],
       entries: Array.isArray(body.entries) ? body.entries : [],
+      deleted:
+        body.deleted && typeof body.deleted === "object" ? body.deleted : {},
     });
     return NextResponse.json({ ok: true, synced: saved !== null, updated_at: saved?.updated_at ?? null });
   } catch (error) {

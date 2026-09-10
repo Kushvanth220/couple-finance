@@ -323,7 +323,12 @@ export async function upsertAssistantPreferences(
  */
 export interface HouseholdRulesRow {
   household_id: string;
-  data: { rules: unknown[]; entries: unknown[] };
+  /**
+   * `deleted` maps a removed rule or entry id to when it went. Without it a
+   * merge that unions two devices would resurrect everything either of them
+   * ever deleted.
+   */
+  data: { rules: unknown[]; entries: unknown[]; deleted?: Record<string, string> };
   updated_at: string;
 }
 
@@ -349,7 +354,11 @@ export async function fetchHouseholdRules(
   if (!data) return { available: true, row: null };
 
   const row = data as Record<string, unknown>;
-  const payload = (row.data ?? {}) as { rules?: unknown[]; entries?: unknown[] };
+  const payload = (row.data ?? {}) as {
+    rules?: unknown[];
+    entries?: unknown[];
+    deleted?: Record<string, string>;
+  };
   return {
     available: true,
     row: {
@@ -357,6 +366,8 @@ export async function fetchHouseholdRules(
       data: {
         rules: Array.isArray(payload.rules) ? payload.rules : [],
         entries: Array.isArray(payload.entries) ? payload.entries : [],
+        deleted:
+          payload.deleted && typeof payload.deleted === "object" ? payload.deleted : {},
       },
       updated_at: String(row.updated_at ?? new Date().toISOString()),
     },
@@ -364,7 +375,7 @@ export async function fetchHouseholdRules(
 }
 
 export async function upsertHouseholdRules(
-  payload: { rules: unknown[]; entries: unknown[] },
+  payload: { rules: unknown[]; entries: unknown[]; deleted?: Record<string, string> },
   householdId = getHouseholdId()
 ): Promise<HouseholdRulesRow | null> {
   // An empty local copy must never overwrite a good remote one. This is the

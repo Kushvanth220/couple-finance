@@ -211,6 +211,12 @@ export interface RuleEntry {
   date: string;
   /** ISO timestamp the entry was opened, which follow-ups count from. */
   openedAt: string;
+  /**
+   * ISO timestamp of the last change, used to settle a merge between devices.
+   * Absent on entries written before syncing merged at entry level; `openedAt`
+   * stands in for those.
+   */
+  updatedAt?: string;
   values: Record<string, string | number>;
   /** Follow-up ids already answered. */
   answered: string[];

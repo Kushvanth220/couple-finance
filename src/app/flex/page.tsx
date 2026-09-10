@@ -7,6 +7,7 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StackedChart, type StackedChartType } from "@/components/charts/stacked-chart";
 import { RuleEntryEditor } from "@/components/rules/rule-entry-editor";
+import { FlexMark } from "@/components/flex/flex-mark";
 import { useRulesStore } from "@/store/rules-store";
 import { resolveEntry } from "@/lib/rules/engine";
 import { ensureFlexRule, FLEX_BLUE } from "@/lib/flex";
@@ -277,7 +278,7 @@ export default function FlexPage() {
 
   return (
     <CompactPageShell
-      title="Amazon Flex"
+      title={<FlexMark />}
       subtitle="Every block, base pay and tip"
       action={
         <button

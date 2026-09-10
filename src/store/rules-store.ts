@@ -14,6 +14,14 @@ export type RuleDraft = Omit<Rule, "id" | "createdAt" | "updatedAt">;
 interface RulesState {
   rules: Rule[];
   entries: RuleEntry[];
+  /**
+   * Ids of rules and entries that were deleted here, and when.
+   *
+   * Merging two devices by union is what stops a block logged on the phone
+   * being wiped by the laptop's next save — but a plain union also resurrects
+   * anything either side deleted. These headstones are the difference.
+   */
+  deleted: Record<string, string>;
 
   addRule: (draft: RuleDraft) => Rule;
   updateRule: (id: string, updates: Partial<Rule>) => void;
@@ -36,7 +44,7 @@ interface RulesState {
   dueNow: (now?: Date) => DueFollowUp[];
   triggersDueToday: (now?: Date) => Rule[];
 
-  /** Pull the household copy; adopts it when nothing is stored here yet. */
+  /** Merge the household copy into this one, in both directions. */
   hydrateFromServer: () => Promise<void>;
   /** Push the current rules and entries. Fire-and-forget after every change. */
   syncToServer: () => Promise<void>;
@@ -51,6 +59,7 @@ export const useRulesStore = create<RulesState>()(
     (set, get) => ({
       rules: [],
       entries: [],
+      deleted: {},
 
       addRule: (draft) => {
         const rule: Rule = { ...draft, id: uuidv4(), createdAt: stamp(), updatedAt: stamp() };
@@ -71,9 +80,15 @@ export const useRulesStore = create<RulesState>()(
       deleteRule: (id) => {
         // Entries belong to their rule; leaving them behind would haunt the
         // tables as rows nothing can explain.
+        const now = stamp();
+        const gone: Record<string, string> = { ...(get().deleted ?? {}), [id]: now };
+        for (const entry of get().entries) {
+          if (entry.ruleId === id) gone[entry.id] = now;
+        }
         set({
           rules: get().rules.filter((rule) => rule.id !== id),
           entries: get().entries.filter((entry) => entry.ruleId !== id),
+          deleted: gone,
         });
         void get().syncToServer();
       },
@@ -92,6 +107,7 @@ export const useRulesStore = create<RulesState>()(
           ruleId,
           date: date ?? householdToday(),
           openedAt: stamp(),
+          updatedAt: stamp(),
           values,
           answered: [],
           complete: false,
@@ -107,6 +123,7 @@ export const useRulesStore = create<RulesState>()(
           if (entry.id !== entryId) return entry;
           const merged: RuleEntry = {
             ...entry,
+            updatedAt: stamp(),
             values: { ...entry.values, ...values },
             answered: followUpId && !entry.answered.includes(followUpId)
               ? [...entry.answered, followUpId]
@@ -124,7 +141,7 @@ export const useRulesStore = create<RulesState>()(
         set({
           entries: get().entries.map((entry) => {
             if (entry.id !== entryId) return entry;
-            const merged = { ...entry, ...updates, id: entry.id };
+            const merged = { ...entry, ...updates, id: entry.id, updatedAt: stamp() };
             const rule = get().getRule(entry.ruleId);
             merged.complete = rule ? isEntryComplete(rule, merged) : merged.complete;
             return merged;
@@ -134,7 +151,10 @@ export const useRulesStore = create<RulesState>()(
       },
 
       deleteEntry: (entryId) => {
-        set({ entries: get().entries.filter((entry) => entry.id !== entryId) });
+        set({
+          entries: get().entries.filter((entry) => entry.id !== entryId),
+          deleted: { ...(get().deleted ?? {}), [entryId]: stamp() },
+        });
         void get().syncToServer();
       },
 
@@ -193,28 +213,77 @@ export const useRulesStore = create<RulesState>()(
           const remoteEntries = ((payload.entries ?? []) as RuleEntry[]).filter(
             (entry) => entry && typeof entry.id === "string" && entry.ruleId
           );
+          const remoteDeleted = (payload.deleted ?? {}) as Record<string, string>;
           const local = get();
 
-          // Local is the working copy and wins while it holds anything. The
-          // remote is here for the case that actually hurt: storage emptied,
-          // and the only surviving copy is the household one.
-          if (local.rules.length === 0 && remoteRules.length > 0) {
-            set({ rules: remoteRules, entries: remoteEntries });
-            return;
+          // Headstones from both devices. Pruned after 90 days so the document
+          // does not grow forever; by then every device has seen the delete.
+          const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+          const deleted: Record<string, string> = {};
+          for (const [id, at] of Object.entries({
+            ...remoteDeleted,
+            ...(local.deleted ?? {}),
+          })) {
+            if (typeof at === "string" && at > cutoff) deleted[id] = at;
           }
 
-          // Otherwise adopt only rules this device has never seen, so a rule
-          // written on the other phone appears without disturbing anything here.
-          const known = new Set(local.rules.map((rule) => rule.id));
-          const added = remoteRules.filter((rule) => !known.has(rule.id));
-          if (added.length === 0) return;
+          /**
+           * Union by id, latest write winning.
+           *
+           * The old merge adopted only rules this device had never seen, and
+           * so never pulled entries for a rule it already knew — every block
+           * logged on the other phone stayed invisible here, and this device's
+           * next save overwrote them. A union cannot drop a record that only
+           * one side holds, which is the whole point.
+           */
+          const merge = <T extends { id: string }>(
+            mine: T[],
+            theirs: T[],
+            at: (item: T) => string
+          ): T[] => {
+            const byId = new Map<string, T>();
+            for (const item of theirs) byId.set(item.id, item);
+            for (const item of mine) {
+              const other = byId.get(item.id);
+              if (!other || at(item) >= at(other)) byId.set(item.id, item);
+            }
+            return [...byId.values()].filter((item) => !deleted[item.id]);
+          };
 
-          const addedIds = new Set(added.map((rule) => rule.id));
-          const addedEntries = remoteEntries.filter((entry) => addedIds.has(entry.ruleId));
-          set({
-            rules: [...local.rules, ...added],
-            entries: [...local.entries, ...addedEntries],
-          });
+          const rules = merge(
+            local.rules,
+            remoteRules,
+            (rule) => rule.updatedAt ?? rule.createdAt ?? ""
+          );
+          const liveRules = new Set(rules.map((rule) => rule.id));
+          // An entry whose rule is gone has nothing left to explain it.
+          const entries = merge(
+            local.entries,
+            remoteEntries,
+            (entry) => entry.updatedAt ?? entry.openedAt ?? ""
+          ).filter((entry) => liveRules.has(entry.ruleId));
+
+          const shape = (
+            rs: Rule[],
+            es: RuleEntry[],
+            gone: Record<string, string>
+          ): string =>
+            JSON.stringify([
+              rs.map((r) => [r.id, r.updatedAt ?? ""]).sort(),
+              es.map((e) => [e.id, e.updatedAt ?? e.openedAt ?? ""]).sort(),
+              Object.keys(gone).sort(),
+            ]);
+
+          const merged = shape(rules, entries, deleted);
+          // Only touch state when something actually moved, so a poll that
+          // finds nothing new does not re-render every screen watching this.
+          if (merged !== shape(local.rules, local.entries, local.deleted ?? {})) {
+            set({ rules, entries, deleted });
+          }
+          // And push back whenever the server is the side that is behind.
+          if (merged !== shape(remoteRules, remoteEntries, remoteDeleted)) {
+            void get().syncToServer();
+          }
         } catch {
           // No cloud, or the table is not created yet — local still works.
         }
@@ -225,7 +294,11 @@ export const useRulesStore = create<RulesState>()(
           await fetch("/api/rules", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rules: get().rules, entries: get().entries }),
+            body: JSON.stringify({
+              rules: get().rules,
+              entries: get().entries,
+              deleted: get().deleted ?? {},
+            }),
           });
         } catch {
           // Offline is fine; the next change pushes the whole document again.

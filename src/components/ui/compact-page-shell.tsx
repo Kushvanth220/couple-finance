@@ -7,7 +7,8 @@ import type { Person } from "@/types";
 type PersonFilter = Person | "overall";
 
 type CompactPageShellProps = {
-  title: string;
+  /** A node, so a page with its own branding can put its mark in the heading. */
+  title: React.ReactNode;
   subtitle?: string;
   action?: React.ReactNode;
   person?: Person;
