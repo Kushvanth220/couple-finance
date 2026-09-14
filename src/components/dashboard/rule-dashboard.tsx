@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ScrollText, SlidersHorizontal } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { FlexChart, type FlexChartType } from "@/components/charts/flex-chart";
-import { useRulesStore } from "@/store/rules-store";
+import { startRulesLiveSync, useRulesStore } from "@/store/rules-store";
 import { isFlexRule } from "@/lib/flex";
 import { defaultAggregates, runAggregate } from "@/lib/rules/engine";
 import type { Rule, RuleAggregate } from "@/lib/rules/types";
@@ -33,14 +33,11 @@ export function RuleDashboards({ person }: { person: Person | "overall" }) {
   const rules = useRulesStore((state) => state.rules);
   const entries = useRulesStore((state) => state.entries);
   const updateRule = useRulesStore((state) => state.updateRule);
-  const hydrateRules = useRulesStore((state) => state.hydrateFromServer);
   const [tuning, setTuning] = useState<string | null>(null);
 
   // The dashboard is usually the first screen opened, so it is the first
   // chance to notice the local copy is missing something.
-  useEffect(() => {
-    void hydrateRules();
-  }, [hydrateRules]);
+  useEffect(() => startRulesLiveSync(), []);
 
   const shown = useMemo(
     () =>

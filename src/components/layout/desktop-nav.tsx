@@ -14,13 +14,13 @@ import {
 
 export function DesktopNav() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  // The menu remembers the route it opened on; navigating away closes it
+  // by definition, with no effect needed.
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === pathname;
+  const setOpen = (next: boolean) => setOpenAt(next ? pathname : null);
   const menuRef = useRef<HTMLDivElement>(null);
   const moreActive = isMoreNavActive(pathname);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +60,7 @@ export function DesktopNav() {
       <div className="relative" ref={menuRef}>
         <button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => setOpen(!open)}
           aria-expanded={open}
           className={cn(
             "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",

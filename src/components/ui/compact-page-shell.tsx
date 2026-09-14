@@ -1,10 +1,24 @@
 "use client";
 
+import { Children } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { PersonTabs } from "@/components/ui/person-tabs";
 import { cn } from "@/lib/utils";
 import type { Person } from "@/types";
 
 type PersonFilter = Person | "overall";
+
+/**
+ * Sections fade up one after another on load. The header is left out of it so
+ * the page never looks empty while the cards arrive; on a slow phone that gap
+ * is the difference between "loading" and "broken".
+ */
+const EASE = [0.16, 1, 0.3, 1] as const;
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
+const rise = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE } },
+};
 
 type CompactPageShellProps = {
   /** A node, so a page with its own branding can put its mark in the heading. */
@@ -32,8 +46,10 @@ export function CompactPageShell({
   children,
   className,
 }: CompactPageShellProps) {
+  const still = useReducedMotion();
+
   return (
-    <div className={cn("space-y-3 animate-fade-in-up max-w-lg mx-auto pb-2", className)}>
+    <div className={cn("space-y-3 max-w-lg mx-auto pb-2", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-lg font-bold leading-tight">{title}</h1>
@@ -57,7 +73,19 @@ export function CompactPageShell({
         />
       ) : null}
 
-      {children}
+      <motion.div
+        className="space-y-3"
+        variants={stagger}
+        initial={still ? "show" : "hidden"}
+        animate="show"
+      >
+        {/* toArray drops null/false children, so a hidden section leaves no gap. */}
+        {Children.toArray(children).map((child, index) => (
+          <motion.div key={index} variants={rise}>
+            {child}
+          </motion.div>
+        ))}
+      </motion.div>
     </div>
   );
 }

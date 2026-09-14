@@ -1,3 +1,4 @@
+import { recordAiUsage } from "@/lib/ai/usage";
 import {
   readAnthropicApiKey,
   readAnthropicWorkspaceId,
@@ -95,9 +96,17 @@ async function openaiCompatibleChat(options: {
 
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   const text = payload.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error(`${options.label} returned an empty reply.`);
+  recordAiUsage({
+    provider: "chatgpt",
+    model: options.model,
+    inputTokens: payload.usage?.prompt_tokens ?? 0,
+    outputTokens: payload.usage?.completion_tokens ?? 0,
+    purpose: options.label.toLowerCase(),
+  });
   return text;
 }
 
@@ -148,10 +157,18 @@ export async function generateClaudeReply(system: string, user: string): Promise
 
   const payload = (await response.json()) as {
     content?: Array<{ type?: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
   const text = payload.content
     ?.find((block) => block.type === "text")
     ?.text?.trim();
   if (!text) throw new Error("Claude returned an empty reply.");
+  recordAiUsage({
+    provider: "claude",
+    model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
+    inputTokens: payload.usage?.input_tokens ?? 0,
+    outputTokens: payload.usage?.output_tokens ?? 0,
+    purpose: "review",
+  });
   return text;
 }

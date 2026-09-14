@@ -6,8 +6,105 @@ import { v4 as uuidv4 } from "uuid";
 import { dueFollowUps, isEntryComplete, triggerDueToday } from "@/lib/rules/engine";
 import type { DueFollowUp, Rule, RuleEntry, RuleScope } from "@/lib/rules/types";
 import { householdToday } from "@/lib/household-date";
+import { createClient, getHouseholdSyncKey, loadSyncConfig } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "couple-finance-rules-v1";
+
+/* ------------------------------------------------------------------ */
+/* Merging two copies                                                   */
+/* ------------------------------------------------------------------ */
+
+interface RulesDocument {
+  rules: Rule[];
+  entries: RuleEntry[];
+  deleted: Record<string, string>;
+}
+
+/** Headstones older than this have been seen by every device that matters. */
+const TOMBSTONE_DAYS = 90;
+
+function normaliseRemote(payload: {
+  rules?: unknown;
+  entries?: unknown;
+  deleted?: unknown;
+}): RulesDocument {
+  // A rule arriving without a scope would match neither person on the
+  // Rules page — invisible, and so impossible to edit or delete while it
+  // kept syncing. Anything unrecognised is treated as household's, which at
+  // least puts it on screen where it can be dealt with.
+  const rules = (Array.isArray(payload.rules) ? (payload.rules as Rule[]) : [])
+    .filter((rule) => rule && typeof rule.id === "string" && rule.id)
+    .map((rule) => ({
+      ...rule,
+      scope:
+        rule.scope === "kushvanth" || rule.scope === "grishma" ? rule.scope : ("household" as const),
+      enabled: rule.enabled !== false,
+      fields: Array.isArray(rule.fields) ? rule.fields : [],
+      followUps: Array.isArray(rule.followUps) ? rule.followUps : [],
+      calculations: Array.isArray(rule.calculations) ? rule.calculations : [],
+      charts: Array.isArray(rule.charts) ? rule.charts : [],
+    }));
+  const entries = (Array.isArray(payload.entries) ? (payload.entries as RuleEntry[]) : []).filter(
+    (entry) => entry && typeof entry.id === "string" && entry.ruleId
+  );
+  const deleted =
+    payload.deleted && typeof payload.deleted === "object"
+      ? (payload.deleted as Record<string, string>)
+      : {};
+  return { rules, entries, deleted };
+}
+
+/**
+ * Union by id, latest write winning, minus anything either side deleted.
+ *
+ * A union cannot drop a record only one side holds — which is the failure
+ * this replaced, where a stale phone's save erased the laptop's blocks. The
+ * headstones are what let a delete still travel.
+ */
+export function mergeRulesDocuments(local: RulesDocument, remote: RulesDocument): RulesDocument {
+  const cutoff = new Date(Date.now() - TOMBSTONE_DAYS * 86400000).toISOString();
+  const deleted: Record<string, string> = {};
+  for (const [id, at] of Object.entries({ ...remote.deleted, ...local.deleted })) {
+    if (typeof at === "string" && at > cutoff) deleted[id] = at;
+  }
+
+  const merge = <T extends { id: string }>(mine: T[], theirs: T[], at: (item: T) => string): T[] => {
+    const byId = new Map<string, T>();
+    for (const item of theirs) byId.set(item.id, item);
+    for (const item of mine) {
+      const other = byId.get(item.id);
+      if (!other || at(item) >= at(other)) byId.set(item.id, item);
+    }
+    return [...byId.values()].filter((item) => !deleted[item.id]);
+  };
+
+  const rules = merge(local.rules, remote.rules, (rule) => rule.updatedAt ?? rule.createdAt ?? "");
+  const liveRules = new Set(rules.map((rule) => rule.id));
+  // An entry whose rule is gone has nothing left to explain it.
+  const entries = merge(
+    local.entries,
+    remote.entries,
+    (entry) => entry.updatedAt ?? entry.openedAt ?? ""
+  ).filter((entry) => liveRules.has(entry.ruleId));
+
+  return { rules, entries, deleted };
+}
+
+/** A cheap fingerprint: same ids and stamps means nothing moved. */
+function shapeOf(doc: RulesDocument): string {
+  return JSON.stringify([
+    doc.rules.map((r) => [r.id, r.updatedAt ?? ""]).sort(),
+    doc.entries.map((e) => [e.id, e.updatedAt ?? e.openedAt ?? ""]).sort(),
+    Object.keys(doc.deleted).sort(),
+  ]);
+}
+
+async function fetchRemoteRules(): Promise<RulesDocument | null> {
+  const response = await fetch("/api/rules", { cache: "no-store" });
+  const payload = await response.json();
+  if (!payload.ok || !payload.synced) return null;
+  return normaliseRemote(payload);
+}
 
 export type RuleDraft = Omit<Rule, "id" | "createdAt" | "updatedAt">;
 
@@ -53,6 +150,9 @@ interface RulesState {
 function stamp(): string {
   return new Date().toISOString();
 }
+
+let pushing = false;
+let pushAgain = false;
 
 export const useRulesStore = create<RulesState>()(
   persist(
@@ -188,126 +288,138 @@ export const useRulesStore = create<RulesState>()(
 
       hydrateFromServer: async () => {
         try {
-          const response = await fetch("/api/rules", { cache: "no-store" });
-          const payload = await response.json();
-          if (!payload.ok || !payload.synced) return;
-
-          // A rule arriving without a scope would match neither person on the
-          // Rules page — invisible, and so impossible to edit or delete while
-          // it kept syncing. Anything unrecognised is treated as household's,
-          // which at least puts it on screen where it can be dealt with.
-          const remoteRules = ((payload.rules ?? []) as Rule[])
-            .filter((rule) => rule && typeof rule.id === "string" && rule.id)
-            .map((rule) => ({
-              ...rule,
-              scope:
-                rule.scope === "kushvanth" || rule.scope === "grishma"
-                  ? rule.scope
-                  : ("household" as const),
-              enabled: rule.enabled !== false,
-              fields: Array.isArray(rule.fields) ? rule.fields : [],
-              followUps: Array.isArray(rule.followUps) ? rule.followUps : [],
-              calculations: Array.isArray(rule.calculations) ? rule.calculations : [],
-              charts: Array.isArray(rule.charts) ? rule.charts : [],
-            }));
-          const remoteEntries = ((payload.entries ?? []) as RuleEntry[]).filter(
-            (entry) => entry && typeof entry.id === "string" && entry.ruleId
-          );
-          const remoteDeleted = (payload.deleted ?? {}) as Record<string, string>;
+          const remote = await fetchRemoteRules();
+          if (!remote) return;
           const local = get();
-
-          // Headstones from both devices. Pruned after 90 days so the document
-          // does not grow forever; by then every device has seen the delete.
-          const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
-          const deleted: Record<string, string> = {};
-          for (const [id, at] of Object.entries({
-            ...remoteDeleted,
-            ...(local.deleted ?? {}),
-          })) {
-            if (typeof at === "string" && at > cutoff) deleted[id] = at;
-          }
-
-          /**
-           * Union by id, latest write winning.
-           *
-           * The old merge adopted only rules this device had never seen, and
-           * so never pulled entries for a rule it already knew — every block
-           * logged on the other phone stayed invisible here, and this device's
-           * next save overwrote them. A union cannot drop a record that only
-           * one side holds, which is the whole point.
-           */
-          const merge = <T extends { id: string }>(
-            mine: T[],
-            theirs: T[],
-            at: (item: T) => string
-          ): T[] => {
-            const byId = new Map<string, T>();
-            for (const item of theirs) byId.set(item.id, item);
-            for (const item of mine) {
-              const other = byId.get(item.id);
-              if (!other || at(item) >= at(other)) byId.set(item.id, item);
-            }
-            return [...byId.values()].filter((item) => !deleted[item.id]);
+          const mine: RulesDocument = {
+            rules: local.rules,
+            entries: local.entries,
+            deleted: local.deleted ?? {},
           };
-
-          const rules = merge(
-            local.rules,
-            remoteRules,
-            (rule) => rule.updatedAt ?? rule.createdAt ?? ""
-          );
-          const liveRules = new Set(rules.map((rule) => rule.id));
-          // An entry whose rule is gone has nothing left to explain it.
-          const entries = merge(
-            local.entries,
-            remoteEntries,
-            (entry) => entry.updatedAt ?? entry.openedAt ?? ""
-          ).filter((entry) => liveRules.has(entry.ruleId));
-
-          const shape = (
-            rs: Rule[],
-            es: RuleEntry[],
-            gone: Record<string, string>
-          ): string =>
-            JSON.stringify([
-              rs.map((r) => [r.id, r.updatedAt ?? ""]).sort(),
-              es.map((e) => [e.id, e.updatedAt ?? e.openedAt ?? ""]).sort(),
-              Object.keys(gone).sort(),
-            ]);
-
-          const merged = shape(rules, entries, deleted);
+          const merged = mergeRulesDocuments(mine, remote);
+          const shape = shapeOf(merged);
           // Only touch state when something actually moved, so a poll that
           // finds nothing new does not re-render every screen watching this.
-          if (merged !== shape(local.rules, local.entries, local.deleted ?? {})) {
-            set({ rules, entries, deleted });
-          }
+          if (shape !== shapeOf(mine)) set(merged);
           // And push back whenever the server is the side that is behind.
-          if (merged !== shape(remoteRules, remoteEntries, remoteDeleted)) {
-            void get().syncToServer();
-          }
+          if (shape !== shapeOf(remote)) void get().syncToServer();
         } catch {
           // No cloud, or the table is not created yet — local still works.
         }
       },
 
       syncToServer: async () => {
+        // Coalesce: one push in flight at a time; anything that changes
+        // meanwhile is picked up by a follow-up run.
+        if (pushing) {
+          pushAgain = true;
+          return;
+        }
+        pushing = true;
         try {
-          await fetch("/api/rules", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              rules: get().rules,
-              entries: get().entries,
-              deleted: get().deleted ?? {},
-            }),
-          });
+          do {
+            pushAgain = false;
+            // Read-merge-write. The whole document is sent, so it must first
+            // absorb whatever the other phone saved since this one last
+            // looked — otherwise a stale device's save is a wipe.
+            let remote: RulesDocument | null = null;
+            try {
+              remote = await fetchRemoteRules();
+            } catch {
+              remote = null;
+            }
+            const local = get();
+            const mine: RulesDocument = {
+              rules: local.rules,
+              entries: local.entries,
+              deleted: local.deleted ?? {},
+            };
+            const doc = remote ? mergeRulesDocuments(mine, remote) : mine;
+            if (remote && shapeOf(doc) !== shapeOf(mine)) set(doc);
+            await fetch("/api/rules", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(doc),
+            });
+          } while (pushAgain);
         } catch {
           // Offline is fine; the next change pushes the whole document again.
+        } finally {
+          pushing = false;
         }
       },
     }),
     { name: STORAGE_KEY }
   )
 );
+
+/* ------------------------------------------------------------------ */
+/* Keeping a screen fresh                                               */
+/* ------------------------------------------------------------------ */
+
+const POLL_MS = 20_000;
+let liveSubscribers = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let stopRealtime: (() => void) | null = null;
+
+function refreshRules() {
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  void useRulesStore.getState().hydrateFromServer();
+}
+
+/**
+ * While any screen that shows rules is open: pull now, every 20 seconds,
+ * whenever the tab comes back, and the instant the other phone saves (via a
+ * realtime channel on the row, when the table is published for it).
+ *
+ * Returns the release. Reference-counted, so several screens share one loop.
+ */
+export function startRulesLiveSync(): () => void {
+  if (typeof window === "undefined") return () => {};
+  liveSubscribers += 1;
+  if (liveSubscribers === 1) {
+    refreshRules();
+    pollTimer = setInterval(refreshRules, POLL_MS);
+    window.addEventListener("focus", refreshRules);
+    document.addEventListener("visibilitychange", refreshRules);
+
+    void loadSyncConfig().then((config) => {
+      if (!config || liveSubscribers === 0) return;
+      const supabase = createClient(config);
+      if (!supabase) return;
+      const householdId = getHouseholdSyncKey(config);
+      try {
+        // A fresh topic each time: removeChannel is asynchronous, and asking
+        // for the same name again while the old one is still winding down
+        // hands back the subscribed channel, which refuses new callbacks.
+        const channel = supabase
+          .channel(`household_rules:${householdId}:${Date.now()}`)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "household_rules", filter: `household_id=eq.${householdId}` },
+            () => refreshRules()
+          )
+          .subscribe();
+        stopRealtime = () => {
+          void supabase.removeChannel(channel);
+        };
+      } catch {
+        // Realtime is a bonus; polling still runs.
+      }
+    });
+  }
+
+  return () => {
+    liveSubscribers = Math.max(0, liveSubscribers - 1);
+    if (liveSubscribers > 0) return;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    window.removeEventListener("focus", refreshRules);
+    document.removeEventListener("visibilitychange", refreshRules);
+    stopRealtime?.();
+    stopRealtime = null;
+  };
+}
 
 /** Rules as plain text for the assistant's system prompt. */
 export function getRulesForAssistant(): Rule[] {

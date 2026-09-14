@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+
+/**
+ * True once on the client, false during server render and hydration — the
+ * "mounted" flag, without an effect that sets state on mount.
+ */
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+}
 
 interface GlassModalProps {
   open: boolean;
@@ -14,11 +27,7 @@ interface GlassModalProps {
 }
 
 export function GlassModal({ open, onClose, title, children, className }: GlassModalProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   useEffect(() => {
     if (!open) return;

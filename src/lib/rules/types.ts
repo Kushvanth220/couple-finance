@@ -169,6 +169,11 @@ export interface RulePayout {
   accountId?: string;
   /** Never post automatically — a rule may compute money it does not move. */
   autoPost: boolean;
+  /**
+   * yyyy-MM-dd. Only entries on or after this day are posted. Everything
+   * before was recorded by hand, and posting it again would count it twice.
+   */
+  postFrom?: string;
 }
 
 export interface Rule {

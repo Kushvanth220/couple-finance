@@ -40,6 +40,12 @@ export interface SpendCategory {
   id: string;
   name: string;
   keywords?: string[];
+  /** Monthly budget in dollars; absent means "not budgeted". */
+  budget?: number;
+  /** One emoji shown on the category tile; guessed from the name when absent. */
+  emoji?: string;
+  /** Tile accent colour (hex); guessed from the name when absent. */
+  color?: string;
 }
 
 export interface MonthlyExpense {
@@ -105,6 +111,8 @@ export interface Transaction {
   debtRemaining?: number;
   /** Account balance before a manual adjustment (for reversal on delete). */
   previousBalance?: number;
+  /** Money that came BACK: an expense with a negative amount, so every sum nets it out. */
+  refund?: boolean;
 }
 
 export interface InterCoupleEntry {
@@ -147,6 +155,35 @@ export interface DeletedHistoryRecord {
   summary: string;
 }
 
+/** One part of one Flex block: its base pay, or its tips once known. */
+export interface FlexDepositPart {
+  entryId: string;
+  part: "base" | "tip";
+  amount: number;
+  /** yyyy-MM-dd the block was driven. */
+  blockDate: string;
+}
+
+/**
+ * A Flex payout that landed. Income is written from this, dated the day the
+ * money arrived, never from the block itself.
+ */
+export interface FlexDeposit {
+  id: string;
+  /** yyyy-MM-dd the money landed. */
+  date: string;
+  accountId: string;
+  /** What the covered blocks added up to. */
+  expected: number;
+  /** What the bank actually showed. */
+  actual: number;
+  parts: FlexDepositPart[];
+  note?: string;
+  createdAt: string;
+  /** Confirmed by the app on payout day rather than by a tap. */
+  auto?: boolean;
+}
+
 export interface FinanceState {
   incomeSources: IncomeSource[];
   incomeEntries: IncomeEntry[];
@@ -162,6 +199,8 @@ export interface FinanceState {
   deletedHistory: DeletedHistoryRecord[];
   /** Accounts-page GreenDot panel only counts activity on/after this date (yyyy-MM-dd). */
   greenDotTrackingStartDate?: string;
+  /** Flex payouts confirmed as landed; absent on records from before this existed. */
+  flexDeposits?: FlexDeposit[];
 }
 
 export const PERSON_LABELS: Record<Person, string> = {

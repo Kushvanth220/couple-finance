@@ -13,6 +13,7 @@ import {
   type ReminderRepeat,
 } from "@/lib/ai/reminders";
 import { cn } from "@/lib/utils";
+import { PERSON_LABELS } from "@/types";
 
 /**
  * Create or edit one reminder, with its schedule as real fields.
@@ -49,6 +50,7 @@ export function ReminderEditor({
   const [weekday, setWeekday] = useState<number | "">(initial?.weekday ?? "");
   const [time, setTime] = useState(initial?.time ?? "");
   const [leadDays, setLeadDays] = useState(initial?.leadDays ?? DEFAULT_LEAD_DAYS);
+  const [person, setPerson] = useState<"kushvanth" | "grishma" | "">(initial?.person ?? "");
 
   const draft: Omit<Reminder, "id"> = {
     text: text.trim(),
@@ -62,6 +64,7 @@ export function ReminderEditor({
     ...(repeat === "yearly" && month !== "" ? { month: Number(month) } : {}),
     ...(repeat === "weekly" && weekday !== "" ? { weekday: Number(weekday) } : {}),
     ...(time ? { time } : {}),
+    ...(person ? { person } : {}),
   };
 
   const canSave = text.trim().length > 0;
@@ -86,6 +89,31 @@ export function ReminderEditor({
             autoFocus
             className={field}
           />
+        </div>
+
+        <div>
+          <label className={label}>Whose?</label>
+          <div className="mt-1 grid grid-cols-3 gap-1.5">
+            {(
+              [
+                { value: "" as const, label: "Both" },
+                { value: "kushvanth" as const, label: PERSON_LABELS.kushvanth },
+                { value: "grishma" as const, label: PERSON_LABELS.grishma },
+              ]
+            ).map((option) => (
+              <button
+                key={option.value || "both"}
+                type="button"
+                onClick={() => setPerson(option.value)}
+                className={cn(
+                  "rounded-lg px-2 py-2 text-[11px] font-semibold transition-colors",
+                  person === option.value ? "bg-[#af52de] text-white" : "glass text-muted hover:text-foreground"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div>

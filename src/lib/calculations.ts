@@ -164,7 +164,8 @@ export function groupExpensesByCategory(
   for (const transaction of transactions) {
     if (transaction.type !== "expense") continue;
     const share = person ? getTransactionExpenseShare(transaction, person) : transaction.amount;
-    if (share <= 0) continue;
+    // Zero means "not theirs"; a negative share is a refund and belongs in the net.
+    if (share === 0) continue;
     const name = transaction.category?.trim() || "Other";
     grouped.set(name, (grouped.get(name) ?? 0) + share);
   }
@@ -182,7 +183,7 @@ export function getPersonExpensesForPeriod(
 ): Transaction[] {
   return transactions.filter((transaction) => {
     if (transaction.type !== "expense") return false;
-    if (getTransactionExpenseShare(transaction, person) <= 0) return false;
+    if (getTransactionExpenseShare(transaction, person) === 0) return false;
     const txDate = parseAppDateTime(transaction.date, transaction.time, transaction.timestamp);
     return txDate >= start && txDate <= end;
   });
@@ -233,7 +234,7 @@ export function transactionInvolvesPerson(
   if (transaction.expenseOwner === person || transaction.beneficiaryPerson === person) {
     return true;
   }
-  return (transaction.expenseShares?.[person] ?? 0) > 0;
+  return (transaction.expenseShares?.[person] ?? 0) !== 0;
 }
 
 export function getMonthlyExpensesTotal(
@@ -311,7 +312,7 @@ export function getPersonOtherExpensesInMonth(
 ): Transaction[] {
   return getTransactionsForMonth(transactions, date).filter((transaction) => {
     if (transaction.type !== "expense") return false;
-    return getTransactionExpenseShare(transaction, person) > 0;
+    return getTransactionExpenseShare(transaction, person) !== 0;
   });
 }
 

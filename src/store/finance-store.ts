@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { format } from "date-fns";
@@ -13,6 +13,7 @@ import {
   buildExpenseAutoMessage,
   buildIncomeAutoMessage,
   buildInterCoupleAutoMessage,
+  buildRefundBetweenUsMessage,
   buildExternalBetweenUsMessage,
   getCategorySpentThisMonth,
   getPaymentMethodLabel,
@@ -37,6 +38,7 @@ import { seedData } from "@/lib/seed-data";
 import type {
   Account,
   Debt,
+  FlexDeposit,
   FinanceState,
   IncomeEntry,
   IncomeSource,
@@ -60,6 +62,10 @@ interface SpendOptions {
   expenseOwner?: Person;
   plannedAmount?: number;
   expenseShares?: ExpenseShares;
+  /** Day the money left (yyyy-MM-dd). Today when absent; the clock time is kept. */
+  date?: string;
+  /** Money coming BACK into the account — stored as a negative expense. */
+  refund?: boolean;
 }
 
 interface SpendSplitOptions {
@@ -70,6 +76,8 @@ interface SpendSplitOptions {
   payments: SplitPayment[];
   monthlyExpenseId?: string;
   plannedAmount?: number;
+  /** Day the money left (yyyy-MM-dd). Today when absent. */
+  date?: string;
 }
 
 interface SplitPayment {
@@ -91,9 +99,15 @@ interface FinanceActions {
   addIncomeSource: (person: Person, name: string) => void;
   updateIncomeSource: (id: string, name: string) => void;
   deleteIncomeSource: (id: string) => void;
-  addIncome: (entry: Omit<IncomeEntry, "id">) => void;
+  /** An explicit id makes a posting idempotent: the same id is never added twice. */
+  addIncome: (entry: Omit<IncomeEntry, "id"> & { id?: string }) => void;
   updateIncome: (id: string, updates: Partial<IncomeEntry>) => void;
   deleteIncome: (id: string, deletedBy?: Person) => void;
+
+  /** A Flex payout that landed. Skips an id already present, so two phones agree. */
+  addFlexDeposit: (deposit: FlexDeposit) => void;
+  updateFlexDeposit: (id: string, updates: Partial<FlexDeposit>) => void;
+  removeFlexDeposit: (id: string) => void;
 
   addSpendCategory: (name: string, keywords?: string[]) => void;
   updateSpendCategory: (id: string, updates: Partial<import("@/types").SpendCategory>) => void;
@@ -117,8 +131,10 @@ interface FinanceActions {
   recordDebtPayment: (debtId: string, amountPaid: number, notes?: string) => void;
   markDebtCleared: (debtId: string, notes?: string) => void;
 
-  spend: (options: SpendOptions) => void;
-  spendSplit: (options: SpendSplitOptions) => void;
+  /** Returns the id of the expense row it wrote, so the caller can undo it. */
+  spend: (options: SpendOptions) => string | null;
+  /** Returns the ids of the expense rows it wrote, one per payer. */
+  spendSplit: (options: SpendSplitOptions) => string[];
   recordInterCouple: (
     paidBy: Person,
     benefited: Person,
@@ -146,6 +162,22 @@ function nowParts() {
     time: format(now, "HH:mm:ss"),
     timestamp: now.toISOString(),
   };
+}
+
+/**
+ * Stamp for a spend on a chosen day: that date with the current clock time,
+ * so yesterday's coffee lands on yesterday and still sorts after yesterday's
+ * breakfast. Today (or no date) is just now.
+ */
+function partsForDate(date?: string) {
+  const now = nowParts();
+  if (!date || date === now.date) return now;
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return now;
+  const clock = new Date();
+  const when = new Date(year, month - 1, day, clock.getHours(), clock.getMinutes(), clock.getSeconds());
+  if (Number.isNaN(when.getTime())) return now;
+  return { date, time: format(when, "HH:mm:ss"), timestamp: when.toISOString() };
 }
 
 function syncLinkedDebt(
@@ -189,13 +221,14 @@ function updateInterCoupleFromSpend(
   currentBalance: number,
   autoMessage?: string,
   sourceTransactionId?: string,
-  entryNotes?: string
+  entryNotes?: string,
+  at?: { date: string; time: string; timestamp: string }
 ): { balance: number; entry?: InterCoupleEntry } {
   if (!beneficiary || paidBy === beneficiary) {
     return { balance: currentBalance };
   }
 
-  const { date, time, timestamp } = nowParts();
+  const { date, time, timestamp } = at ?? nowParts();
   let newBalance = currentBalance;
 
   if (paidBy === "kushvanth" && beneficiary === "grishma") {
@@ -300,6 +333,7 @@ export const useFinanceStore = create<FinanceStore>()(
 
       addIncome: (entry) =>
         set((state) => {
+          if (entry.id && state.incomeEntries.some((item) => item.id === entry.id)) return state;
           const sourceName = state.incomeSources.find((s) => s.id === entry.sourceId)?.name;
           const depositAccount = state.accounts.find((a) => a.id === entry.depositAccountId);
           if (!depositAccount) return state;
@@ -344,7 +378,7 @@ export const useFinanceStore = create<FinanceStore>()(
             accounts,
             incomeEntries: [
               ...state.incomeEntries,
-              { ...entry, id: uuidv4(), time: recordAt.time, timestamp: recordAt.timestamp },
+              { ...entry, id: entry.id ?? uuidv4(), time: recordAt.time, timestamp: recordAt.timestamp },
             ],
             transactions: [transaction, ...state.transactions],
           };
@@ -362,6 +396,21 @@ export const useFinanceStore = create<FinanceStore>()(
        * entry alone would leave the balance inflated and the row orphaned.
        * Delete through the transaction so the balance is reversed and audited.
        */
+      addFlexDeposit: (deposit) =>
+        set((state) => {
+          const current = state.flexDeposits ?? [];
+          if (current.some((d) => d.id === deposit.id)) return state;
+          return { flexDeposits: [...current, deposit] };
+        }),
+
+      updateFlexDeposit: (id, updates) =>
+        set((state) => ({
+          flexDeposits: (state.flexDeposits ?? []).map((d) => (d.id === id ? { ...d, ...updates } : d)),
+        })),
+
+      removeFlexDeposit: (id) =>
+        set((state) => ({ flexDeposits: (state.flexDeposits ?? []).filter((d) => d.id !== id) })),
+
       deleteIncome: (id, deletedBy) =>
         set((state) => {
           const entry = state.incomeEntries.find((item) => item.id === id);
@@ -775,10 +824,11 @@ export const useFinanceStore = create<FinanceStore>()(
 
       spend: (options) => {
         const newInterEntries: InterCoupleEntry[] = [];
+        let writtenId: string | null = null;
         set((state) => {
           const {
             person,
-            amount,
+            amount: rawAmount,
             accountId,
             cashSourceAccountId,
             category,
@@ -788,8 +838,22 @@ export const useFinanceStore = create<FinanceStore>()(
             monthlyExpenseId,
             expenseOwner,
             plannedAmount,
-            expenseShares,
+            expenseShares: rawShares,
+            date,
           } = options;
+
+          // A refund is the same row with the sign flipped: the account gets
+          // the money back, and every monthly sum nets it out on its own.
+          const refund = options.refund === true || rawAmount < 0;
+          const magnitude = Math.abs(rawAmount);
+          const amount = refund ? -magnitude : magnitude;
+          const expenseShares =
+            rawShares && refund
+              ? (Object.fromEntries(
+                  Object.entries(rawShares).map(([who, share]) => [who, -Math.abs(share ?? 0)])
+                ) as ExpenseShares)
+              : rawShares;
+          const at = partsForDate(date);
 
           const applied = applyPaymentFromAccount(
             state.accounts,
@@ -831,6 +895,7 @@ export const useFinanceStore = create<FinanceStore>()(
             expenseShares,
             plannedAmount,
             categoryRemaining,
+            refund,
           });
 
           const newTransactions: Transaction[] = [];
@@ -841,65 +906,89 @@ export const useFinanceStore = create<FinanceStore>()(
           // lines in History for one spend. applyPaymentFromAccount already
           // guards the balances the same way; this keeps the ledger in step.
           const payingAccount = state.accounts.find((a) => a.id === accountId);
-          if (cashSourceAccountId && payingAccount?.type === "cash") {
+          if (cashSourceAccountId && payingAccount?.type === "cash" && !refund) {
             const source = state.accounts.find((a) => a.id === cashSourceAccountId);
             newTransactions.push(
-              createTransaction("cash_withdrawal", person, amount, {
-                accountId,
-                sourceAccountId: cashSourceAccountId,
-                category,
-                paymentMethod: source?.name,
-                autoMessage: buildCashWithdrawalMessage({
-                  person,
-                  amount,
-                  fromAccount: source?.name ?? "debit",
-                  forCategory: category,
-                }),
-              })
+              createTransaction(
+                "cash_withdrawal",
+                person,
+                amount,
+                {
+                  accountId,
+                  sourceAccountId: cashSourceAccountId,
+                  category,
+                  paymentMethod: source?.name,
+                  autoMessage: buildCashWithdrawalMessage({
+                    person,
+                    amount,
+                    fromAccount: source?.name ?? "debit",
+                    forCategory: category,
+                  }),
+                },
+                at
+              )
             );
           }
 
           newTransactions.push(
-            createTransaction("expense", person, amount, {
-              accountId,
-              sourceAccountId: cashSourceAccountId,
-              category,
-              paymentMethod,
-              autoMessage,
-              notes,
-              beneficiaryPerson,
-              paidByPerson: person,
-              expenseOwner: owner,
-              expenseShares,
-              monthlyExpenseId,
-              plannedAmount,
-              categoryPaidBefore,
-              categoryRemaining,
-            })
+            createTransaction(
+              "expense",
+              person,
+              amount,
+              {
+                accountId,
+                sourceAccountId: refund ? undefined : cashSourceAccountId,
+                category,
+                paymentMethod,
+                autoMessage,
+                notes,
+                beneficiaryPerson,
+                paidByPerson: person,
+                expenseOwner: owner,
+                expenseShares,
+                monthlyExpenseId,
+                plannedAmount,
+                categoryPaidBefore,
+                categoryRemaining,
+                refund: refund || undefined,
+              },
+              at
+            )
           );
 
-          const expenseTransaction = newTransactions[newTransactions.length - 1];
+          const expenseTransaction = newTransactions[newTransactions.length - 1]!;
+          writtenId = expenseTransaction.id;
 
           let interCoupleBalance = state.interCoupleBalance;
           let interCoupleHistory = state.interCoupleHistory;
 
+          // A refund runs Between Us backwards: the other person's share came
+          // back, so it is recorded as them paying the buyer — positive
+          // amounts in the history, balance moving the other way.
           if (expenseShares) {
+            const absShares = Object.fromEntries(
+              Object.entries(expenseShares).map(([who, share]) => [who, Math.abs(share ?? 0)])
+            ) as ExpenseShares;
             for (const { benefited, amount: shareAmount } of getInterCoupleUpdatesFromShares(
               person,
-              expenseShares
+              absShares
             )) {
-              const interMsg = buildInterCoupleAutoMessage({
-                paidBy: person,
-                benefited,
-                amount: shareAmount,
-              });
+              const interMsg = refund
+                ? buildRefundBetweenUsMessage({ buyer: person, benefited, amount: shareAmount })
+                : buildInterCoupleAutoMessage({
+                    paidBy: person,
+                    benefited,
+                    amount: shareAmount,
+                  });
               const interUpdate = updateInterCoupleFromSpend(
-                person,
-                benefited,
+                refund ? benefited : person,
+                refund ? person : benefited,
                 shareAmount,
                 interCoupleBalance,
-                `${interMsg} (${category ?? "expense"} shared)`,
-                expenseTransaction.id
+                refund ? interMsg : `${interMsg} (${category ?? "expense"} shared)`,
+                expenseTransaction.id,
+                undefined,
+                at
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
@@ -913,18 +1002,22 @@ export const useFinanceStore = create<FinanceStore>()(
               (expenseOwner && expenseOwner !== person ? expenseOwner : undefined);
 
             if (!skipInterCouple && benefitPerson && benefitPerson !== person) {
-              const interMsg = buildInterCoupleAutoMessage({
-                paidBy: person,
-                benefited: benefitPerson,
-                amount,
-              });
+              const interMsg = refund
+                ? buildRefundBetweenUsMessage({ buyer: person, benefited: benefitPerson, amount: magnitude })
+                : buildInterCoupleAutoMessage({
+                    paidBy: person,
+                    benefited: benefitPerson,
+                    amount,
+                  });
               const interUpdate = updateInterCoupleFromSpend(
-                person,
-                benefitPerson,
-                amount,
+                refund ? benefitPerson : person,
+                refund ? person : benefitPerson,
+                magnitude,
                 interCoupleBalance,
                 interMsg,
-                expenseTransaction.id
+                expenseTransaction.id,
+                undefined,
+                at
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
@@ -948,10 +1041,12 @@ export const useFinanceStore = create<FinanceStore>()(
           newInterEntries,
           useFinanceStore.getState().interCoupleBalance
         );
+        return writtenId;
       },
 
       spendSplit: (options) => {
         const newInterEntries: InterCoupleEntry[] = [];
+        const writtenIds: string[] = [];
         set((state) => {
           const {
             category,
@@ -961,8 +1056,10 @@ export const useFinanceStore = create<FinanceStore>()(
             payments,
             monthlyExpenseId,
             plannedAmount,
+            date,
           } = options;
           if (payments.length === 0) return state;
+          const at = partsForDate(date);
 
           let accounts = state.accounts;
           let debts = state.debts;
@@ -1012,17 +1109,23 @@ export const useFinanceStore = create<FinanceStore>()(
             if (payment.cashSourceAccountId) {
               const source = state.accounts.find((a) => a.id === payment.cashSourceAccountId);
               newTransactions.push(
-                createTransaction("cash_withdrawal", payment.person, payment.amount, {
-                  accountId: payment.accountId,
-                  sourceAccountId: payment.cashSourceAccountId,
-                  category,
-                  autoMessage: buildCashWithdrawalMessage({
-                    person: payment.person,
-                    amount: payment.amount,
-                    fromAccount: source?.name ?? "debit",
-                    forCategory: category,
-                  }),
-                })
+                createTransaction(
+                  "cash_withdrawal",
+                  payment.person,
+                  payment.amount,
+                  {
+                    accountId: payment.accountId,
+                    sourceAccountId: payment.cashSourceAccountId,
+                    category,
+                    autoMessage: buildCashWithdrawalMessage({
+                      person: payment.person,
+                      amount: payment.amount,
+                      fromAccount: source?.name ?? "debit",
+                      forCategory: category,
+                    }),
+                  },
+                  at
+                )
               );
             }
 
@@ -1039,24 +1142,31 @@ export const useFinanceStore = create<FinanceStore>()(
             });
 
             newTransactions.push(
-              createTransaction("expense", payment.person, payment.amount, {
-                accountId: payment.accountId,
-                sourceAccountId: payment.cashSourceAccountId,
-                category,
-                paymentMethod,
-                autoMessage,
-                notes,
-                paidByPerson: payment.person,
-                expenseOwner,
-                expenseShares,
-                monthlyExpenseId,
-                plannedAmount,
-                categoryPaidBefore: categoryPaidBefore,
-                categoryRemaining,
-              })
+              createTransaction(
+                "expense",
+                payment.person,
+                payment.amount,
+                {
+                  accountId: payment.accountId,
+                  sourceAccountId: payment.cashSourceAccountId,
+                  category,
+                  paymentMethod,
+                  autoMessage,
+                  notes,
+                  paidByPerson: payment.person,
+                  expenseOwner,
+                  expenseShares,
+                  monthlyExpenseId,
+                  plannedAmount,
+                  categoryPaidBefore: categoryPaidBefore,
+                  categoryRemaining,
+                },
+                at
+              )
             );
 
-            const shareTransaction = newTransactions[newTransactions.length - 1];
+            const shareTransaction = newTransactions[newTransactions.length - 1]!;
+            writtenIds.push(shareTransaction.id);
 
             if (expenseOwner && !expenseShares && payment.person !== expenseOwner) {
               const interMsg = buildInterCoupleAutoMessage({
@@ -1070,7 +1180,9 @@ export const useFinanceStore = create<FinanceStore>()(
                 payment.amount,
                 interCoupleBalance,
                 `${interMsg} (${category} split)`,
-                shareTransaction.id
+                shareTransaction.id,
+                undefined,
+                at
               );
               interCoupleBalance = interUpdate.balance;
               if (interUpdate.entry) {
@@ -1094,6 +1206,7 @@ export const useFinanceStore = create<FinanceStore>()(
           newInterEntries,
           useFinanceStore.getState().interCoupleBalance
         );
+        return writtenIds;
       },
 
       recordInterCouple: (paidBy, benefited, amount, notes) => {
@@ -1315,12 +1428,13 @@ export const useFinanceStore = create<FinanceStore>()(
 
 export function useHydratedStore<T>(selector: (state: FinanceStore) => T): T | null {
   const result = useFinanceStore(selector);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
+  // False on the server and during hydration, true after — without an effect
+  // that sets state on mount.
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   return hydrated ? result : null;
 }
 
@@ -1338,6 +1452,7 @@ export function getFinanceState(): FinanceState {
     interCoupleBalance: state.interCoupleBalance,
     deletedHistory: state.deletedHistory ?? [],
     greenDotTrackingStartDate: state.greenDotTrackingStartDate,
+    flexDeposits: state.flexDeposits ?? [],
   };
 }
 

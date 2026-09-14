@@ -20,7 +20,7 @@ export interface AiChatMessage {
   created_at: string;
 }
 
-function getServerSupabase(): SupabaseClient {
+export function getServerSupabase(): SupabaseClient {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
@@ -410,4 +410,67 @@ export async function upsertHouseholdRules(
     throw new Error(error.message);
   }
   return data as HouseholdRulesRow;
+}
+
+/* ------------------------------------------------------------------ */
+/* Push subscriptions                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One row per device that asked to be notified. The endpoint is the key —
+ * a browser re-subscribing lands on its own row rather than a duplicate.
+ * Missing table is not an error: the app keeps working without push.
+ */
+export interface PushSubscriptionRow {
+  endpoint: string;
+  subscription: Record<string, unknown>;
+  person: string | null;
+}
+
+export async function listPushSubscriptions(
+  householdId = getHouseholdId()
+): Promise<PushSubscriptionRow[]> {
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from("push_subscriptions")
+    .select("endpoint, subscription, person")
+    .eq("household_id", householdId);
+  if (error) {
+    if (isMissingTableError(error)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => ({
+    endpoint: String(row.endpoint),
+    subscription: (row.subscription ?? {}) as Record<string, unknown>,
+    person: row.person ? String(row.person) : null,
+  }));
+}
+
+export async function upsertPushSubscription(
+  subscription: { endpoint: string } & Record<string, unknown>,
+  person: string | null,
+  householdId = getHouseholdId()
+): Promise<boolean> {
+  const supabase = getServerSupabase();
+  const { error } = await supabase.from("push_subscriptions").upsert(
+    {
+      household_id: householdId,
+      endpoint: subscription.endpoint,
+      subscription,
+      person,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" }
+  );
+  if (error) {
+    if (isMissingTableError(error)) return false;
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  const supabase = getServerSupabase();
+  const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  if (error && !isMissingTableError(error)) throw new Error(error.message);
 }

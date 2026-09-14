@@ -22,6 +22,7 @@ import {
 import type { AssistantToolCall, AssistantToolResult } from "@/lib/ai/tools";
 import { useRulesStore } from "@/store/rules-store";
 import { householdToday } from "@/lib/household-date";
+import { getDueDateForExpense, getMonthlyExpensePaid } from "@/lib/monthly-expense-tracker";
 import {
   buildRuleTable,
   describeRule,
@@ -980,7 +981,9 @@ export function executeAssistantTool(
           ? String(args.date).trim()
           : undefined;
 
+        const reminderPerson = parseAiUserId(args.person) ?? undefined;
         useAssistantPreferencesStore.getState().addStructuredReminder({
+          ...(reminderPerson ? { person: reminderPerson } : {}),
           text,
           done: false,
           repeat,
@@ -1611,6 +1614,33 @@ export function executeAssistantTool(
         const pending = openItems.map(renderReminderLine);
         const undated = openItems.filter((item) => daysUntilDue(item, now) == null).length;
 
+        // The brief is more than reminders: what is in the bank, what bills are
+        // about to land, and whether Flex still owes an answer about tips.
+        const finance = useFinanceStore.getState();
+        const available = finance.accounts
+          .filter((a) => a.person === person && a.type !== "credit")
+          .reduce((sum, a) => sum + a.balance, 0);
+        const owedOnCards = finance.accounts
+          .filter((a) => a.person === person && a.type === "credit")
+          .reduce((sum, a) => sum + a.balance, 0);
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const billsSoon = finance.monthlyExpenses
+          .filter((bill) => bill.person === person && bill.isRecurring && (bill.amount ?? 0) > 0)
+          .map((bill) => {
+            const due = getDueDateForExpense(bill, now);
+            if (!due) return null;
+            const days = Math.round((new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() - todayStart) / 86400000);
+            if (days < -31 || days > 7) return null;
+            if (getMonthlyExpensePaid(finance.transactions, bill, now) >= (bill.amount ?? 0)) return null;
+            return { bill: bill.name, amount: bill.amount, days_away: days, status: days < 0 ? "overdue" : days === 0 ? "due today" : `due in ${days} days` };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+          .sort((a, b) => a.days_away - b.days_away);
+        const flexTipsPending = useRulesStore
+          .getState()
+          .dueNow(now)
+          .filter((item) => /flex/i.test(item.rule.name)).length;
+
         return {
           id: call.id,
           name: call.name,
@@ -1623,16 +1653,122 @@ export function executeAssistantTool(
             pending_reminders: pending,
             due_now: dueNow,
             undated_count: undated,
-            summary:
-              pending.length === 0
-                ? `Today is ${dateLabel}. No pending reminders.`
-                : dueNow.length === 0
-                  ? `Today is ${dateLabel}. Nothing is due within its reminder window. ${pending.length} pending overall.`
-                  : `Today is ${dateLabel}. Due now: ${dueNow
-                      .map((item) => `${item.reminder} (${item.due})`)
-                      .join("; ")}.`,
+            available_balance: Math.round(available * 100) / 100,
+            owed_on_cards: Math.round(owedOnCards * 100) / 100,
+            bills_soon: billsSoon,
+            flex_tips_pending: flexTipsPending,
+            summary: [
+              `Today is ${dateLabel}.`,
+              `$${available.toFixed(2)} available` + (owedOnCards > 0 ? `, $${owedOnCards.toFixed(2)} on cards.` : "."),
+              billsSoon.length > 0
+                ? `Bills: ${billsSoon.map((b) => `${b.bill} $${(b.amount ?? 0).toFixed(0)} ${b.status}`).join("; ")}.`
+                : "No bills due this week.",
+              flexTipsPending > 0 ? `${flexTipsPending} Flex ${flexTipsPending === 1 ? "block is" : "blocks are"} waiting on tips.` : "",
+              dueNow.length > 0
+                ? `Reminders due: ${dueNow.map((item) => `${item.reminder} (${item.due})`).join("; ")}.`
+                : pending.length === 0
+                  ? "No pending reminders."
+                  : `${pending.length} reminders pending, none due yet.`,
+            ]
+              .filter(Boolean)
+              .join(" "),
           },
         };
+      }
+
+      case "update_income_source":
+      case "delete_income_source": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const hits = store.incomeSources.filter((s) => s.name.toLowerCase().includes(match));
+        if (!match || hits.length !== 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error:
+                hits.length > 1
+                  ? `"${args.match}" matches ${hits.length} sources: ${hits.map((s) => `"${s.name}"`).join(", ")}. Ask which.`
+                  : `No income source matched "${args.match ?? ""}". Call list_income_sources for the exact names.`,
+            },
+          };
+        }
+        const source = hits[0]!;
+        if (effectiveCall.name === "delete_income_source") {
+          store.deleteIncomeSource(source.id);
+          return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Deleted income source "${source.name}".` } };
+        }
+        const newName = String(args.new_name ?? "").trim();
+        if (!newName) return { id: call.id, name: call.name, result: { ok: false, error: "New name required." } };
+        store.updateIncomeSource(source.id, newName);
+        return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Renamed "${source.name}" to "${newName}".` } };
+      }
+
+      case "update_spend_category":
+      case "delete_spend_category": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const hits = store.spendCategories.filter((c) => c.name.toLowerCase().includes(match));
+        if (!match || hits.length !== 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error:
+                hits.length > 1
+                  ? `"${args.match}" matches ${hits.length} categories: ${hits.map((c) => `"${c.name}"`).join(", ")}. Ask which.`
+                  : `No category matched "${args.match ?? ""}". Call list_spend_categories for the exact names.`,
+            },
+          };
+        }
+        const category = hits[0]!;
+        if (effectiveCall.name === "delete_spend_category") {
+          store.deleteSpendCategory(category.id);
+          return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Deleted category "${category.name}".` } };
+        }
+        const updates: { name?: string; keywords?: string[]; budget?: number } = {};
+        if (args.new_name) updates.name = String(args.new_name).trim();
+        if (Array.isArray(args.keywords)) updates.keywords = (args.keywords as unknown[]).map(String).filter(Boolean);
+        if (args.budget !== undefined) {
+          const budget = Number(args.budget);
+          updates.budget = Number.isFinite(budget) && budget > 0 ? budget : undefined;
+        }
+        store.updateSpendCategory(category.id, updates);
+        return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Updated category "${category.name}".` } };
+      }
+
+      case "update_debt":
+      case "delete_debt": {
+        const match = String(args.match ?? "").trim().toLowerCase();
+        const hits = store.debts.filter((d) => d.name.toLowerCase().includes(match));
+        if (!match || hits.length !== 1) {
+          return {
+            id: call.id,
+            name: call.name,
+            result: {
+              ok: false,
+              error:
+                hits.length > 1
+                  ? `"${args.match}" matches ${hits.length} debts: ${hits.map((d) => `"${d.name}"`).join(", ")}. Ask which.`
+                  : `No debt matched "${args.match ?? ""}".`,
+            },
+          };
+        }
+        const debt = hits[0]!;
+        if (effectiveCall.name === "delete_debt") {
+          store.deleteDebt(debt.id);
+          return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Removed the debt "${debt.name}".` } };
+        }
+        const updates: { name?: string; amount?: number; notes?: string } = {};
+        if (args.name) updates.name = String(args.name).trim();
+        if (args.amount !== undefined) {
+          const amount = Number(args.amount);
+          if (!Number.isFinite(amount) || amount < 0) return { id: call.id, name: call.name, result: { ok: false, error: "Invalid amount" } };
+          updates.amount = amount;
+        }
+        if (args.notes !== undefined) updates.notes = String(args.notes);
+        store.updateDebt(debt.id, updates);
+        return { id: call.id, name: call.name, result: { ok: true, saved: true, message: `Updated the debt "${debt.name}".` } };
       }
 
       default:

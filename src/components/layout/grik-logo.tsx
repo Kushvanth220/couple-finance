@@ -2,11 +2,24 @@
 
 import { OWNER_LABEL, PARTNER_LABEL, SHOW_NAMES } from "@/lib/branding";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { GrikMark } from "@/components/layout/grik-mark";
 import { BRAND_INITIALS } from "@/lib/brand";
 import { cn } from "@/lib/utils";
+
+
+/**
+ * True once on the client, false during server render and hydration — the
+ * "mounted" flag, without an effect that sets state on mount.
+ */
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+}
 
 interface GrikLogoProps {
   size?: "header" | "hero";
@@ -22,11 +35,7 @@ export function GrikLogo({
   asLink = true,
 }: GrikLogoProps) {
   const isHero = size === "hero";
-  const [motionReady, setMotionReady] = useState(false);
-
-  useEffect(() => {
-    setMotionReady(true);
-  }, []);
+  const motionReady = useIsClient();
 
   const content = (
     <div className={cn("relative inline-flex items-center gap-2.5", className)}>

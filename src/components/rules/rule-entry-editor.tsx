@@ -6,6 +6,7 @@ import { GlassModal } from "@/components/ui/glass-modal";
 import { GlassButton } from "@/components/ui/glass-button";
 import { resolveEntry } from "@/lib/rules/engine";
 import { toIsoDate } from "@/lib/ai/reminders";
+import { householdClockNow } from "@/lib/household-date";
 import { roundMoney } from "@/lib/money";
 import type { Rule, RuleEntry, RuleField } from "@/lib/rules/types";
 import { formatCurrency } from "@/lib/formatters";
@@ -35,25 +36,39 @@ function isNarrow(field: RuleField): boolean {
   return field.type === "time" || field.type === "date" || field.type === "number";
 }
 
+export interface EntryPreset {
+  label: string;
+  /** Field key → value, as typed. */
+  values: Record<string, string>;
+}
+
 export function RuleEntryEditor({
   open,
   rule,
   entry,
   mode,
+  initialValues,
+  initialDate,
+  presets = [],
   onSave,
   onClose,
 }: {
   open: boolean;
   rule: Rule;
   entry?: RuleEntry;
-  /** "start" opens a new entry; "follow_up" fills in what was pending. */
-  mode: "start" | "follow_up";
+  /** "start" opens a new entry; "follow_up" fills in what was pending; "edit" reopens everything. */
+  mode: "start" | "follow_up" | "edit";
+  /** Fields already known when a new entry opens — a timer that just stopped, say. */
+  initialValues?: Record<string, string>;
+  initialDate?: string;
+  /** One-tap fills offered above a new entry ("Same as last block"). */
+  presets?: EntryPreset[];
   /** Called once per row, so several occurrences save as several entries. */
   onSave: (values: Record<string, string | number>, date?: string) => void;
   onClose: () => void;
 }) {
   const asked = rule.fields.filter((item) =>
-    mode === "start" ? item.askAt === "start" : item.askAt === "follow_up"
+    mode === "edit" ? true : mode === "start" ? item.askAt === "start" : item.askAt === "follow_up"
   );
 
   // Only a repeatable rule can happen more than once on the same day.
@@ -63,12 +78,20 @@ export function RuleEntryEditor({
   const [rows, setRows] = useState<Row[]>(() => {
     const seed: Record<string, string> = {};
     for (const item of asked) {
-      const existing = entry?.values[item.key];
+      const existing = entry?.values[item.key] ?? initialValues?.[item.key];
       seed[item.key] = existing === undefined ? "" : String(existing);
     }
     return [{ id: "row-0", values: seed }];
   });
-  const [date, setDate] = useState(entry?.date ?? toIsoDate(new Date()));
+  const [date, setDate] = useState(entry?.date ?? initialDate ?? toIsoDate(new Date()));
+
+  /** Fills the first row from a preset; other rows are left alone. */
+  const applyPreset = (preset: EntryPreset) =>
+    setRows((current) =>
+      current.map((row, index) =>
+        index === 0 ? { ...row, values: { ...row.values, ...preset.values } } : row
+      )
+    );
 
   const setField = (rowId: string, key: string, value: string) =>
     setRows((current) =>
@@ -120,17 +143,23 @@ export function RuleEntryEditor({
 
   const save = () => {
     if (!canSave) return;
-    for (const row of live) onSave(typedOf(row), mode === "start" ? date : undefined);
+    for (const row of live) onSave(typedOf(row), mode === "follow_up" ? undefined : date);
   };
 
   return (
     <GlassModal
       open={open}
       onClose={onClose}
-      title={mode === "start" ? `Log · ${rule.name}` : rule.followUps[0]?.question || "Fill in"}
+      title={
+        mode === "edit"
+          ? "Edit block"
+          : mode === "start"
+            ? `Log · ${rule.name}`
+            : rule.followUps[0]?.question || "Fill in"
+      }
     >
       <div className="space-y-3">
-        {mode === "start" ? (
+        {mode === "start" || mode === "edit" ? (
           <div>
             <label className="text-[11px] font-medium text-muted">Which day?</label>
             <input
@@ -142,6 +171,21 @@ export function RuleEntryEditor({
             {stackable ? (
               <p className="mt-1 text-[10px] text-muted">Everything below is logged on this day.</p>
             ) : null}
+          </div>
+        ) : null}
+
+        {mode === "start" && presets.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                className="hit rounded-full glass px-2.5 py-1 text-[11px] font-semibold text-[#007aff] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
         ) : null}
 
@@ -165,7 +209,7 @@ export function RuleEntryEditor({
                       type="button"
                       onClick={() => removeRow(row.id)}
                       aria-label={`Remove number ${index + 1}`}
-                      className="rounded-lg p-1 text-muted hover:bg-black/5 hover:text-[#ff3b30] dark:hover:bg-white/10"
+                      className="hit rounded-lg p-1 text-muted hover:bg-black/5 hover:text-[#ff3b30] dark:hover:bg-white/10"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -176,9 +220,18 @@ export function RuleEntryEditor({
               <div className="grid grid-cols-2 gap-2">
                 {asked.map((item) => (
                   <div key={item.key} className={cn(!isNarrow(item) && "col-span-2")}>
-                    <label className="text-[11px] font-medium text-muted">
+                    <label className="flex items-center justify-between text-[11px] font-medium text-muted">
                       {/* Stacked rows would ask the same long question over and over. */}
-                      {stackable ? item.label : item.question || item.label}
+                      <span>{stackable || mode === "edit" ? item.label : item.question || item.label}</span>
+                      {item.type === "time" ? (
+                        <button
+                          type="button"
+                          onClick={() => setField(row.id, item.key, householdClockNow())}
+                          className="hit rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[#007aff] hover:bg-black/5 dark:hover:bg-white/10"
+                        >
+                          Now
+                        </button>
+                      ) : null}
                     </label>
                     <input
                       value={row.values[item.key] ?? ""}
@@ -186,7 +239,8 @@ export function RuleEntryEditor({
                       inputMode={item.type === "money" || item.type === "number" ? "decimal" : "text"}
                       type={item.type === "date" ? "date" : item.type === "time" ? "time" : "text"}
                       placeholder={item.type === "money" ? "0.00" : item.label}
-                      autoFocus={index === 0 && item === asked[0]}
+                      // The cursor lands on the first blank, so prefilled times are skipped.
+                      autoFocus={index === 0 && item === (asked.find((f) => !rows[0]?.values[f.key]) ?? asked[0])}
                       className="mt-1 w-full glass rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#007aff]/40"
                     />
                   </div>

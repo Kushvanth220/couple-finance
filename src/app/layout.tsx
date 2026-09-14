@@ -1,13 +1,6 @@
-import { HOUSEHOLD_LABEL } from "@/lib/branding";
+import { HOUSEHOLD_LABEL, SHOW_NAMES } from "@/lib/branding";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ExpenseReminderProvider } from "@/components/notifications/expense-reminder-provider";
-import { BetweenUsCelebrationOverlay } from "@/components/between-us/between-us-celebration";
-import { AppShell } from "@/components/layout/app-shell";
-import { GrikSplashProvider } from "@/components/layout/grik-splash";
-import { SyncProvider } from "@/components/sync/sync-provider";
-import { SyncReadyGate } from "@/components/sync/sync-ready-gate";
-import { SyncBanner } from "@/components/sync/sync-banner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,7 +15,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "KG Finance",
-  description: `Personal finance for ${HOUSEHOLD_LABEL} — KG Finance`,
+  // Link previews show this line, so it follows the same switch as the UI.
+  description: SHOW_NAMES
+    ? `Personal finance for ${HOUSEHOLD_LABEL} — KG Finance`
+    : "KG Finance — private personal finance",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -51,15 +47,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      {/* The app's chrome lives in the (app) group's layout; the intro page
+          gets this bare document and nothing else. */}
       <body className="min-h-full" suppressHydrationWarning>
-        <SyncProvider />
-        <AppShell>
-          <GrikSplashProvider />
-          <ExpenseReminderProvider />
-          <BetweenUsCelebrationOverlay />
-          <SyncBanner />
-          <SyncReadyGate>{children}</SyncReadyGate>
-        </AppShell>
+        {children}
       </body>
     </html>
   );

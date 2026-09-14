@@ -11,6 +11,9 @@
   --success: #34c759;
   --warning: #ff9500;
   --danger: #ff3b30;
+  /* The "between us" cyan: bright on black, deepened on the light ground so
+     an arrow or a figure in it still clears 4.5:1 against #f2f2f7. */
+  --accent-cyan: #0b74a6;
   --muted: rgba(60, 60, 67, 0.6);
   --card-radius: 20px;
   --blur: 24px;
@@ -24,6 +27,7 @@
     --glass-border: rgba(255, 255, 255, 0.12);
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     --muted: rgba(235, 235, 245, 0.6);
+    --accent-cyan: #5ac8fa;
   }
 }
 
@@ -2453,4 +2457,48 @@ input[type="number"] {
    still quieter than when it is live. */
 .assistant-gemini-orb-wrap.assistant-gemini-orb-inline[data-state="idle"] .orb-net-scene {
   opacity: 0.7;
+}
+
+/* ---------- page art ---------- */
+
+/* The mark in 3D: the group turns, and the angled second ring reads as
+   linked with the first as it passes through. Slow, so it is presence
+   rather than motion. */
+@keyframes kg-rings3d {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+.kg-rings3d-spin { animation: kg-rings3d 14s linear infinite; }
+
+/* A ring that grows out and fades — "something is due". */
+@keyframes kg-pulse {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(1.9); opacity: 0; }
+}
+.kg-pulse { animation: kg-pulse 2.4s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-rings3d-spin { animation: none; transform: rotateY(28deg); }
+  .kg-pulse { animation: none; opacity: 0.35; transform: scale(1.4); }
+}
+
+/* ---------- tap targets ----------
+   Small controls keep their small look but get a finger-sized hit area: an
+   invisible pseudo-element pads the target out to at least 36px without
+   moving anything on screen. Applied to icon buttons and 10px text buttons. */
+.hit {
+  position: relative;
+}
+.hit::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  /* never smaller than 36px either way */
+  min-width: 36px;
+  min-height: 36px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100% + 12px, 36px);
+  height: max(100% + 12px, 36px);
 }

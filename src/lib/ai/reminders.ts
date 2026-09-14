@@ -39,9 +39,23 @@ export interface Reminder {
    * and the reminder rolls to the next one. Only a one-off sets `done`.
    */
   doneThrough?: string;
+  /**
+   * yyyy-MM-dd. "Not now" — the reminder stays due on its date, but nothing
+   * raises it before this day. Cleared automatically once the day has passed.
+   */
+  snoozedUntil?: string;
+  /** Whose reminder this is. Absent means the household's — both of you. */
+  person?: "kushvanth" | "grishma";
 }
 
 export const DEFAULT_LEAD_DAYS = 5;
+
+/** True while a snooze is still in force. */
+export function isSnoozed(reminder: Reminder, from: Date = new Date()): boolean {
+  if (!reminder.snoozedUntil) return false;
+  const until = new Date(`${reminder.snoozedUntil}T00:00:00`);
+  return !Number.isNaN(until.getTime()) && until > atMidnight(from);
+}
 
 export const WEEKDAYS = [
   "Sunday",
@@ -114,6 +128,9 @@ export function renderReminderLine(reminder: Reminder): string {
   const schedule = describeSchedule(reminder);
   if (schedule && schedule !== "no set date") parts.push(`due ${schedule}`);
   if (reminder.leadDays > 0) parts.push(`remind ${reminder.leadDays} days before`);
+  if (reminder.person) parts.push(`for ${reminder.person}`);
+  // Only a live snooze is worth writing; an expired one would just be noise.
+  if (isSnoozed(reminder)) parts.push(`snoozed until ${reminder.snoozedUntil}`);
   const line = parts.join(" — ");
   return reminder.done ? `[DONE] ${line}` : line;
 }
@@ -202,6 +219,7 @@ export function daysUntilDue(reminder: Reminder, from: Date = new Date()): numbe
  */
 export function isDueSoon(reminder: Reminder, from: Date = new Date()): boolean {
   if (reminder.done) return false;
+  if (isSnoozed(reminder, from)) return false;
   const days = daysUntilDue(reminder, from);
   if (days == null) return false;
   return days >= 0 && days <= reminder.leadDays;
@@ -209,6 +227,10 @@ export function isDueSoon(reminder: Reminder, from: Date = new Date()): boolean 
 
 /** "Due today", "in 3 days", "overdue" — for the UI, not the model. */
 export function dueLabel(reminder: Reminder, from: Date = new Date()): string {
+  if (isSnoozed(reminder, from)) {
+    const [, m, d] = reminder.snoozedUntil!.split("-");
+    return `Snoozed until ${m}/${d}`;
+  }
   const days = daysUntilDue(reminder, from);
   if (days == null) return "No date set";
   if (days === 0) return "Due today";
@@ -300,6 +322,24 @@ export function reminderFromLegacyLine(line: string, id: string): Reminder {
   const done = /^\[DONE\]\s*/i.test(line);
   let rest = line.replace(/^\[DONE\]\s*/i, "").trim();
 
+  // A snooze suffix sits last; strip it (and any repeats) before the rest.
+  let snoozedUntil: string | undefined;
+  for (;;) {
+    const match = /\s*—\s*snoozed until (\d{4}-\d{2}-\d{2})\s*$/i.exec(rest);
+    if (!match) break;
+    snoozedUntil = match[1]!;
+    rest = rest.slice(0, match.index).trim();
+  }
+
+  // Then whose it is.
+  let person: "kushvanth" | "grishma" | undefined;
+  for (;;) {
+    const match = /\s*—\s*for (kushvanth|grishma)\s*$/i.exec(rest);
+    if (!match) break;
+    person = match[1]!.toLowerCase() as "kushvanth" | "grishma";
+    rest = rest.slice(0, match.index).trim();
+  }
+
   // Strip every trailing lead-time suffix, however many have piled up, and
   // keep the FIRST one written — that was the real value before the repeats.
   let leadDays: number | undefined;
@@ -331,6 +371,8 @@ export function reminderFromLegacyLine(line: string, id: string): Reminder {
     ...(schedule?.month ? { month: schedule.month } : {}),
     ...(schedule?.weekday != null ? { weekday: schedule.weekday } : {}),
     ...(schedule?.time ? { time: schedule.time } : {}),
+    ...(snoozedUntil ? { snoozedUntil } : {}),
+    ...(person ? { person } : {}),
     // A recognised schedule means this line is our own rendered output, where
     // no lead suffix means a lead of zero ("on the day") — not "unspecified".
     // Only genuine freeform prose falls back to the household default.

@@ -140,18 +140,19 @@ export function AssistantWakeListener({ paused }: AssistantWakeListenerProps) {
   }, [paused]);
 
   useEffect(() => {
-    if (!wakeEnabled || paused || wakeEntries.length === 0) {
-      setMicReady(false);
-      return;
-    }
+    if (!wakeEnabled || paused || wakeEntries.length === 0) return;
 
     let cancelled = false;
 
-    void primeMic().then((granted) => {
-      if (!cancelled && granted) {
-        setMicReady(true);
-      }
-    });
+    // primeMic can set state on its failure path, so it is kicked off from a
+    // task of its own rather than synchronously inside this effect.
+    const kick = window.setTimeout(() => {
+      void primeMic().then((granted) => {
+        if (!cancelled && granted) {
+          setMicReady(true);
+        }
+      });
+    }, 0);
 
     const onMicReady = () => {
       void primeMic();
@@ -160,12 +161,14 @@ export function AssistantWakeListener({ paused }: AssistantWakeListenerProps) {
     window.addEventListener(ASSISTANT_MIC_READY_EVENT, onMicReady);
     return () => {
       cancelled = true;
+      window.clearTimeout(kick);
       window.removeEventListener(ASSISTANT_MIC_READY_EVENT, onMicReady);
     };
   }, [wakeEnabled, paused, wakeEntries.length, primeMic]);
 
   useEffect(() => {
     const SpeechRecognition = getSpeechRecognition();
+    // A primed mic only counts while listening is allowed at all.
     if (
       !SpeechRecognition ||
       !wakeEnabled ||

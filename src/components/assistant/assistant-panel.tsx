@@ -43,15 +43,9 @@ export function AssistantPanel({ open, onVoiceLiveChange }: AssistantPanelProps)
   const wakePhrase = formatWakeHint(displayName);
 
   useEffect(() => {
-    if (!open) {
-      setRenaming(false);
-      setMode("voice");
-      setVoiceBusy(false);
-      return;
-    }
-    if (autoStartVoice) {
-      setMode("voice");
-    }
+    // The parent remounts this panel on every open, so state is fresh here
+    // and "voice" is already the mode; nothing to reset.
+    if (!open) return;
     void useAssistantPreferencesStore.getState().hydrateFromServer();
     window.setTimeout(() => dialogRef.current?.focus(), 0);
 

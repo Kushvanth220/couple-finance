@@ -51,6 +51,7 @@ import {
 import {
   createLiveTranscriptSession,
   ENGLISH_ONLY_REPLY,
+  type LiveTranscriptSession,
   type VoiceTranscriptLine,
 } from "@/lib/ai/live-transcript";
 import { formatChatWhen } from "@/lib/ai/chat-time";
@@ -184,6 +185,12 @@ export function AiVoicePanel({
   const greetedRef = useRef(false);
   const handledVoiceSignalRef = useRef("");
   const pendingWriteRef = useRef<AssistantToolCall | null>(null);
+  // Render reads the mirror; handlers keep using the ref. Both move together.
+  const [pendingWriteState, setPendingWriteState] = useState<AssistantToolCall | null>(null);
+  const setPendingWrite = useCallback((next: AssistantToolCall | null) => {
+    pendingWriteRef.current = next;
+    setPendingWriteState(next);
+  }, []);
   const chatSessionIdRef = useRef<string | null>(null);
   const persistLineRef = useRef<(line: VoiceLine) => void>(() => {});
   const confirmVoiceWriteRef = useRef<(text: string, options?: { immediate?: boolean }) => void>(
@@ -213,12 +220,15 @@ export function AiVoicePanel({
     previewShownRef.current = value;
     setPendingPreview(value);
   }, []);
-  const transcriptSessionRef = useRef(
-    createLiveTranscriptSession(setLines, (line) => {
+  // Built once on mount rather than during render: its callbacks read other
+  // refs, and render is the one place a ref must not be read.
+  const transcriptSessionRef = useRef<LiveTranscriptSession | null>(null);
+  useEffect(() => {
+    transcriptSessionRef.current = createLiveTranscriptSession(setLines, (line) => {
       persistLineRef.current(line);
       if (line.role === "user") confirmVoiceWriteRef.current(line.text);
-    })
-  );
+    });
+  }, []);
 
   function writeKey(call: AssistantToolCall) {
     return `${call.name}:${String(call.args.amount ?? call.args.new_balance ?? "")}:${String(call.args.account_name ?? "")}:${String(call.args.expense_for ?? "")}:${String(call.args.paid_by ?? "")}`;
@@ -266,10 +276,10 @@ export function AiVoicePanel({
         speakerRef.current = identified;
         setSpeaker(identified);
         if (pendingWriteRef.current) {
-          pendingWriteRef.current = applySpeakerToWrite(
+          setPendingWrite(applySpeakerToWrite(
             pendingWriteRef.current,
             identified
-          );
+          ));
         }
         playerRef.current?.interrupt();
         connectionRef.current?.sendGreeting(speakingWithConfirmedPrompt(identified));
@@ -277,28 +287,27 @@ export function AiVoicePanel({
       }
 
       const speaker = speakerRef.current;
-      const recentUser = transcriptSessionRef.current
-        .getLines()
+      const transcript = transcriptSessionRef.current?.getLines() ?? [];
+      const recentUser = transcript
         .filter((line) => line.role === "user")
         .slice(-8)
         .map((line) => line.text);
-      const recentModel = transcriptSessionRef.current
-        .getLines()
+      const recentModel = transcript
         .filter((line) => line.role === "model")
         .slice(-3)
         .map((line) => line.text);
       const inferred = inferWriteFromRecentTalk(recentUser, recentModel, speaker);
       if (inferred && isWriteTool(inferred.name)) {
-        pendingWriteRef.current = mergePendingWrite(pendingWriteRef.current, inferred);
+        setPendingWrite(mergePendingWrite(pendingWriteRef.current, inferred));
       }
       const withAccount = withInferredAccount(pendingWriteRef.current, text);
       if (withAccount) {
-        pendingWriteRef.current = withAccount;
+        setPendingWrite(withAccount);
       }
       const merged = pendingWriteRef.current
         ? applySpeakerToWrite(pendingWriteRef.current, speaker)
         : pendingWriteRef.current;
-      if (merged) pendingWriteRef.current = merged;
+      if (merged) setPendingWrite(merged);
       if (merged && isWriteTool(merged.name)) {
         if (expenseWriteNeedsPayer(merged)) {
           showWritePreview(buildToolConfirmationPreview(merged));
@@ -452,14 +461,14 @@ export function AiVoicePanel({
           return;
         }
 
-        pendingWriteRef.current = call;
+        setPendingWrite(call);
         setToolBusy(true);
         const [result] = executeAssistantTools(actor, [call]);
         setToolBusy(false);
 
         const saved = result?.result?.saved === true;
         if (saved) {
-          pendingWriteRef.current = null;
+          setPendingWrite(null);
           recentlyAffirmedRef.current = false;
         affirmedWriteRef.current = null;
           setAwaitingConfirmation(false);
@@ -529,7 +538,7 @@ export function AiVoicePanel({
   );
 
   const resetTranscripts = useCallback(() => {
-    transcriptSessionRef.current.reset();
+    transcriptSessionRef.current?.reset();
   }, []);
 
   const cleanupVoiceSession = useCallback(() => {
@@ -546,7 +555,7 @@ export function AiVoicePanel({
     startGenerationRef.current += 1;
     sessionLockRef.current = false;
     greetedRef.current = false;
-    pendingWriteRef.current = null;
+    setPendingWrite(null);
     speakerRef.current = null;
     setSpeaker(null);
     cleanupVoiceSession();
@@ -674,21 +683,21 @@ export function AiVoicePanel({
             setLiveHint("Brief connection hiccup — still listening.");
           },
           onInputTranscription: (event) => {
-            transcriptSessionRef.current.addUserFragment(event.text, {
+            transcriptSessionRef.current?.addUserFragment(event.text, {
               finished: event.finished,
               interim: event.interim,
             });
           },
           onOutputTranscription: (event) => {
-            transcriptSessionRef.current.addModelFragment(event.text, event.finished);
+            transcriptSessionRef.current?.addModelFragment(event.text, event.finished);
           },
           onTurnComplete: () => {
-            transcriptSessionRef.current.onTurnComplete();
+            transcriptSessionRef.current?.onTurnComplete();
           },
           onInterrupted: () => {
             // Do not dump the speaker queue here. Echo / leftover mic often
             // marks the model as interrupted before any speech is audible.
-            transcriptSessionRef.current.onInterrupted();
+            transcriptSessionRef.current?.onInterrupted();
           },
           onModelAudio: (base64Pcm) => {
             if (startId !== startGenerationRef.current) return;
@@ -717,8 +726,9 @@ export function AiVoicePanel({
             const writeCalls = calls.filter((item) => writeNeedsSpeaker(item.name));
             if (writeCalls.length > 0 && !actor) {
               const writeCall = writeCalls[0]!;
-              pendingWriteRef.current = mergePendingWrite(pendingWriteRef.current, writeCall);
-              showWritePreview(buildToolConfirmationPreview(pendingWriteRef.current));
+              const mergedWrite = mergePendingWrite(pendingWriteRef.current, writeCall);
+              setPendingWrite(mergedWrite);
+              showWritePreview(buildToolConfirmationPreview(mergedWrite));
               setAwaitingConfirmation(true);
               setLiveHint(`Who am I talking to — ${PERSON_LABELS.kushvanth} or ${PERSON_LABELS.grishma}?`);
               setToolBusy(false);
@@ -760,7 +770,7 @@ export function AiVoicePanel({
                 fromTalk ? mergePendingWrite(writeCall, fromTalk) : writeCall,
                 actor
               );
-              pendingWriteRef.current = merged;
+              setPendingWrite(merged);
               showWritePreview(buildToolConfirmationPreview(merged));
             }
             const accountNeed = results.find((result) => result.response?.needs_account === true);
@@ -790,7 +800,7 @@ export function AiVoicePanel({
             );
             if (savedMoney && writeCall) {
               lastSavedRef.current = { key: writeKey(writeCall), at: Date.now() };
-              pendingWriteRef.current = null;
+              setPendingWrite(null);
               showWritePreview(null);
               setAccountChoices([]);
               setAwaitingConfirmation(false);
@@ -956,7 +966,9 @@ export function AiVoicePanel({
     }
   }, [assistantName, autoStart, cleanupVoiceSession, showWritePreview, stopVoice, voiceGender]);
 
-  startVoiceRef.current = startVoice;
+  useEffect(() => {
+    startVoiceRef.current = startVoice;
+  });
 
   useEffect(() => {
     registerVoiceStarter(startVoice);
@@ -996,7 +1008,7 @@ export function AiVoicePanel({
         confirmVoiceWriteRef.current("Yes");
       } else if (event.key === "Escape") {
         event.preventDefault();
-        pendingWriteRef.current = null;
+        setPendingWrite(null);
         setAwaitingConfirmation(false);
         showWritePreview(null);
         setLiveHint("Not saved — tell me what to change.");
@@ -1026,7 +1038,7 @@ export function AiVoicePanel({
     accountChoices.length > 0 ||
     Boolean(lastSavedBanner) ||
     needsSpeaker;
-  const pendingWrite = pendingWriteRef.current;
+  const pendingWrite = pendingWriteState;
   const categoryChips =
     awaitingConfirmation &&
     pendingWrite?.name === "record_expense" &&
@@ -1059,7 +1071,7 @@ export function AiVoicePanel({
                     setSpeaker(chip.id);
                     if (pendingWriteRef.current) {
                       const next = applySpeakerToWrite(pendingWriteRef.current, chip.id);
-                      pendingWriteRef.current = next;
+                      setPendingWrite(next);
                       showWritePreview(buildToolConfirmationPreview(next));
                     }
                     playerRef.current?.interrupt();
@@ -1091,7 +1103,7 @@ export function AiVoicePanel({
         <div className="sticky top-0 z-20 flex justify-center">
           <div className="w-full max-w-sm rounded-xl bg-[#007aff]/10 border border-[#007aff]/25 px-3 py-2.5 space-y-2 backdrop-blur-md">
             <p className="text-[11px] text-[#007aff] text-center font-medium">
-              {accountChoicePrompt(pendingWriteRef.current?.name ?? "", accountChoiceKind)}
+              {accountChoicePrompt(pendingWrite?.name ?? "", accountChoiceKind)}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {accountChoices.map((account) => (
@@ -1102,7 +1114,7 @@ export function AiVoicePanel({
                     const pending = pendingWriteRef.current;
                     if (!pending) return;
                     const next = withPickedAccount(pending, account, accountChoiceKind);
-                    pendingWriteRef.current = next;
+                    setPendingWrite(next);
                     showWritePreview(buildToolConfirmationPreview(next));
                     setAccountChoices([]);
                     setAwaitingConfirmation(true);
@@ -1140,7 +1152,7 @@ export function AiVoicePanel({
                             ...pending,
                             args: withExpensePerson(pending.args, chip.id),
                           };
-                          pendingWriteRef.current = next;
+                          setPendingWrite(next);
                           showWritePreview(buildToolConfirmationPreview(next));
                         }}
                         className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
@@ -1168,7 +1180,7 @@ export function AiVoicePanel({
                             ...pending,
                             args: withPaidBy(pending.args, chip.id),
                           };
-                          pendingWriteRef.current = next;
+                          setPendingWrite(next);
                           showWritePreview(buildToolConfirmationPreview(next));
                         }}
                         className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
@@ -1197,7 +1209,7 @@ export function AiVoicePanel({
                         ...pending,
                         args: { ...pending.args, category: category.name },
                       };
-                      pendingWriteRef.current = next;
+                      setPendingWrite(next);
                       showWritePreview(buildToolConfirmationPreview(next));
                     }}
                     className="min-h-11 rounded-full border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/10 px-3.5 py-2 text-[12px] font-semibold text-foreground"
@@ -1221,7 +1233,7 @@ export function AiVoicePanel({
                 type="button"
                 disabled={toolBusy}
                 onClick={() => {
-                  pendingWriteRef.current = null;
+                  setPendingWrite(null);
                   recentlyAffirmedRef.current = false;
         affirmedWriteRef.current = null;
                   setAwaitingConfirmation(false);
@@ -1310,7 +1322,7 @@ export function AiVoicePanel({
             <button
               type="button"
               onClick={() => {
-                transcriptSessionRef.current.reset();
+                transcriptSessionRef.current?.reset();
                 setLines([]);
                 connectionRef.current?.sendGreeting(
                   "The user cleared this conversation. Forget prior chat. Stay silent until they speak. Do not greet."

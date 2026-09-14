@@ -68,7 +68,11 @@ export function AssistantLiveOrb({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Read levels from a ref so the animation loop never restarts on re-render.
   const levelRef = useRef({ input: 0, output: 0, state });
-  levelRef.current = { input: inputLevel, output: outputLevel, state };
+  // Kept current from an effect rather than in render; the draw loop reads
+  // it on its own clock, so a frame's delay is invisible.
+  useEffect(() => {
+    levelRef.current = { input: inputLevel, output: outputLevel, state };
+  }, [inputLevel, outputLevel, state]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

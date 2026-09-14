@@ -55,6 +55,8 @@ export function buildExpenseAutoMessage(opts: {
   plannedAmount?: number;
   categoryRemaining?: number;
   isSplitShare?: boolean;
+  /** Money came back rather than went out; the amount is read as a magnitude. */
+  refund?: boolean;
 }): string {
   const {
     paidBy,
@@ -66,14 +68,17 @@ export function buildExpenseAutoMessage(opts: {
     plannedAmount,
     categoryRemaining,
     isSplitShare,
+    refund,
   } = opts;
 
-  let msg = `${PERSON_LABELS[paidBy]} paid ${formatCurrency(amount)} for ${category} via ${paymentMethod}`;
+  let msg = refund
+    ? `${PERSON_LABELS[paidBy]} got ${formatCurrency(Math.abs(amount))} back for ${category} to ${paymentMethod}`
+    : `${PERSON_LABELS[paidBy]} paid ${formatCurrency(amount)} for ${category} via ${paymentMethod}`;
 
   if (expenseShares) {
     const shareParts = (["kushvanth", "grishma"] as Person[])
-      .filter((person) => (expenseShares[person] ?? 0) > 0)
-      .map((person) => `${PERSON_LABELS[person]} ${formatCurrency(expenseShares[person]!)}`);
+      .filter((person) => (expenseShares[person] ?? 0) !== 0)
+      .map((person) => `${PERSON_LABELS[person]} ${formatCurrency(Math.abs(expenseShares[person]!))}`);
     if (shareParts.length > 0) {
       msg += ` (shared: ${shareParts.join(", ")})`;
     }
@@ -153,6 +158,15 @@ export function buildInterCoupleAutoMessage(opts: {
   return `${PERSON_LABELS[opts.paidBy]} paid ${formatCurrency(opts.amount)} for ${PERSON_LABELS[opts.benefited]}'s share`;
 }
 
+/** The buyer got a refund that included the other person's share, so that share is owed no more. */
+export function buildRefundBetweenUsMessage(opts: {
+  buyer: Person;
+  benefited: Person;
+  amount: number;
+}): string {
+  return `Refund: ${PERSON_LABELS[opts.benefited]}'s ${formatCurrency(Math.abs(opts.amount))} share came back to ${PERSON_LABELS[opts.buyer]}`;
+}
+
 /** Cash or transfers outside linked bank accounts (Between Us custom add). */
 export function buildExternalBetweenUsMessage(opts: {
   paidBy: Person;
@@ -229,7 +243,10 @@ export function getTransactionDisplayMessage(transaction: Transaction): string {
       message = `${actorLabel} received ${formatCurrency(transaction.amount)}${category ? ` from ${category}` : ""}${payment}`;
       break;
     case "expense":
-      message = `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` for ${category}` : ""}${payment}`;
+      message =
+        transaction.refund || transaction.amount < 0
+          ? `${actorLabel} got ${formatCurrency(Math.abs(transaction.amount))} back${category ? ` for ${category}` : ""}${payment.replace(" via ", " to ")}`
+          : `${actorLabel} paid ${formatCurrency(transaction.amount)}${category ? ` for ${category}` : ""}${payment}`;
       break;
     case "credit_payment":
     case "debt_payment":

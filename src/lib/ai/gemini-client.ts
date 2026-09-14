@@ -6,6 +6,22 @@ import {
   type Tool,
 } from "@google/generative-ai";
 import { buildHouseholdSystemInstruction, GEMINI_MODEL } from "@/lib/ai/system-instructions";
+import { recordAiUsage } from "@/lib/ai/usage";
+
+function noteGeminiUsage(
+  result: { response: { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } } },
+  purpose: string
+) {
+  const usage = result.response.usageMetadata;
+  if (!usage) return;
+  recordAiUsage({
+    provider: "gemini",
+    model: GEMINI_MODEL,
+    inputTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
+    purpose,
+  });
+}
 import { ASSISTANT_TOOLS, type AssistantToolCall } from "@/lib/ai/tools";
 import { readGeminiApiKey } from "@/lib/ai/env";
 import type { AiUserId } from "@/lib/ai/person";
@@ -108,6 +124,7 @@ export async function generateGeminiPlainReply(systemInstruction: string, user: 
     systemInstruction,
   });
   const result = await model.generateContent(user);
+  noteGeminiUsage(result, "plain");
   const text = result.response.text()?.trim();
   if (!text) throw new Error("Gemini returned an empty response.");
   return text;
@@ -132,6 +149,7 @@ export async function generateGeminiReply(options: {
   );
   const chat = model.startChat({ history: mapHistory(options.history) });
   const result = await chat.sendMessage(options.message);
+  noteGeminiUsage(result, "chat");
   return parseGeminiResult(
     result.response.functionCalls(),
     result.response.candidates?.[0]?.content?.parts ?? []

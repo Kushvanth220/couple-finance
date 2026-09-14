@@ -226,6 +226,23 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
           value.replace(/^\[DONE\]\s*/i, "").trim().toLowerCase();
         const known = existing.map((item) => core(item.text));
 
+        // A snooze is the one field that may travel onto a reminder this
+        // device already holds: it is a small, dated, self-expiring fact, and
+        // "not now" decided on one phone should hold on the other.
+        const snoozeByText = new Map<string, string | undefined>();
+        for (const line of reminders) {
+          const parsed = reminderFromLegacyLine(line, "probe");
+          snoozeByText.set(core(parsed.text), parsed.snoozedUntil);
+        }
+        const withSnooze = existing.map((item) => {
+          const incoming = snoozeByText.get(core(item.text));
+          if (incoming === undefined || incoming === item.snoozedUntil) return item;
+          return { ...item, snoozedUntil: incoming };
+        });
+        if (withSnooze.some((item, i) => item !== existing[i])) {
+          set({ structuredReminders: withSnooze, reminders: withSnooze.map(renderReminderLine) });
+        }
+
         const adopted = reminders
           .filter((line) => {
             const candidate = core(line);
@@ -242,7 +259,8 @@ export const useAssistantPreferencesStore = create<AssistantPreferencesState>()(
           .map((line) => reminderFromLegacyLine(line, uuidv4()));
 
         if (adopted.length === 0) return;
-        const next = [...existing, ...adopted];
+        // Build on the snooze-refreshed list, or that refresh is lost here.
+        const next = [...withSnooze, ...adopted];
         set({ structuredReminders: next, reminders: next.map(renderReminderLine) });
       },
 

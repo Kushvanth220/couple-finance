@@ -13,6 +13,19 @@
 export const HOUSEHOLD_TIME_ZONE = "America/Chicago";
 
 /** yyyy-MM-dd in the household's timezone. */
+/** The household's wall clock right now, as "HH:MM" (24h), for time fields. */
+export function householdClockNow(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: HOUSEHOLD_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${hour === "24" ? "00" : hour}:${minute}`;
+}
+
 export function householdToday(now: Date = new Date()): string {
   // en-CA formats as yyyy-MM-dd, which is exactly the shape stored on records.
   return new Intl.DateTimeFormat("en-CA", {

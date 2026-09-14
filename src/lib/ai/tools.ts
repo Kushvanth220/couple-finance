@@ -357,8 +357,83 @@ export const ASSISTANT_FUNCTION_DECLARATIONS = [
           type: "string",
           description: "us or india — India bills should mention both time zones",
         },
+        person: {
+          type: "string",
+          description:
+            "kushvanth or grishma when the reminder is one person's (their own bill, their own task). Leave out for household reminders both should see.",
+        },
       },
       required: ["reminder"],
+    },
+  },
+  {
+    name: "update_income_source",
+    description:
+      "Rename an income source (e.g. 'call it Amazon Flex instead of Custom'). Match by the current name.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Current name, or enough of it to be unique" },
+        new_name: { type: "string" },
+      },
+      required: ["match", "new_name"],
+    },
+  },
+  {
+    name: "delete_income_source",
+    description: "Delete an income source that is no longer used. Existing income entries keep their history.",
+    parameters: {
+      type: "object",
+      properties: { match: { type: "string", description: "Name, or enough of it to be unique" } },
+      required: ["match"],
+    },
+  },
+  {
+    name: "update_spend_category",
+    description:
+      "Rename a spend category, change its keywords, or set its monthly budget (e.g. 'budget $400 for groceries').",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Current name, or enough of it to be unique" },
+        new_name: { type: "string" },
+        keywords: { type: "array", items: { type: "string" }, description: "Replaces the keyword list" },
+        budget: { type: "number", description: "Monthly budget in dollars; 0 clears it" },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "delete_spend_category",
+    description: "Delete a spend category. Past expenses keep the name as text.",
+    parameters: {
+      type: "object",
+      properties: { match: { type: "string", description: "Name, or enough of it to be unique" } },
+      required: ["match"],
+    },
+  },
+  {
+    name: "update_debt",
+    description:
+      "Change a debt's name, outstanding amount, or note — e.g. 'the India debt is $150 now'. This edits the record; to log a payment use record_debt_payment.",
+    parameters: {
+      type: "object",
+      properties: {
+        match: { type: "string", description: "Debt name, or enough of it to be unique" },
+        name: { type: "string" },
+        amount: { type: "number", description: "New outstanding amount" },
+        notes: { type: "string" },
+      },
+      required: ["match"],
+    },
+  },
+  {
+    name: "delete_debt",
+    description: "Remove a debt note entirely. Prefer record_debt_payment or marking it cleared when it was actually paid.",
+    parameters: {
+      type: "object",
+      properties: { match: { type: "string", description: "Debt name, or enough of it to be unique" } },
+      required: ["match"],
     },
   },
   {

@@ -20,7 +20,9 @@ import { cn } from "@/lib/utils";
 
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpenAt, setMoreOpenAt] = useState<string | null>(null);
+  const moreOpen = moreOpenAt === pathname;
+  const setMoreOpen = (next: boolean) => setMoreOpenAt(next ? pathname : null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
   const [syncConfigured, setSyncConfigured] = useState<boolean | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -33,10 +35,6 @@ export function MobileBottomNav() {
     });
     return unsubscribe;
   }, []);
-
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     document.body.style.overflow = moreOpen ? "hidden" : "";
@@ -216,7 +214,7 @@ export function MobileBottomNav() {
 
             <button
               type="button"
-              onClick={() => setMoreOpen((open) => !open)}
+              onClick={() => setMoreOpen(!moreOpen)}
               className="flex flex-col items-center gap-1 py-1.5"
               aria-expanded={moreOpen}
               aria-label="More navigation"

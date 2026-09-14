@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Loader2, MessageSquarePlus, Send, Trash2 } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass-button";
@@ -914,7 +915,20 @@ export function AiChatPanel({
         </div>
       ) : null}
 
-      {error ? <p className="text-xs text-[#ff3b30] px-1">{error}</p> : null}
+      {error ? (
+        <div className="px-1">
+          <p className="text-xs text-[#ff3b30]">{error}</p>
+          {/failed|provider|unavailable|not configured|timed out|network/i.test(error) ? (
+            <p className="mt-1 text-[11px] text-muted">
+              The forms still work without Jarvis:{" "}
+              <Link href="/spend" className="font-semibold text-[#007aff]">Spend</Link> ·{" "}
+              <Link href="/flex" className="font-semibold text-[#007aff]">Flex block</Link> ·{" "}
+              <Link href="/accounts" className="font-semibold text-[#007aff]">Income</Link> ·{" "}
+              <Link href="/memory" className="font-semibold text-[#007aff]">Reminder</Link>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex gap-2">
         <input

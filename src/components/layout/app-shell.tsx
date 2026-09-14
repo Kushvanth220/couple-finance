@@ -7,6 +7,8 @@ import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { AssistantFloatingButton } from "@/components/assistant/assistant-floating-button";
 import { AssistantProvider } from "@/components/assistant/assistant-context";
 import { SyncStatusBadge } from "@/components/sync/sync-status";
+import { FlexIncomeBridge } from "@/components/flex/flex-income-bridge";
+import { FirstVisitGate } from "@/components/layout/first-visit-gate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   // Keying <main> on the route replays the entrance animation on every
@@ -15,6 +17,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AssistantProvider>
+      <FlexIncomeBridge />
+      <FirstVisitGate />
       <div className="min-h-dvh flex flex-col">
       <div className="mesh-bg" />
 

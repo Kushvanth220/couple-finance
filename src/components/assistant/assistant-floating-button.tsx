@@ -30,13 +30,12 @@ export function AssistantFloatingButton() {
   const canWakeByName = wakeEnabled && wakeEntries.length > 0;
   const wakePhrase = formatWakeHint(wakeEntries[0]?.name ?? displayName);
 
-  useEffect(() => {
-    if (!open) setVoiceLive(false);
-  }, [open]);
+  // A closed panel cannot be live, whatever the last report said.
+  const liveNow = open && voiceLive;
 
   return (
     <>
-      <AssistantWakeListener paused={voiceLive || autoStartVoice} />
+      <AssistantWakeListener paused={liveNow || autoStartVoice} />
 
       {!open ? (
       <div className="fixed z-50 right-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] md:bottom-8 md:right-8 flex flex-col items-end gap-2.5 pointer-events-none">
@@ -54,7 +53,7 @@ export function AssistantFloatingButton() {
         ) : null}
 
         <div className="assistant-fab-wrap relative pointer-events-none">
-          {voiceLive ? (
+          {liveNow ? (
             <div className="pointer-events-none absolute -top-14 left-1/2 -translate-x-1/2">
               <AssistantLiveOrb state="listening" size="sm" />
             </div>
@@ -93,7 +92,8 @@ export function AssistantFloatingButton() {
       </div>
       ) : null}
 
-      <AssistantPanel open={open} onVoiceLiveChange={setVoiceLive} />
+      {/* Keyed on open so every opening starts from a fresh panel state. */}
+      <AssistantPanel key={open ? "open" : "closed"} open={open} onVoiceLiveChange={setVoiceLive} />
     </>
   );
 }

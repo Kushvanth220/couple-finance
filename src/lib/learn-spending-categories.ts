@@ -37,7 +37,7 @@ function sumMappedSpending(
   for (const tx of transactions) {
     if (tx.type !== "expense") continue;
     const share = getTransactionExpenseShare(tx, person);
-    if (share <= 0) continue;
+    if (share === 0) continue;
 
     const categoryName = resolveTransactionSpendCategory(tx, spendCategories);
     if (!categoryName) continue;
@@ -58,7 +58,7 @@ function hasMappedSpendingOutsidePeriod(
 ): boolean {
   for (const tx of transactions) {
     if (tx.type !== "expense") continue;
-    if (getTransactionExpenseShare(tx, person) <= 0) continue;
+    if (getTransactionExpenseShare(tx, person) === 0) continue;
     if (resolveTransactionSpendCategory(tx, spendCategories) !== categoryName) continue;
 
     const txDate = parseAppDateTime(tx.date, tx.time, tx.timestamp);

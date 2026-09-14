@@ -18,6 +18,13 @@ export const ASSISTANT_WRITE_TOOLS = new Set([
   "delete_reminder",
   "save_behavior_preference",
   "delete_behavior_preference",
+  // Editing the lists the numbers are filed under.
+  "update_income_source",
+  "delete_income_source",
+  "update_spend_category",
+  "delete_spend_category",
+  "update_debt",
+  "delete_debt",
   // Rules are the standing instructions the app and the assistant both obey.
   // A wrong one keeps being wrong every day until someone notices, so it gets
   // the same read-back-and-agree treatment as money.
@@ -283,8 +290,31 @@ export function buildToolConfirmationPreview(call: AssistantToolCall): string {
       return "Remove that recorded entry. This cannot be undone.";
     }
     case "record_income": {
-      return `Record ${moneyLabel(args.amount)} income from ${String(args.source_name ?? "income")} into ${String(args.deposit_account_name ?? args.deposit_account_id ?? "an account")}.`;
+      const on = args.date ? ` on ${String(args.date)}` : "";
+      return `Record ${moneyLabel(args.amount)} income from ${String(args.source_name ?? "income")} into ${String(args.deposit_account_name ?? args.deposit_account_id ?? "an account")}${on}.`;
     }
+    case "update_income_source":
+      return `Rename the income source "${String(args.match ?? "")}" to "${String(args.new_name ?? "")}".`;
+    case "delete_income_source":
+      return `Delete the income source "${String(args.match ?? "")}". Past income keeps its history.`;
+    case "update_spend_category": {
+      const parts: string[] = [];
+      if (args.new_name) parts.push(`rename it to "${String(args.new_name)}"`);
+      if (Array.isArray(args.keywords)) parts.push(`set keywords to ${(args.keywords as string[]).join(", ") || "none"}`);
+      if (args.budget !== undefined) parts.push(Number(args.budget) > 0 ? `set a ${moneyLabel(args.budget)} monthly budget` : "clear the budget");
+      return `Change the category "${String(args.match ?? "")}" — ${parts.join(", ") || "no change described"}.`;
+    }
+    case "delete_spend_category":
+      return `Delete the category "${String(args.match ?? "")}". Past expenses keep the name as text.`;
+    case "update_debt": {
+      const parts: string[] = [];
+      if (args.name) parts.push(`rename it to "${String(args.name)}"`);
+      if (args.amount !== undefined) parts.push(`set what's owed to ${moneyLabel(args.amount)}`);
+      if (args.notes) parts.push(`note: ${String(args.notes)}`);
+      return `Change the debt "${String(args.match ?? "")}" — ${parts.join(", ") || "no change described"}.`;
+    }
+    case "delete_debt":
+      return `Remove the debt "${String(args.match ?? "")}" entirely. This cannot be undone.`;
     case "record_expense": {
       const category = args.category ? ` for ${args.category}` : "";
       const expenseFor =
@@ -495,6 +525,14 @@ export function spokenSaveConfirmation(call: AssistantToolCall): string {
       return "I've forgotten that one.";
     case "save_behavior_preference":
       return "Got it — I'll do that from now on.";
+    case "update_income_source":
+    case "update_spend_category":
+    case "update_debt":
+      return "Updated.";
+    case "delete_income_source":
+    case "delete_spend_category":
+    case "delete_debt":
+      return "Removed.";
     case "delete_behavior_preference":
       return "I'll stop doing that.";
     case "save_reminder":
