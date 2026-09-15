@@ -37,13 +37,24 @@ export async function GET() {
       });
     }
 
-    const rows = (data ?? []).map((row) => ({
-      household_id: row.household_id,
-      updated_at: row.updated_at,
-      transactions: (row.data as { transactions?: unknown[] })?.transactions?.length ?? 0,
-      incomeEntries:
-        (row.data as { incomeEntries?: unknown[] })?.incomeEntries?.length ?? 0,
-    }));
+    const rows = (data ?? []).map((row) => {
+      const doc = (row.data ?? {}) as {
+        transactions?: unknown[];
+        incomeEntries?: unknown[];
+        accounts?: unknown[];
+        monthlyExpenses?: unknown[];
+        flexDeposits?: unknown[];
+      };
+      return {
+        household_id: row.household_id,
+        updated_at: row.updated_at,
+        transactions: doc.transactions?.length ?? 0,
+        incomeEntries: doc.incomeEntries?.length ?? 0,
+        accounts: doc.accounts?.length ?? 0,
+        bills: doc.monthlyExpenses?.length ?? 0,
+        flexDeposits: doc.flexDeposits?.length ?? 0,
+      };
+    });
 
     const matched = rows.find((row) => row.household_id === householdKey);
 

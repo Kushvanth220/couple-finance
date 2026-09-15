@@ -8,10 +8,17 @@ import {
 } from "@/lib/supabase/client";
 import type { FinanceState } from "@/types";
 import { pickRicherState, readLocalFinanceBackup, scoreFinanceState } from "@/lib/recover-finance-data";
+import { mergeFinanceStates } from "@/lib/finance-merge";
 import { seedData } from "@/lib/seed-data";
 
 /** Bumped to reset stale per-device sync timestamps from older builds. */
 export const SYNC_META_KEY = "couple-finance-sync-meta-v5";
+/**
+ * The last state this phone and the cloud agreed on. It is what a three-way
+ * merge needs to tell "added here" from "deleted there" when both phones
+ * have moved since. Written after every successful push or pull.
+ */
+const SYNC_BASE_KEY = "couple-finance-sync-base-v1";
 const SYNC_PROJECT_KEY = "couple-finance-sync-project-url";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
@@ -132,7 +139,36 @@ export function ensureSyncProjectForConfig(config: SyncConfig) {
   localStorage.setItem(SYNC_PROJECT_KEY, config.supabaseUrl);
 }
 
+let currentStatus: SyncStatus = "idle";
+let lastCheckedAt: string | null = null;
+
+/** When this phone last heard back from the cloud, whether or not anything changed. */
+export function getLastCheckedAt(): string | null {
+  return lastCheckedAt;
+}
+
+/** The status as of the last event, for a page that mounts between events. */
+export function getCurrentSyncStatus(): SyncStatus {
+  return currentStatus;
+}
+
+/** Edits made here that have not reached the cloud yet. */
+export function hasPendingLocalChanges(): boolean {
+  return pendingLocalChanges || Boolean(readSyncMeta().lastLocalEditAt);
+}
+
+/** A sync on demand: send what is waiting, then pick up what is new. */
+export async function syncNow(): Promise<void> {
+  if (!sessionPullConfig) return;
+  await runAutoSyncCycle(
+    sessionPullConfig.householdId,
+    sessionPullConfig.getLocalState,
+    sessionPullConfig.applyRemoteState
+  );
+}
+
 function notifyStatus(status: SyncStatus, error?: string) {
+  currentStatus = status;
   if (error) {
     lastSyncError = error;
   } else if (status === "synced") {
@@ -168,8 +204,69 @@ function writeSyncMeta(meta: SyncMeta) {
   localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
 }
 
-function lastSyncedTime(meta = readSyncMeta()) {
-  return meta.lastSyncedAt ? new Date(meta.lastSyncedAt).getTime() : 0;
+function readSyncBase(): RemoteFinanceRow | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SYNC_BASE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RemoteFinanceRow>;
+    return parsed && parsed.data && typeof parsed.updated_at === "string" ? (parsed as RemoteFinanceRow) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSyncBase(row: RemoteFinanceRow) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SYNC_BASE_KEY, JSON.stringify(row));
+  } catch {
+    // Out of room: the next merge falls back to a union, which loses nothing.
+  }
+}
+
+/** Has the cloud changed since this phone last agreed with it? */
+function cloudMovedSince(remote: RemoteFinanceRow, meta = readSyncMeta()): boolean {
+  return !meta.lastSyncedAt || remote.updated_at !== meta.lastSyncedAt;
+}
+
+/** Anything typed here that the cloud has not yet been told about. */
+function hasUnsyncedLocalEdits(meta = readSyncMeta()): boolean {
+  return pendingLocalChanges || Boolean(meta.lastLocalEditAt);
+}
+
+/**
+ * Both sides moved: fold the cloud's changes and ours together, show the
+ * result here, and send it up — so neither phone's work is lost.
+ */
+async function mergeAndPush(
+  householdId: string,
+  remote: RemoteFinanceRow,
+  localState: FinanceState,
+  applyRemoteState: (state: FinanceState) => void,
+  attempt = 0
+): Promise<RemoteFinanceRow> {
+  const base = readSyncBase();
+  const merged = mergeFinanceStates(base?.data ?? null, localState, remote.data);
+  applyingRemote = true;
+  applyRemoteState(merged);
+  applyingRemote = false;
+  try {
+    const row = await pushFinanceState(householdId, merged, {
+      skipSafetyCheck: true,
+      expectStamp: remote.updated_at,
+    });
+    notifyStatus("synced");
+    return row;
+  } catch (error) {
+    // The other phone saved between our read and our write: read again and
+    // fold that in too. Two tries covers any realistic race.
+    if (error instanceof SyncConflictError && attempt < 2) {
+      const fresh = await fetchRemoteFinance(householdId);
+      if (fresh) return mergeAndPush(householdId, fresh, merged, applyRemoteState, attempt + 1);
+    }
+    throw error;
+  }
 }
 
 function countFinanceRecords(state: FinanceState): number {
@@ -265,6 +362,10 @@ export async function fetchRemoteFinance(
     .maybeSingle();
 
   if (error) throw new Error(helpfulErrorMessage(error));
+  // Any answer from the cloud proves it is there. Without this, one failed
+  // fetch at launch left the whole session refusing to upload.
+  cloudReachable = true;
+  lastCheckedAt = new Date().toISOString();
   if (!data) return null;
 
   return {
@@ -274,10 +375,42 @@ export async function fetchRemoteFinance(
   };
 }
 
+/** Just the cloud's timestamp — a few bytes, so polling can stay cheap. */
+async function fetchRemoteStamp(householdId: string): Promise<string | null> {
+  const config = getConfigOrThrow();
+  const supabase = createClient(config);
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("household_finance")
+    .select("updated_at")
+    .eq("household_id", householdId)
+    .maybeSingle();
+  if (error) throw new Error(helpfulErrorMessage(error));
+  cloudReachable = true;
+  lastCheckedAt = new Date().toISOString();
+  return data?.updated_at ?? null;
+}
+
+/** Thrown when the cloud changed under a push; the caller merges again and retries. */
+export class SyncConflictError extends Error {
+  constructor() {
+    super("The cloud changed while saving; merging again.");
+    this.name = "SyncConflictError";
+  }
+}
+
 export async function pushFinanceState(
   householdId: string,
   state: FinanceState,
-  options?: { skipSafetyCheck?: boolean }
+  options?: {
+    skipSafetyCheck?: boolean;
+    /**
+     * The cloud stamp this state was built on. The save only lands if the
+     * cloud still carries it — otherwise the other phone saved in between,
+     * and writing now would bury that save.
+     */
+    expectStamp?: string;
+  }
 ): Promise<RemoteFinanceRow> {
   if (!cloudReachable && !options?.skipSafetyCheck) {
     throw new Error(
@@ -294,19 +427,33 @@ export async function pushFinanceState(
     assertSafeToPush(existing?.data ?? null, state);
   }
 
-  const { data, error } = await supabase
-    .from("household_finance")
-    .upsert(
-      {
-        household_id: householdId,
-        data: state,
-      },
-      { onConflict: "household_id" }
-    )
-    .select("household_id, data, updated_at")
-    .single();
-
-  if (error) throw new Error(helpfulErrorMessage(error));
+  let data: { household_id: string; data: unknown; updated_at: string };
+  if (options?.expectStamp) {
+    const result = await supabase
+      .from("household_finance")
+      .update({ data: state })
+      .eq("household_id", householdId)
+      .eq("updated_at", options.expectStamp)
+      .select("household_id, data, updated_at")
+      .maybeSingle();
+    if (result.error) throw new Error(helpfulErrorMessage(result.error));
+    if (!result.data) throw new SyncConflictError();
+    data = result.data;
+  } else {
+    const result = await supabase
+      .from("household_finance")
+      .upsert(
+        {
+          household_id: householdId,
+          data: state,
+        },
+        { onConflict: "household_id" }
+      )
+      .select("household_id, data, updated_at")
+      .single();
+    if (result.error) throw new Error(helpfulErrorMessage(result.error));
+    data = result.data;
+  }
 
   pendingLocalChanges = false;
   writeSyncMeta({
@@ -321,6 +468,7 @@ export async function pushFinanceState(
     data: data.data as FinanceState,
     updated_at: data.updated_at,
   };
+  writeSyncBase(row);
 
   return row;
 }
@@ -356,25 +504,7 @@ export function scheduleFinancePush(
     notifyStatus("syncing");
 
     try {
-      const localState = getState();
-      const existing = await fetchRemoteFinance(householdId);
-
-      if (existing && wouldWipeLocalData(existing.data, localState)) {
-        await pushFinanceState(householdId, localState);
-        notifyStatus("synced");
-        return;
-      }
-
-      if (existing && wouldWipeRemoteData(existing.data, localState)) {
-        if (!pendingLocalChanges && sessionPullConfig) {
-          applyRemoteRow(existing, sessionPullConfig.applyRemoteState);
-        }
-        notifyStatus("synced");
-        return;
-      }
-
-      await pushFinanceState(householdId, localState);
-      notifyStatus("synced");
+      await pushLocalState(householdId, getState);
     } catch (err) {
       const message = helpfulErrorMessage(err);
       if (message.includes("Blocked upload") && sessionPullConfig) {
@@ -391,6 +521,39 @@ export function scheduleFinancePush(
   }, PUSH_DEBOUNCE_MS);
 }
 
+/**
+ * Send this phone's edits up without burying anyone else's. If the cloud
+ * moved since we last agreed with it, merge first; either way the save is
+ * conditional on the stamp we read, so a save that lands in between is
+ * folded in rather than overwritten.
+ */
+async function pushLocalState(householdId: string, getState: () => FinanceState) {
+  const localState = getState();
+  const existing = await fetchRemoteFinance(householdId);
+
+  if (existing && sessionPullConfig) {
+    if (cloudMovedSince(existing) || wouldWipeRemoteData(existing.data, localState)) {
+      await mergeAndPush(householdId, existing, localState, sessionPullConfig.applyRemoteState);
+      return;
+    }
+    try {
+      await pushFinanceState(householdId, localState, { expectStamp: existing.updated_at });
+      notifyStatus("synced");
+      return;
+    } catch (error) {
+      if (!(error instanceof SyncConflictError)) throw error;
+      const fresh = await fetchRemoteFinance(householdId);
+      if (fresh) {
+        await mergeAndPush(householdId, fresh, getState(), sessionPullConfig.applyRemoteState);
+        return;
+      }
+    }
+  }
+
+  await pushFinanceState(householdId, localState);
+  notifyStatus("synced");
+}
+
 export async function flushPendingPush() {
   if (!pendingLocalChanges || !pushHouseholdId || !pushStateGetter) return;
 
@@ -400,8 +563,7 @@ export async function flushPendingPush() {
   }
 
   notifyStatus("syncing");
-  await pushFinanceState(pushHouseholdId, pushStateGetter());
-  notifyStatus("synced");
+  await pushLocalState(pushHouseholdId, pushStateGetter);
 }
 
 function applyRemoteRow(
@@ -417,11 +579,8 @@ function applyRemoteRow(
     lastPushedAt: readSyncMeta().lastPushedAt,
     lastLocalEditAt: null,
   });
+  writeSyncBase(row);
   notifyStatus("synced");
-}
-
-function lastLocalEditTime(meta = readSyncMeta()) {
-  return meta.lastLocalEditAt ? new Date(meta.lastLocalEditAt).getTime() : 0;
 }
 
 function ensureBestLocalState(
@@ -443,47 +602,34 @@ function ensureBestLocalState(
   return current;
 }
 
-function shouldPullRemote(
+
+/**
+ * Bring this phone level with the cloud. Nothing to do when the cloud has
+ * not moved; a plain pull when only the cloud moved; a merge when both did.
+ */
+async function reconcileWithRemote(
+  householdId: string,
   remote: RemoteFinanceRow,
-  localState: FinanceState,
-  meta = readSyncMeta()
-) {
-  if (pendingLocalChanges) return false;
+  getLocalState: () => FinanceState,
+  applyRemoteState: (state: FinanceState) => void
+): Promise<boolean> {
+  if (!cloudMovedSince(remote)) return false;
+  const localState = getLocalState();
 
-  if (wouldWipeLocalData(remote.data, localState)) return false;
+  if (hasUnsyncedLocalEdits()) {
+    await mergeAndPush(householdId, remote, localState, applyRemoteState);
+    return true;
+  }
 
-  const remoteTime = new Date(remote.updated_at).getTime();
-  const syncedTime = lastSyncedTime(meta);
-  const localEditTime = lastLocalEditTime(meta);
+  // A cloud row that has lost most of what this phone holds is a reset or a
+  // bad upload, not the other phone's edits; merging keeps everything.
+  if (wouldWipeLocalData(remote.data, localState)) {
+    await mergeAndPush(householdId, remote, localState, applyRemoteState);
+    return true;
+  }
 
-  if (localEditTime > remoteTime) return false;
-
-  const localTx = localState.transactions?.length ?? 0;
-  const remoteTx = remote.data.transactions?.length ?? 0;
-  if (localEditTime && localTx !== remoteTx) return false;
-
-  if (remoteTime > syncedTime) return true;
-
-  if (!meta.lastSyncedAt) return true;
-
-  return false;
-}
-
-function shouldPushLocalOverRemote(
-  remote: RemoteFinanceRow,
-  localState: FinanceState,
-  meta = readSyncMeta()
-) {
-  if (wouldWipeRemoteData(remote.data, localState)) return false;
-
-  const remoteTime = new Date(remote.updated_at).getTime();
-  const localEditTime = lastLocalEditTime(meta);
-  const localTx = localState.transactions?.length ?? 0;
-  const remoteTx = remote.data.transactions?.length ?? 0;
-
-  if (localEditTime && localTx !== remoteTx) return true;
-
-  return localEditTime > remoteTime;
+  applyRemoteRow(remote, applyRemoteState);
+  return true;
 }
 
 export function pullRemoteIfNewer(
@@ -492,14 +638,14 @@ export function pullRemoteIfNewer(
   applyRemoteState: (state: FinanceState) => void
 ): Promise<boolean> {
   return (async () => {
+    // Cheap check first; the full row only when the stamp says it changed.
+    const stamp = await fetchRemoteStamp(householdId);
+    if (!stamp) return false;
+    if (stamp === readSyncMeta().lastSyncedAt) return false;
+
     const remote = await fetchRemoteFinance(householdId);
     if (!remote) return false;
-
-    const localState = getLocalState();
-    if (!shouldPullRemote(remote, localState)) return false;
-
-    applyRemoteRow(remote, applyRemoteState);
-    return true;
+    return reconcileWithRemote(householdId, remote, getLocalState, applyRemoteState);
   })();
 }
 
@@ -555,33 +701,34 @@ export async function resolveInitialSync(
     return "local";
   }
 
-  if (scoreFinanceState(remote.data) > scoreFinanceState(localState) + 50) {
-    applyRemoteRow(remote, applyRemoteState);
-    return "remote";
+  const moved = cloudMovedSince(remote, meta);
+  const edits = Boolean(meta.lastLocalEditAt);
+
+  // Both sides changed since this phone last agreed with the cloud — or one
+  // of them looks wiped: fold them together rather than pick a winner.
+  if (
+    (moved && edits) ||
+    wouldWipeLocalData(remote.data, localState) ||
+    wouldWipeRemoteData(remote.data, localState)
+  ) {
+    await mergeAndPush(householdId, remote, localState, applyRemoteState);
+    return "local";
   }
 
-  if (wouldWipeLocalData(remote.data, localState)) {
+  if (edits) {
     await pushFinanceState(householdId, localState);
     notifyStatus("synced");
     return "local";
   }
 
-  if (wouldWipeRemoteData(remote.data, localState)) {
+  if (moved || scoreFinanceState(remote.data) > scoreFinanceState(localState) + 50) {
     applyRemoteRow(remote, applyRemoteState);
     return "remote";
   }
 
-  if (shouldPushLocalOverRemote(remote, localState, meta)) {
-    await pushFinanceState(householdId, localState);
-    notifyStatus("synced");
-    return "local";
-  }
-
-  if (shouldPullRemote(remote, localState, meta)) {
-    applyRemoteRow(remote, applyRemoteState);
-    return "remote";
-  }
-
+  // Level already: remember this as the point of agreement, so the next
+  // merge has a base to reason from.
+  writeSyncBase(remote);
   notifyStatus("synced");
   return "none";
 }
@@ -615,8 +762,7 @@ export function subscribeToFinanceChanges(
           try {
             const remote = await fetchRemoteFinance(householdId);
             if (!remote?.data) return;
-            if (!shouldPullRemote(remote, getLocalState())) return;
-            applyRemoteRow(remote, applyRemoteState);
+            await reconcileWithRemote(householdId, remote, getLocalState, applyRemoteState);
           } catch (err) {
             notifyStatus("error", helpfulErrorMessage(err));
           }
@@ -656,16 +802,7 @@ export async function runAutoSyncCycle(
   getLocalState: () => FinanceState,
   applyRemoteState: (state: FinanceState) => void
 ) {
-  const localState = ensureBestLocalState(getLocalState, applyRemoteState);
-  const remote = await fetchRemoteFinance(householdId);
-
-  if (remote && wouldWipeLocalData(remote.data, localState)) {
-    if (pendingLocalChanges || scoreFinanceState(localState) > scoreFinanceState(remote.data)) {
-      await pushFinanceState(householdId, localState);
-      notifyStatus("synced");
-      return;
-    }
-  }
+  ensureBestLocalState(getLocalState, applyRemoteState);
 
   if (pendingLocalChanges) {
     await flushPendingPush();
